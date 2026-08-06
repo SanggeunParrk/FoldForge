@@ -1,0 +1,22 @@
+# Weights. ~44 GB across the predictors — set up locally, never committed.
+# No trailing slash: here these are SYMLINKS into a sibling checkout, and a
+# `name/` pattern matches directories only, so the symlink would sail past it
+# and get committed as a link to one machine's absolute path.
+model_checkpoints
+
+# Measurements and predictions. Both are outputs of a run, not of the source:
+# they describe a machine and a checkpoint, and they change on every run while
+# the code does not.
+benchmark/
+validation
+outputs/
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+uv.lock.bak

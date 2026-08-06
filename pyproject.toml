@@ -1,0 +1,134 @@
+[project]
+authors = [{ name = "Sanggeun Park", email = "psk6950@snu.ac.kr" }]
+name = "foldforge"
+description = "One environment for many structure predictors, built on team-gm"
+requires-python = ">= 3.10"
+version = "0.1.0"
+dependencies = [
+  "team-gm",
+  "biomol>=1.0,<2",
+  "biopython>=1.85,<2",
+  # Imported directly by model configs; team-gm pulls it transitively, but a
+  # direct import earns a direct declaration.
+  "pydantic>=2,<3",
+  "safetensors>=0.4,<1",
+  "transformers>=4.44,<6",
+]
+
+[project.optional-dependencies]
+# Mutually exclusive CUDA backends, mirroring team-gm's — pick exactly one:
+#   uv sync --extra cu12   (torch from the pytorch-cu128 index)
+#   uv sync --extra cu13   (torch from the pytorch-cu130 index)
+# The extra is forwarded to team-gm, which owns torch and the CUDA ops stack;
+# never declare torch here.
+cu12 = ["team-gm[cu12]"]
+cu13 = ["team-gm[cu13]"]
+
+[project.scripts]
+foldforge = "foldforge.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/foldforge"]
+
+[tool.uv]
+conflicts = [[{ extra = "cu12" }, { extra = "cu13" }]]
+
+[tool.uv.sources]
+team-gm = { path = "libs/team-gm", editable = true }
+# uv does NOT inherit `[tool.uv.sources]` from a path dependency, so the engine
+# pin has to be repeated here — and kept in LOCKSTEP with the rev in
+# libs/team-gm/pyproject.toml. If they drift, team-gm's blocks and the engine ops
+# they call come from different builds.
+miniworld-engine = { git = "ssh://git@github.com/SanggeunParrk/miniworld-engine.git", rev = "31d96e7" }
+torch = [
+  { index = "pytorch-cu128", extra = "cu12" },
+  { index = "pytorch-cu130", extra = "cu13" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[dependency-groups]
+dev = [
+  "matplotlib>=3.10,<4",
+  "pandas>=2.3,<3",
+  "pytest>=8.3,<9",
+  "ruff>=0.15,<0.16",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+# The vendored framework lints under its own rules, not FoldForge's.
+extend-exclude = ["libs"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "E731",
+  "E741",
+  "F722",   # Incompatible with jaxtyping
+  "S311",
+  "D105",
+  "D100",
+  "D107",
+  "D203",
+  "D213",
+  "PLR0913",
+  "ANN401",
+  "PLR0402",
+  "N812",
+  "NPY002",
+  "COM812", # Conflicts with ruff formatter
+]
+
+[tool.ruff.format]
+# Same reason as the per-file lint ignores below: reformatting an adapted block
+# would make it stop diffing cleanly against the copy it came from.
+exclude = ["src/foldforge/models/esmfold2/atom_transformer.py"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D", "ANN201", "S101", "INP001", "ANN001", "PLR2004"]
+# Blocks adapted from team-gm rather than written here. Kept diff-clean against
+# their origin so they stay comparable with the sibling copies other terminal
+# repos hold — reformatting them to FoldForge's taste would cost that for
+# nothing. TC001/TC002 are ignored on purpose and not merely for convenience:
+# jaxtyping's Float/Int must stay importable at runtime, or beartype cannot
+# enforce shapes under SHOULD_TYPECHECK=true.
+"src/foldforge/models/esmfold2/atom_transformer.py" = [
+  "D102",
+  "D205",
+  "E501",
+  "RET504",
+  "TC001",
+  "TC002",
+]
+"scripts/*" = [
+  "D",
+  "ANN201",
+  "S101",
+  "INP001",
+  "FBT001",
+  "PLC0415",
+  "C901",
+  "PLR0915",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.pyright]
+include = ["src/foldforge"]
+exclude = ["libs"]

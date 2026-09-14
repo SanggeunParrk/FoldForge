@@ -48,7 +48,8 @@ def test_timeout_kills_descendants(builder, tmp_path, detached):
         state = stat.read_text().rsplit(") ", 1)[1].split()[0]
     except (FileNotFoundError, ProcessLookupError):
         state = "gone"
-    assert state in ("Z", "gone")
+    # Linux can expose the transient dead (X) state before the PID disappears.
+    assert state in ("X", "Z", "gone")
 
 
 def test_pytorch_baseline_is_not_a_cache_build(builder, tmp_path):
@@ -57,3 +58,36 @@ def test_pytorch_baseline_is_not_a_cache_build(builder, tmp_path):
     with pytest.raises(ValueError, match="backend=miniworld"):
         builder.validate_backend(["--config", str(config)])
     builder.validate_backend([])
+
+
+def test_partial_search_is_never_promoted(builder):
+    a = {"kwargs": {"TILE": 16}, "num_warps": 4, "num_stages": 1}
+    b = {"kwargs": {"TILE": 32}, "num_warps": 4, "num_stages": 1}
+    c = {"kwargs": {"TILE": 64}, "num_warps": 4, "num_stages": 1}
+    good = {"searched": [a, b], "entries": [{**a, "ms": 0.1}], "workload": {}}
+    profiles = {
+        "complete": {"work": good},
+        "partial": {"work": {**good, "searched": [a]}},
+        "wrong_space": {"work": {**good, "searched": [a, c]}},
+        "failed": {"work": {**good, "entries": [{**a, "ms": float("inf")}]}},
+    }
+    shard = {
+        "_unit_complete": False,
+        "_provenance": {"sentinel": "kept"},
+        "op": {"grid": [a, b], "measurements": profiles, "op_id": "identity"},
+    }
+    result = builder.completed_subset(shard)
+    assert result["_has_entries"]
+    assert not result["_unit_complete"]
+    assert result["_provenance"] == shard["_provenance"]
+    assert set(result["op"]["entries"]) == {"complete"}
+    assert set(result["op"]["measurements"]) == {"complete"}
+    assert len(shard["op"]["measurements"]) == 4
+
+
+def test_legacy_shard_without_search_evidence_is_not_recovered(builder):
+    result = builder.completed_subset(
+        {"_unit_complete": False, "op": {"entries": {"key": []}}}
+    )
+    assert not result["_has_entries"]
+    assert "op" not in result

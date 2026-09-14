@@ -3,8 +3,11 @@
 Run on an allocated GPU using the repository's pinned environment. The driver
 uses the ordinary model input, checkpoint, native BF16 and execution settings.
 It preserves shipped caches and fills missing keys in a separate directory.
-A successful unit merges a provenance-checked shard; failed/timeout units keep
-logs and any completed round records/partial shards without being reported as complete.
+A successful unit merges a provenance-checked shard. On failure/timeout, only
+profiles whose recorded search set exactly matches the full declared grid and
+contains a finite timing are recovered. The unit remains failed; incomplete
+profiles and legacy shards without search evidence are excluded. Logs and round
+records remain available for another invocation with a new output directory.
 
 ```bash
 source scripts/activate_env.sh

@@ -9,6 +9,8 @@ in each adapter. Boltz-2 and Chai-1 are planned and are not implemented.
 
 See [current qualification](docs/QUALIFICATION-20260914.md) for complex inputs,
 actual compilation/CUDA graph boundaries and remaining deployment requirements.
+[The follow-up](docs/CLOSEOUT-20260914.md) records operational DB reads, A5000
+execution and the large-input AF3 compiler numerical regression that did not pass.
 
 ## Where this sits
 

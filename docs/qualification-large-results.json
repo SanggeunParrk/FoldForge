@@ -1,0 +1,178 @@
+{
+  "input": "4YX2, 594 protein residues; operational MiniWorld MSA/template LMDBs",
+  "gpu": "NVIDIA RTX A6000 (sm86)",
+  "job": 1684651,
+  "comparison": "native BF16 graph versus native BF16 compile+graph, seed 0",
+  "thresholds": {
+    "ca_aligned_rmsd_A": 0.25,
+    "mean_token_plddt_delta": 1.0
+  },
+  "execution_pass_count": 8,
+  "numerical_pass_count": 3,
+  "numerical_fail_count": 1,
+  "comparison_rows": [
+    {
+      "model": "af3",
+      "ca_count": 594,
+      "ca_aligned_rmsd_A": 0.32301698704452897,
+      "token_plddt_graph": 85.6379747390747,
+      "token_plddt_compile": 85.641348361969,
+      "token_plddt_delta": 0.0033736228942871094,
+      "pass": false
+    },
+    {
+      "model": "esmfold2",
+      "ca_count": 594,
+      "ca_aligned_rmsd_A": 0.24413758890581191,
+      "token_plddt_graph": 84.6350908279419,
+      "token_plddt_compile": 84.55091118812561,
+      "token_plddt_delta": 0.08417963981628418,
+      "pass": true
+    },
+    {
+      "model": "opendde",
+      "ca_count": 594,
+      "ca_aligned_rmsd_A": 0.15635810621167567,
+      "token_plddt_graph": 93.37248802185059,
+      "token_plddt_compile": 93.36952567100525,
+      "token_plddt_delta": 0.002962350845336914,
+      "pass": true
+    },
+    {
+      "model": "protenix",
+      "ca_count": 594,
+      "ca_aligned_rmsd_A": 0.2090496661068349,
+      "token_plddt_graph": 88.18784952163696,
+      "token_plddt_compile": 88.1896436214447,
+      "token_plddt_delta": 0.0017940998077392578,
+      "pass": true
+    }
+  ],
+  "execution_rows": [
+    {
+      "source": "closeout-large/af3/compile/4yx2-seed0.json",
+      "model": "af3",
+      "precision": "bf16",
+      "autocast": false,
+      "compile": true,
+      "cuda_graph": true,
+      "compiled_graphs": 1,
+      "cuda_graph_replays": 400,
+      "model_seconds_warm_median": 52.00662380922586,
+      "model_peak_allocated_bytes": 5692216320,
+      "recycles": 10,
+      "steps": 200,
+      "samples": 1
+    },
+    {
+      "source": "closeout-large/af3/graph/4yx2-seed0.json",
+      "model": "af3",
+      "precision": "bf16",
+      "autocast": false,
+      "compile": false,
+      "cuda_graph": true,
+      "compiled_graphs": 0,
+      "cuda_graph_replays": 400,
+      "model_seconds_warm_median": 55.56518032588065,
+      "model_peak_allocated_bytes": 5691676672,
+      "recycles": 10,
+      "steps": 200,
+      "samples": 1
+    },
+    {
+      "source": "closeout-large/esmfold2/compile/4yx2.json",
+      "model": null,
+      "precision": "native dtype, FP32 norm parameters, no autocast",
+      "autocast": null,
+      "compile": true,
+      "cuda_graph": true,
+      "compiled_graphs": 13,
+      "cuda_graph_replays": 20,
+      "model_seconds_warm_median": 4.729023355059326,
+      "model_peak_allocated_bytes": 5026424320,
+      "recycles": null,
+      "steps": null,
+      "samples": null
+    },
+    {
+      "source": "closeout-large/esmfold2/graph/4yx2.json",
+      "model": null,
+      "precision": "native dtype, FP32 norm parameters, no autocast",
+      "autocast": null,
+      "compile": false,
+      "cuda_graph": true,
+      "compiled_graphs": 0,
+      "cuda_graph_replays": 20,
+      "model_seconds_warm_median": 5.075339492876083,
+      "model_peak_allocated_bytes": 5027333632,
+      "recycles": null,
+      "steps": null,
+      "samples": null
+    },
+    {
+      "source": "closeout-large/opendde/compile/4yx2.json",
+      "model": "opendde",
+      "precision": "bf16",
+      "autocast": false,
+      "compile": true,
+      "cuda_graph": true,
+      "compiled_graphs": 1,
+      "cuda_graph_replays": 400,
+      "model_seconds_warm_median": 212.7561992299743,
+      "model_peak_allocated_bytes": 27157246976,
+      "recycles": 10,
+      "steps": 200,
+      "samples": 1
+    },
+    {
+      "source": "closeout-large/opendde/graph/4yx2.json",
+      "model": "opendde",
+      "precision": "bf16",
+      "autocast": false,
+      "compile": false,
+      "cuda_graph": true,
+      "compiled_graphs": 0,
+      "cuda_graph_replays": 400,
+      "model_seconds_warm_median": 216.79440280795097,
+      "model_peak_allocated_bytes": 27158351360,
+      "recycles": 10,
+      "steps": 200,
+      "samples": 1
+    },
+    {
+      "source": "closeout-large/protenix/compile/4yx2.json",
+      "model": "protenix",
+      "precision": "bf16",
+      "autocast": false,
+      "compile": true,
+      "cuda_graph": true,
+      "compiled_graphs": 1,
+      "cuda_graph_replays": 400,
+      "model_seconds_warm_median": 46.69061366003007,
+      "model_peak_allocated_bytes": 7381803520,
+      "recycles": 10,
+      "steps": 200,
+      "samples": 1
+    },
+    {
+      "source": "closeout-large/protenix/graph/4yx2.json",
+      "model": "protenix",
+      "precision": "bf16",
+      "autocast": false,
+      "compile": false,
+      "cuda_graph": true,
+      "compiled_graphs": 0,
+      "cuda_graph_replays": 400,
+      "model_seconds_warm_median": 50.64706542203203,
+      "model_peak_allocated_bytes": 7383131136,
+      "recycles": 10,
+      "steps": 200,
+      "samples": 1
+    }
+  ],
+  "limitations": [
+    "One complex, one seed, one warm repeat; not a biological accuracy benchmark.",
+    "Protenix v2 is covered by the A5000 1UBQ test, not this large-complex comparison.",
+    "Null fields are absent in the original family-specific execution report."
+  ]
+}

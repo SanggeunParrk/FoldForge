@@ -133,7 +133,24 @@ class FoldingTrunk(nn.Module):
         pair: Float[torch.Tensor, "B L L d_pair"],
         mask: Bool[torch.Tensor, "B L"] | None = None,
     ) -> Float[torch.Tensor, "B L L d_pair"]:
-        """Forward pass."""
+        """Forward pass, keeping independent samples within the kernel batch limit."""
+        if (
+            not self.training
+            and pair.shape[0] > 1
+            and self.config.implementation == ImplementationType.MINIWORLD_ENGINE
+        ):
+            # The pinned inference TriMul front accepts B=1. Confidence expands
+            # B by the diffusion-sample count; evaluate those independent items
+            # separately while preserving order, masks and the selected backend.
+            return torch.cat(
+                [
+                    self.forward(
+                        pair[i : i + 1], None if mask is None else mask[i : i + 1]
+                    )
+                    for i in range(pair.shape[0])
+                ],
+                dim=0,
+            )
         if self.config.n_checkpoint_segments is None:
             for block in self.blocks:
                 pair = block(pair, mask)

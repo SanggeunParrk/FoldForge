@@ -277,13 +277,73 @@ def compute_lm_hidden_states(
     return scatter_lm_hidden_states(hidden, position_map).detach()
 
 
+class _FP32NormLinear(torch.nn.Module):
+    """ESMC's PyTorch fallback with explicit FP32 norm and native-dtype GEMM."""
+
+    def __init__(self, original: torch.nn.Module) -> None:
+        super().__init__()
+        self.d_in, self.eps = original.d_in, original.eps
+        self.layer_norm_weight = original.layer_norm_weight
+        self.layer_norm_bias = original.layer_norm_bias
+        self.weight = original.weight
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        normalized = torch.nn.functional.layer_norm(
+            x.float(),
+            (self.d_in,),
+            self.layer_norm_weight,
+            self.layer_norm_bias,
+            self.eps,
+        ).to(x.dtype)
+        return torch.nn.functional.linear(normalized, self.weight)
+
+
+class _FP32NormMLP(torch.nn.Module):
+    """ESMC's SwiGLU fallback with explicit FP32 normalization."""
+
+    def __init__(self, original: torch.nn.Module) -> None:
+        super().__init__()
+        self.hidden_size, self.eps = original.hidden_size, original.eps
+        self.layer_norm_weight = original.layer_norm_weight
+        self.layer_norm_bias = original.layer_norm_bias
+        self.fc1_weight, self.fc2_weight = original.fc1_weight, original.fc2_weight
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        normalized = torch.nn.functional.layer_norm(
+            x.float(),
+            (self.hidden_size,),
+            self.layer_norm_weight,
+            self.layer_norm_bias,
+            self.eps,
+        ).to(x.dtype)
+        a, b = torch.nn.functional.linear(normalized, self.fc1_weight).chunk(2, dim=-1)
+        return torch.nn.functional.linear(
+            torch.nn.functional.silu(a) * b, self.fc2_weight
+        )
+
+
+def _prepare_esmc_norms(model: torch.nn.Module) -> None:
+    from transformers.models.esmc.modeling_esmc import (  # noqa: PLC0415
+        _PyTorchLayerNormLinear,
+        _PyTorchLayerNormMLP,
+    )
+
+    for name, child in list(model.named_children()):
+        if isinstance(child, _PyTorchLayerNormLinear):
+            setattr(model, name, _FP32NormLinear(child))
+        elif isinstance(child, _PyTorchLayerNormMLP):
+            setattr(model, name, _FP32NormMLP(child))
+        else:
+            _prepare_esmc_norms(child)
+
+
 def load_esmc(
     path: str, device: torch.device | None = None, dtype: torch.dtype = torch.bfloat16
 ) -> LanguageModel:
     """Load the released ESMC model through ``transformers``.
 
-    Kept out of :mod:`team_gm`'s dependencies: the import happens here, so the
-    rest of the package works without ``transformers`` installed.
+    The environment pins the Biohub Transformers fork that implements this
+    checkpoint API. Import it lazily when a language model is requested.
 
     Parameters
     ----------
@@ -302,7 +362,11 @@ def load_esmc(
     """
     from transformers.models.esmc.modeling_esmc import ESMCModel  # noqa: PLC0415
 
-    model = ESMCModel.from_pretrained(path).to(device=device, dtype=dtype).eval()
+    from .precision import inference_precision  # noqa: PLC0415
+
+    model = ESMCModel.from_pretrained(path)
+    _prepare_esmc_norms(model)
+    inference_precision(model, device or torch.device("cpu"), dtype)
     for parameter in model.parameters():
         parameter.requires_grad_(requires_grad=False)
     return model

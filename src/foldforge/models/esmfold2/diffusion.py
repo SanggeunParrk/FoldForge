@@ -225,8 +225,10 @@ class DiffusionConditioning(nn.Module):
         )
 
         scaled = 0.25 * torch.log((noise_level / self.sigma_data).clamp(min=1e-20))
-        noise = self.noise_proj(self.ln_noise(self.fourier(scaled)))
-        single = single + noise.unsqueeze(1)
+        # One noise embedding per sample: retain the explicit singleton token axis
+        # so the engine can form a semantic (batch, length) autotune key.
+        noise = self.noise_proj(self.ln_noise(self.fourier(scaled).unsqueeze(1)))
+        single = single + noise
         # Same contract as the pair transitions above: the op owns the residual.
         for block in self.single_transitions:
             single = block(single)

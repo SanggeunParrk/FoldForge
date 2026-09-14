@@ -1,0 +1,10 @@
+# Native BF16 parameters, FP32 normalization; inference denoiser graph.
+# First forward warms kernels and captures; benchmark reports cold separately.
+backend: miniworld
+precision: bf16
+execution:
+  compile: false
+  cuda_graph: true
+  scope: denoiser
+  max_graphs: 4
+  benchmark_repeats: 2

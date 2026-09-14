@@ -2,27 +2,44 @@
 authors = [{ name = "Sanggeun Park", email = "psk6950@snu.ac.kr" }]
 name = "foldforge"
 description = "One environment for many structure predictors, built on team-gm"
-requires-python = ">= 3.10"
+requires-python = ">=3.12,<3.13"
 version = "0.1.0"
 dependencies = [
   "team-gm",
   "biomol>=1.0,<2",
+  "lmdb>=1.7,<2",
   "biopython>=1.85,<2",
   # Imported directly by model configs; team-gm pulls it transitively, but a
   # direct import earns a direct declaration.
   "pydantic>=2,<3",
   "safetensors>=0.4,<1",
-  "transformers>=4.44,<6",
+  "transformers==4.57.6",
+  "esm==3.3.0",
+  "foldforge-af3-data",
+  "ml-collections==1.1.0",
+  "optree==0.17.0",
+  "numpy>=2,<3",
+  "scipy>=1.15,<2",
+  "biotite>=1.4,<2",
+  "rdkit>=2025,<2027",
+  "scikit-learn>=1.7,<2",
+  "pandas>=2.3,<3",
+  "networkx>=3,<4",
+  "zstandard>=0.23,<1",
+  "tqdm>=4.67,<5",
+  "pyyaml>=6,<7",
 ]
 
 [project.optional-dependencies]
 # Mutually exclusive CUDA backends, mirroring team-gm's — pick exactly one:
 #   uv sync --extra cu12   (torch from the pytorch-cu128 index)
 #   uv sync --extra cu13   (torch from the pytorch-cu130 index)
-# The extra is forwarded to team-gm, which owns torch and the CUDA ops stack;
-# never declare torch here.
+# Forward CUDA selection to team-gm, which owns the torch version bounds and
+# CUDA indexes. Repeating those indexes here creates conflicting source rules.
 cu12 = ["team-gm[cu12]"]
 cu13 = ["team-gm[cu13]"]
+# Ampere/Ada (A100, A5000, A6000): select together with cu12.
+flash2 = ["flash-attn==2.8.3.post1"]
 
 [project.scripts]
 foldforge = "foldforge.cli:main"
@@ -35,29 +52,28 @@ build-backend = "hatchling.build"
 packages = ["src/foldforge"]
 
 [tool.uv]
-conflicts = [[{ extra = "cu12" }, { extra = "cu13" }]]
-
-[tool.uv.sources]
-team-gm = { path = "libs/team-gm", editable = true }
-# uv does NOT inherit `[tool.uv.sources]` from a path dependency, so the engine
-# pin has to be repeated here — and kept in LOCKSTEP with the rev in
-# libs/team-gm/pyproject.toml. If they drift, team-gm's blocks and the engine ops
-# they call come from different builds.
-miniworld-engine = { git = "ssh://git@github.com/SanggeunParrk/miniworld-engine.git", rev = "31d96e7" }
-torch = [
-  { index = "pytorch-cu128", extra = "cu12" },
-  { index = "pytorch-cu130", extra = "cu13" },
+# Replace esm's mutable Transformers @main requirement with the source pin below.
+override-dependencies = ["transformers==4.57.6"]
+# Keep the engine-tested CuTe/Quack pair across every optional environment.
+constraint-dependencies = ["quack-kernels==0.5.0", "nvidia-cutlass-dsl==4.5.2"]
+conflicts = [
+  [{ extra = "cu12" }, { extra = "cu13" }],
+  [{ package = "team-gm", extra = "cu12" }, { package = "team-gm", extra = "cu13" }],
 ]
 
-[[tool.uv.index]]
-name = "pytorch-cu128"
-url = "https://download.pytorch.org/whl/cu128"
-explicit = true
+[tool.uv.workspace]
+members = ["libs/team-gm"]
 
-[[tool.uv.index]]
-name = "pytorch-cu130"
-url = "https://download.pytorch.org/whl/cu130"
-explicit = true
+[tool.uv.sources]
+foldforge-af3-data = { path = "libs/af3-data" }
+# Match the reference ESMFold2 input processor.
+esm = { git = "https://github.com/Biohub/esm.git", rev = "fba1e42a8a0f8df2b7e08611c88807aa32a25d9c" }
+# ESMFold2/ESMC checkpoint APIs come from the Biohub fork, not PyPI.
+transformers = { git = "https://github.com/Biohub/transformers.git", rev = "b435f1f92dd5b4a653be57157d4f4f5ddba4f145" }
+team-gm = { workspace = true }
+# The workspace uses this root engine source. Keep the same revision in
+# libs/team-gm/pyproject.toml for its standalone installs.
+miniworld-engine = { git = "ssh://git@github.com/SanggeunParrk/miniworld-engine.git", rev = "d2266a035de11384c46f8cc980e6460f60925413" }
 
 [dependency-groups]
 dev = [
@@ -71,7 +87,8 @@ dev = [
 line-length = 88
 target-version = "py310"
 # The vendored framework lints under its own rules, not FoldForge's.
-extend-exclude = ["libs"]
+# Preserve the style of pinned upstream model sources.
+extend-exclude = ["libs", "**/ported/**", "src/foldforge/models/esmfold2/input", "src/foldforge/data/ccd/components.py", "src/foldforge/data/ccd/esm_view.py", "src/foldforge/data/ccd/substructure_perms.py"]
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -132,3 +149,10 @@ testpaths = ["tests"]
 [tool.pyright]
 include = ["src/foldforge"]
 exclude = ["libs"]
+
+# Compile FA2 against the selected CUDA Torch build, including its ABI.
+[tool.uv.extra-build-dependencies]
+flash-attn = [
+  { requirement = "torch", match-runtime = true },
+  "packaging", "ninja", "psutil", "wheel",
+]

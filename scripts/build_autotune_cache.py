@@ -43,6 +43,7 @@ import torch
 from safetensors.torch import load_file
 from team_gm.modules.exceptions import ImplementationType
 
+from foldforge.data.ccd import CCDDatabase, default_path
 from foldforge.models.esmfold2 import ESMFold2Config, convert
 from foldforge.models.esmfold2 import ESMFold2Model as Model
 from foldforge.models.esmfold2.features import (
@@ -61,7 +62,9 @@ def fold_once(target: str, args: argparse.Namespace, model_cache: dict) -> float
     checkpoint = Path(args.checkpoint)
     sample = Path(args.data_root) / target
 
-    builder = ESMFold2InputBuilder(ccd_cache=checkpoint)
+    if "ccd" not in model_cache:
+        model_cache["ccd"] = CCDDatabase(args.ccd_db)
+    builder = ESMFold2InputBuilder(ccd_db=model_cache["ccd"])
     features, _ = builder.prepare_input(
         build_input(sample, args.msa_depth), seed=0, device=device
     )
@@ -132,6 +135,7 @@ def synthetic_once(length: int, args: argparse.Namespace) -> float:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--ccd-db", type=Path, default=default_path())
     parser.add_argument("--targets", default="1ubq,1a1k,3ptb,4yx2")
     parser.add_argument("--data-root", default="validation/data")
     parser.add_argument("--checkpoint", default="model_checkpoints/esmfold2")
@@ -194,9 +198,18 @@ def main() -> int:
     # job but a shared report path is not: six parallel jobs each wrote
     # "capture.json" and only the last one survived, so the record of which job
     # produced which buckets was lost.
-    tag = "_".join(filter(None, [*args.targets.split(","), *(
-        f"L{n}" for n in filter(None, args.synthetic.split(","))
-    )])) or "capture"
+    tag = (
+        "_".join(
+            filter(
+                None,
+                [
+                    *args.targets.split(","),
+                    *(f"L{n}" for n in filter(None, args.synthetic.split(","))),
+                ],
+            )
+        )
+        or "capture"
+    )
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / f"{tag}.json").write_text(json.dumps(report, indent=2) + "\n")

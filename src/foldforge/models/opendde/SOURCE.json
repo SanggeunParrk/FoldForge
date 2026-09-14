@@ -1,0 +1,426 @@
+{
+  "repository": "https://github.com/aurekaresearch/OpenDDE",
+  "revision": "ddfa1df8aff1babf1fddac4247b7d2351bd0ce9f",
+  "files": {
+    "__init__.py": {
+      "source": "opendde/__init__.py",
+      "sha256": "4ae64956968ffc6ebe9979b0d3c645f5bbf6f7c064162dd815a8b5b32b986fa4"
+    },
+    "config/__init__.py": {
+      "source": "opendde/config/__init__.py",
+      "sha256": "85ce9fad7972d19b7869a6338be1e787a0127b899def6c615bff6621a8916fcc"
+    },
+    "config/config.py": {
+      "source": "opendde/config/config.py",
+      "sha256": "e3959c872d0cf605e561df9c9e5cce1990ecabecad3fbe0afe94d6a095815038"
+    },
+    "config/data.py": {
+      "source": "opendde/config/data.py",
+      "sha256": "987810a28a568bd8a703395e6808a205ada6bb6a6f52c4969099bb6c805f2ca6"
+    },
+    "config/dependency_url.py": {
+      "source": "opendde/config/dependency_url.py",
+      "sha256": "9243ce9ce934bd0dfefd777f399a5aba42f97d8f6e41a386e225e3cd7b290772"
+    },
+    "config/extend_types.py": {
+      "source": "opendde/config/extend_types.py",
+      "sha256": "ef51c8b090f9289a56fa8141c7261d07a588181ab1b13b230f1b08a97abd0a4f"
+    },
+    "config/inference.py": {
+      "source": "opendde/config/inference.py",
+      "sha256": "e008e69556761f8d228c8f9340cea5dcec4b60cc8cc7c61324c6b01763c85619"
+    },
+    "config/inference_defaults.py": {
+      "source": "opendde/config/inference_defaults.py",
+      "sha256": "4209409f2414d72ea6cadd7dd4dfa2bdd5a64f03db4d5737ab4e5d81d1804d93"
+    },
+    "config/model_base.py": {
+      "source": "opendde/config/model_base.py",
+      "sha256": "7b4773a970d3f6317b01f3cc3494897b5bff55df42dfbec961cac797c985fd7a"
+    },
+    "config/model_manifest.json": {
+      "source": "opendde/config/model_manifest.json",
+      "sha256": "dcf0782160746699e81cd314950113ac6c516bc92bb70af2a888f18b37de40f9"
+    },
+    "config/model_manifest.py": {
+      "source": "opendde/config/model_manifest.py",
+      "sha256": "c9d9440c56c838c1228db4175dd58797af9c7d5342e40532071152600f21e80b"
+    },
+    "config/model_registry.py": {
+      "source": "opendde/config/model_registry.py",
+      "sha256": "fbc96be16a0f8e68b40a2d8586429159fc23f877ce030fe8a2679a8be8fb58f3"
+    },
+    "config/schema.py": {
+      "source": "opendde/config/schema.py",
+      "sha256": "77a920e9a4ed9a3bcf5f8b66734f77b4a07200d9e3516be710c15817277fbc6a"
+    },
+    "data/__init__.py": {
+      "source": "opendde/data/__init__.py",
+      "sha256": "fd0722a4d5697ce585a7b1955176e2c5b51abaf7a8695335b3c1b522e377955a"
+    },
+    "data/constants.py": {
+      "source": "opendde/data/constants.py",
+      "sha256": "7f0e425bec4fee6dc5f0bb2812b9273153ad436da8d6a7e6820215fb6c2ed72b"
+    },
+    "data/core/__init__.py": {
+      "source": "opendde/data/core/__init__.py",
+      "sha256": "fd0722a4d5697ce585a7b1955176e2c5b51abaf7a8695335b3c1b522e377955a"
+    },
+    "data/core/ccd.py": {
+      "source": "opendde/data/core/ccd.py",
+      "sha256": "b47a451d9efa9e0fc6a48031abe143bc279ef84c8419da1a4c4141db1822ee29"
+    },
+    "data/core/featurizer.py": {
+      "source": "opendde/data/core/featurizer.py",
+      "sha256": "4bf82eb8d944922c515a8d8868b6d337e6d3a1aee32913a4a71d5429112620fe"
+    },
+    "data/core/filter.py": {
+      "source": "opendde/data/core/filter.py",
+      "sha256": "496a2a333a88bbc5298a2466b4c43c40773be47e6146f2fadb0aa95b535783c4"
+    },
+    "data/core/geometry_featurizer.py": {
+      "source": "opendde/data/core/geometry_featurizer.py",
+      "sha256": "9f28871023ad38e1863c5e0451d579c3f1882ed1345407c32cbd8cbbed961905"
+    },
+    "data/core/parser.py": {
+      "source": "opendde/data/core/parser.py",
+      "sha256": "6560adffe498d00b705cdfc762e13ac2138c50a704041c5f012e199e508b831e"
+    },
+    "data/core/substructure_perms.py": {
+      "source": "opendde/data/core/substructure_perms.py",
+      "sha256": "92925a0e49684a1d30476d657207ec829dbf66ffeb4da2c06c4e41b55dc8a9bf"
+    },
+    "data/inference/__init__.py": {
+      "source": "opendde/data/inference/__init__.py",
+      "sha256": "08d1b965794dbec28ccf20f8f77593850e213cdba1db6c2edc7e763f8ea1eb86"
+    },
+    "data/inference/infer_dataloader.py": {
+      "source": "opendde/data/inference/infer_dataloader.py",
+      "sha256": "77343f8edbcfec97218a0939f7fe8934b37c9da7abfa3dcf909dd02fda42def6"
+    },
+    "data/inference/input_validation.py": {
+      "source": "opendde/data/inference/input_validation.py",
+      "sha256": "bdb2878d39ea07343bab7ab69c35bc94d4499ab28d794007e178ea5502362ef9"
+    },
+    "data/inference/json_maker.py": {
+      "source": "opendde/data/inference/json_maker.py",
+      "sha256": "42f36ec100769f882eb79096b02589edfe4699fbdc8446ecab49cefd984437a6"
+    },
+    "data/inference/json_parser.py": {
+      "source": "opendde/data/inference/json_parser.py",
+      "sha256": "9ed06dcef770218c88e7a5350f7b298ffa284088b36a087f5948c4bda3c5d47c"
+    },
+    "data/inference/json_to_feature.py": {
+      "source": "opendde/data/inference/json_to_feature.py",
+      "sha256": "c7e5f39aecb95fb5ef632ff0e0583ae609a416b090cba6274abe448962440c8f"
+    },
+    "data/msa/__init__.py": {
+      "source": "opendde/data/msa/__init__.py",
+      "sha256": "fd0722a4d5697ce585a7b1955176e2c5b51abaf7a8695335b3c1b522e377955a"
+    },
+    "data/msa/msa_featurizer.py": {
+      "source": "opendde/data/msa/msa_featurizer.py",
+      "sha256": "bc7c0540c584dd707534f5b3ed2ef3a7f2c6ffe637f89f6a07de34bd1c47d6fb"
+    },
+    "data/msa/msa_service_client.py": {
+      "source": "opendde/data/msa/msa_service_client.py",
+      "sha256": "78c8f420805f4e82ccce38148d2a9b49c2bd560fd9c5715ff95b1c1bac750eb5"
+    },
+    "data/msa/msa_utils.py": {
+      "source": "opendde/data/msa/msa_utils.py",
+      "sha256": "350079fd1c945f7e3f9e4c76f784c4c01334c271f0fb69dadc55cde33a43efbd"
+    },
+    "data/template/__init__.py": {
+      "source": "opendde/data/template/__init__.py",
+      "sha256": "fd0722a4d5697ce585a7b1955176e2c5b51abaf7a8695335b3c1b522e377955a"
+    },
+    "data/template/template_featurizer.py": {
+      "source": "opendde/data/template/template_featurizer.py",
+      "sha256": "3e5017e51167a1eecc91d7b21255b356bc287bf6b226257ed8526e58fcaf5420"
+    },
+    "data/template/template_parser.py": {
+      "source": "opendde/data/template/template_parser.py",
+      "sha256": "91254d628c0457e00f52aa003c98161973035874d80c976bfb03b45d6dd810e3"
+    },
+    "data/template/template_utils.py": {
+      "source": "opendde/data/template/template_utils.py",
+      "sha256": "c3082c3534e7b435b7c17c6534932f12168b8273c110850ebde8e500b7a4ce38"
+    },
+    "data/tokenizer.py": {
+      "source": "opendde/data/tokenizer.py",
+      "sha256": "f0c12e08816fba762225c072641f7f58a4404142c0171528680eea48222dfa1f"
+    },
+    "data/tools/__init__.py": {
+      "source": "opendde/data/tools/__init__.py",
+      "sha256": "fd0722a4d5697ce585a7b1955176e2c5b51abaf7a8695335b3c1b522e377955a"
+    },
+    "data/tools/common.py": {
+      "source": "opendde/data/tools/common.py",
+      "sha256": "a5a7251ca4cafdd103202cf6eda419fdebe3bb2fea9c7f954e0151632f5c707d"
+    },
+    "data/tools/kalign.py": {
+      "source": "opendde/data/tools/kalign.py",
+      "sha256": "cf46223703c61bad08d7e46606a205af25151d6c3ecc31f08657b2075cc0e598"
+    },
+    "data/tools/logger.py": {
+      "source": "opendde/data/tools/logger.py",
+      "sha256": "6db30191b9809dc64189fee022a9220055d61365bd590db64e704fbce7141fef"
+    },
+    "data/tools/rewrite_biotite.py": {
+      "source": "opendde/data/tools/rewrite_biotite.py",
+      "sha256": "32d5a5e17c0f99b7b6fdfa9deef3e86fa80c3f6bfd1e3657b8ee425238405712"
+    },
+    "data/tools/search.py": {
+      "source": "opendde/data/tools/search.py",
+      "sha256": "a97ceb01786cde2de0a5462a819e17c18a8839cc93c3923daf14a7dede8ee66e"
+    },
+    "data/utils.py": {
+      "source": "opendde/data/utils.py",
+      "sha256": "932734d9300cd9f277a8cb62d89c2e630d9d83a9d40797405610900cfe0ecea3"
+    },
+    "distributed/__init__.py": {
+      "source": "opendde/distributed/__init__.py",
+      "sha256": "491843e9dab72c44a02aceb8eb9e57fee8befb3f90e77c104868294a111343d4"
+    },
+    "distributed/foldcp/__init__.py": {
+      "source": "opendde/distributed/foldcp/__init__.py",
+      "sha256": "e77ea9de7aab442874ff85e77a66afe821dfe8427fa3b75b929aa4acae5a32d5"
+    },
+    "distributed/foldcp/atom_window.py": {
+      "source": "opendde/distributed/foldcp/atom_window.py",
+      "sha256": "846f039879dd8a62862c958119e628a904b028a9c6f1d2fffe4dfef6b0de1ab3"
+    },
+    "distributed/foldcp/comm.py": {
+      "source": "opendde/distributed/foldcp/comm.py",
+      "sha256": "7be32f452767538733c2312dd1dffba02292705eb25abd72143844eefb35c66b"
+    },
+    "distributed/foldcp/confidence.py": {
+      "source": "opendde/distributed/foldcp/confidence.py",
+      "sha256": "787067e70ebbf938696bbf9ce24da9733d68d40e5dd28d13440356e78e3e5d34"
+    },
+    "distributed/foldcp/config.py": {
+      "source": "opendde/distributed/foldcp/config.py",
+      "sha256": "020d4b4cbc904907dc315d334eb8fef35d3c627a1872b1e275880b23acb0db76"
+    },
+    "distributed/foldcp/distogram.py": {
+      "source": "opendde/distributed/foldcp/distogram.py",
+      "sha256": "128fc82de8612fb101d23e2c777275f78cbee352a4f377ee5eaccd231c50b8bf"
+    },
+    "distributed/foldcp/launch.py": {
+      "source": "opendde/distributed/foldcp/launch.py",
+      "sha256": "2374be97c3aa4d4eade7b679c6907c30982cb074bdac8dbf10d293f36f6dcde7"
+    },
+    "distributed/foldcp/layout.py": {
+      "source": "opendde/distributed/foldcp/layout.py",
+      "sha256": "7ec1d22ed158a9932ff443889bb42684cb36d21a48e759362add8438d579bf07"
+    },
+    "distributed/foldcp/mesh.py": {
+      "source": "opendde/distributed/foldcp/mesh.py",
+      "sha256": "c2a8c15ce92a02fed2b25b0ec9ff80b9af16f2aa56e0393c56f82fb1eb4fc5c1"
+    },
+    "distributed/foldcp/metrics.py": {
+      "source": "opendde/distributed/foldcp/metrics.py",
+      "sha256": "bbbcdf84543e7063092add59d3b9700896e200474ca3e80b2e95864567e119d3"
+    },
+    "distributed/foldcp/msa_pair_weighted.py": {
+      "source": "opendde/distributed/foldcp/msa_pair_weighted.py",
+      "sha256": "bd610d62aeeff240c312b1702b8eb6bf0c26a323b7dcf705fa3f80f56f0d073f"
+    },
+    "distributed/foldcp/online_softmax.py": {
+      "source": "opendde/distributed/foldcp/online_softmax.py",
+      "sha256": "0da5a3587986b0943404a17b7534600e59669fbf7acf178194388e480e0e5988"
+    },
+    "distributed/foldcp/opm.py": {
+      "source": "opendde/distributed/foldcp/opm.py",
+      "sha256": "871aec0e0de940caf1c616d9d690cb71295e675c194ed2d45a2ba00037d88cfc"
+    },
+    "distributed/foldcp/pair_sharding.py": {
+      "source": "opendde/distributed/foldcp/pair_sharding.py",
+      "sha256": "c7ecec550476d68ce1aa892dd757638a449882f655175b3112afad3d05a55592"
+    },
+    "distributed/foldcp/real_pairformer.py": {
+      "source": "opendde/distributed/foldcp/real_pairformer.py",
+      "sha256": "0c7d283e6088e4793d831ec97daae9a1a8dc714eac2f3cecb9dc803814c72b84"
+    },
+    "distributed/foldcp/structural_pair.py": {
+      "source": "opendde/distributed/foldcp/structural_pair.py",
+      "sha256": "ff9ceb623e51b00aca3c44d2bc43127e6f4e448abfdefb7b31daf6078fda8849"
+    },
+    "distributed/foldcp/triangle_attention.py": {
+      "source": "opendde/distributed/foldcp/triangle_attention.py",
+      "sha256": "954927c89a737e3551cf4e76a47d1e51635503c0a24c93ba1802bef78e51272c"
+    },
+    "distributed/foldcp/triangular_mult.py": {
+      "source": "opendde/distributed/foldcp/triangular_mult.py",
+      "sha256": "2626f7320f98b218b4c3889b23a342d6c8610c7c7d83b3d051c8476f4429a878"
+    },
+    "distributed/foldcp/triton_attention_bias.py": {
+      "source": "opendde/distributed/foldcp/triton_attention_bias.py",
+      "sha256": "feb1a6761838e6357ad5fb1f9b161cc16a2b1d91ff20d9e752f26e467b8464c1"
+    },
+    "distributed/foldcp/trunk_init.py": {
+      "source": "opendde/distributed/foldcp/trunk_init.py",
+      "sha256": "174f12956660a7c9a9e057ac187635785af58d1e25a1c7cc80d3ced076b6aaa0"
+    },
+    "metrics/__init__.py": {
+      "source": "opendde/metrics/__init__.py",
+      "sha256": "fd0722a4d5697ce585a7b1955176e2c5b51abaf7a8695335b3c1b522e377955a"
+    },
+    "metrics/clash.py": {
+      "source": "opendde/metrics/clash.py",
+      "sha256": "fab8d4d0f391775a64a492ab6d9546ba2d3455bbf61cff6fe01974cf14ed8df2"
+    },
+    "model/__init__.py": {
+      "source": "opendde/model/__init__.py",
+      "sha256": "fd0722a4d5697ce585a7b1955176e2c5b51abaf7a8695335b3c1b522e377955a"
+    },
+    "model/generator.py": {
+      "source": "opendde/model/generator.py",
+      "sha256": "cc35dd46e93e25c3c92dbded14b908970b99c09e28bf7a3cd0d129b0002ccba4"
+    },
+    "model/layer_norm/__init__.py": {
+      "source": "opendde/model/layer_norm/__init__.py",
+      "sha256": "332d5901995385e6c51e049898e9200cb6ec4836571f854a71adba34c0235ed3"
+    },
+    "model/layer_norm/layer_norm.py": {
+      "source": "opendde/model/layer_norm/layer_norm.py",
+      "sha256": "843bc4060934163c8a8d0d14da630920b62ed3b38c53226432c90e5a9f442f78"
+    },
+    "model/layer_norm/torch_ext_compile.py": {
+      "source": "opendde/model/layer_norm/torch_ext_compile.py",
+      "sha256": "2e656a07a0b1d6d9d9f62a9ff94212606d2a175c353699e7a11207efb885b7bd"
+    },
+    "model/modules/__init__.py": {
+      "source": "opendde/model/modules/__init__.py",
+      "sha256": "fd0722a4d5697ce585a7b1955176e2c5b51abaf7a8695335b3c1b522e377955a"
+    },
+    "model/modules/confidence.py": {
+      "source": "opendde/model/modules/confidence.py",
+      "sha256": "e16189c0b3cf122d232fdfc5d31889d639d9464aab8bec0e7163e4b5f5830b52"
+    },
+    "model/modules/diffusion.py": {
+      "source": "opendde/model/modules/diffusion.py",
+      "sha256": "4970e3f9824133bbac7266cb2e508de672471eed5a766589c2f6ce8ee76838e2"
+    },
+    "model/modules/embedders.py": {
+      "source": "opendde/model/modules/embedders.py",
+      "sha256": "857efea1f2b0a59bbcbbbef09bfebb95d76bfa1104f237ffc9babf8dc4c939a6"
+    },
+    "model/modules/head.py": {
+      "source": "opendde/model/modules/head.py",
+      "sha256": "ec66dee3d69c2e13eea79fbfd007103b6b81d9c6f1ca759bc7f4c8071ba1c89b"
+    },
+    "model/modules/pairformer.py": {
+      "source": "opendde/model/modules/pairformer.py",
+      "sha256": "faac46f42d030ea88a517a67a1dcf760314702fee179591419e0bdcc1c2e27bc"
+    },
+    "model/modules/primitives.py": {
+      "source": "opendde/model/modules/primitives.py",
+      "sha256": "f61026a19f9af8cdc8ba4299840364989dc3b546790884cd63beb218be5f0d61"
+    },
+    "model/modules/structural_tokens.py": {
+      "source": "opendde/model/modules/structural_tokens.py",
+      "sha256": "6f5a2d5a625fbbe46f3dfad9a6035fed09e1aad579052d60cd1799a9456acd7b"
+    },
+    "model/modules/transformer.py": {
+      "source": "opendde/model/modules/transformer.py",
+      "sha256": "f740d2ee422d4bcf62285db5ccf530b8bb53c677df9835837110fd79e7ead17d"
+    },
+    "model/msa_sampling.py": {
+      "source": "opendde/model/msa_sampling.py",
+      "sha256": "cfd981c2a0b8c8452b3b37e4590ea14542dd19c363606b0c3f7e9e51f83cc83a"
+    },
+    "model/opendde.py": {
+      "source": "opendde/model/opendde.py",
+      "sha256": "4ba43261401cf04e46ec1cd6ddafce21ad268b8337777680efa7d4e6e4685451"
+    },
+    "model/sample_confidence.py": {
+      "source": "opendde/model/sample_confidence.py",
+      "sha256": "9e44a27190c870e014b83865a5d8af258de2eab0b242ca05a26f50c703b75ce3"
+    },
+    "model/shape_complementarity.py": {
+      "source": "opendde/model/shape_complementarity.py",
+      "sha256": "5ec78a9d68b462fd48e48d32a4daa7bd0bf37a32df5c029df75aafc963d70742"
+    },
+    "model/triangular/__init__.py": {
+      "source": "opendde/model/triangular/__init__.py",
+      "sha256": "fd0722a4d5697ce585a7b1955176e2c5b51abaf7a8695335b3c1b522e377955a"
+    },
+    "model/triangular/layers.py": {
+      "source": "opendde/model/triangular/layers.py",
+      "sha256": "50d525f4b309d3696c45c0233e19c58551859e9f5e1c4f759dc7f5e3da45cbf9"
+    },
+    "model/triangular/triangular.py": {
+      "source": "opendde/model/triangular/triangular.py",
+      "sha256": "4be105d173af60247ee10cd6c2d53ef8d8fd0251f453c62d9deb31d51c1703ea"
+    },
+    "model/utils.py": {
+      "source": "opendde/model/utils.py",
+      "sha256": "0346666c3ba2e89537272b295e48c467a952cda2c024ed8b10972590c664180b"
+    },
+    "tfg/__init__.py": {
+      "source": "opendde/tfg/__init__.py",
+      "sha256": "2832c4adb33d1a6f5f17b81c46c861ce2a1c100df75eb5c55f378fb447efb86c"
+    },
+    "tfg/config.py": {
+      "source": "opendde/tfg/config.py",
+      "sha256": "85b174f24afc207f3ad7252ed0052f4b3b6e9dcb768c08ce4c9c27292f5d075c"
+    },
+    "tfg/engine.py": {
+      "source": "opendde/tfg/engine.py",
+      "sha256": "e8983be9f5ccc1f31adf4ed3e551a1e345245fbf10a4b67fb1676bc55a8ee921"
+    },
+    "tfg/potentials.py": {
+      "source": "opendde/tfg/potentials.py",
+      "sha256": "f155bdd54182b9b29e21cc004d724b8d8d85d64a8060c38652c5ce67befe0e5f"
+    },
+    "utils/__init__.py": {
+      "source": "opendde/utils/__init__.py",
+      "sha256": "fd0722a4d5697ce585a7b1955176e2c5b51abaf7a8695335b3c1b522e377955a"
+    },
+    "utils/distributed.py": {
+      "source": "opendde/utils/distributed.py",
+      "sha256": "9189be1ea3e50ceb0716d66536605b9d832b134e0ba18f4c64d45540b5588507"
+    },
+    "utils/download.py": {
+      "source": "opendde/utils/download.py",
+      "sha256": "a8284f3f8f9f024051d5ba085cd5f4895f55b92bb72983e4bc2613fa9ca72df9"
+    },
+    "utils/environment.py": {
+      "source": "opendde/utils/environment.py",
+      "sha256": "87f034aa6edee31acf2f16aca8c4f81dcd47ae7256cf480d569c14df7fa2bc64"
+    },
+    "utils/file_io.py": {
+      "source": "opendde/utils/file_io.py",
+      "sha256": "f1d30baf66e7fe5db9643b8ef65ecb1eb13f114807f9dc11304f825b777725dd"
+    },
+    "utils/geometry.py": {
+      "source": "opendde/utils/geometry.py",
+      "sha256": "528df2104c8384def9b7411726f2cac78b028e3c54d84401d87f393d2e3cdcef"
+    },
+    "utils/logger.py": {
+      "source": "opendde/utils/logger.py",
+      "sha256": "c7da0a674d675fb361468583caf25c9c7a6e4b1e1381084b0951f03292d67e6c"
+    },
+    "utils/logging_config.py": {
+      "source": "opendde/utils/logging_config.py",
+      "sha256": "248f34d7417d900f846b98b8af4ebaeda86480eae97007dde3ee6def397dccb1"
+    },
+    "utils/scatter_utils.py": {
+      "source": "opendde/utils/scatter_utils.py",
+      "sha256": "5d5d20a440eb069d81607685b865c56915b0f7cbb3424a9aa7236caa3e59974a"
+    },
+    "utils/seed.py": {
+      "source": "opendde/utils/seed.py",
+      "sha256": "bf0f7e43977b281ce727ebd4967fc0c6782f3a0733fabe6b9811dd0d451d1703"
+    },
+    "utils/torch_utils.py": {
+      "source": "opendde/utils/torch_utils.py",
+      "sha256": "9fc49daddf552023fb09a18dec85aedf282b40dea74abcac897df3cab8b178e3"
+    },
+    "version.py": {
+      "source": "opendde/version.py",
+      "sha256": "99f4a783d7b3ac6dd67d4b3479340a3a936b25dd73e5b9329b447f8c162394ae"
+    }
+  }
+}

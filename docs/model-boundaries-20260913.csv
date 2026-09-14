@@ -1,0 +1,146 @@
+path,line,class,bases,nested_config,typed_forward,imports_team_gm,imports_engine,status
+src/foldforge/models/af3/ported/alphafold3.py,24,Evoformer,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/af3/ported/alphafold3.py,250,AlphaFold3,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/af3/ported/fastnn/layer_norm.py,71,LayerNormTritonFunc,torch.autograd.Function,False,False,False,False,model-specific or source utility; retained
+src/foldforge/models/af3/ported/fastnn/layer_norm.py,100,LayerNorm,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/af3/ported/nn/atom_cross_attention.py,38,AtomCrossAttEncoder,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/af3/ported/nn/atom_cross_attention.py,364,AtomCrossAttDecoder,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/af3/ported/nn/attention.py,19,GridSelfAttention,nn.Module,False,False,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/af3/ported/nn/attention.py,81,MSAAttention,nn.Module,False,False,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/af3/ported/nn/diffusion_head.py,27,FourierEmbeddings,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/af3/ported/nn/diffusion_head.py,90,DiffusionHead,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/af3/ported/nn/diffusion_transformer.py,24,AdaptiveLayerNorm,nn.Module,False,True,True,False,conditioned instances converted; unconditioned norm retained
+src/foldforge/models/af3/ported/nn/diffusion_transformer.py,64,AdaLNZero,nn.Module,False,True,True,False,model-specific or source utility; retained
+src/foldforge/models/af3/ported/nn/diffusion_transformer.py,95,DiffusionTransition,nn.Module,False,True,True,False,conditioned instances converted to engine after strict loading
+src/foldforge/models/af3/ported/nn/diffusion_transformer.py,126,SelfAttention,nn.Module,False,True,True,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/af3/ported/nn/diffusion_transformer.py,190,DiffusionTransformer,nn.Module,False,False,True,False,team-gm composition; released signatures/layouts retained
+src/foldforge/models/af3/ported/nn/diffusion_transformer.py,243,CrossAttention,nn.Module,False,True,True,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/af3/ported/nn/diffusion_transformer.py,321,DiffusionCrossAttTransformer,nn.Module,False,True,True,False,team-gm composition; released signatures/layouts retained
+src/foldforge/models/af3/ported/nn/head.py,27,DistogramHead,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/af3/ported/nn/head.py,90,ConfidenceHead,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/af3/ported/nn/pairformer.py,33,PairformerBlock,nn.Module,False,True,True,False,reference only; loader replaces composition with team-gm
+src/foldforge/models/af3/ported/nn/pairformer.py,124,EvoformerBlock,nn.Module,False,True,True,False,team-gm composition; released signatures/layouts retained
+src/foldforge/models/af3/ported/nn/primitives.py,19,Transition,nn.Module,False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/af3/ported/nn/primitives.py,37,OuterProductMean,nn.Module,False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/af3/ported/nn/template.py,123,TemplateEmbedding,nn.Module,False,True,True,False,team-gm composition; released signatures/layouts retained
+src/foldforge/models/af3/ported/nn/template.py,153,SingleTemplateEmbedding,nn.Module,False,True,True,False,model-specific or source utility; retained
+src/foldforge/models/af3/ported/nn/triangle_multiplication.py,19,TriangleMultiplication,nn.Module,False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/af_conditioning.py,61,ReleasedAdaLN,nn.Module,False,True,True,True,terminal model or explicit checkpoint adapter
+src/foldforge/models/af_conditioning.py,81,ReleasedConditionedTransition,nn.Module,False,True,True,True,terminal model or explicit checkpoint adapter
+src/foldforge/models/af_pairformer.py,22,_Transition,nn.Module,False,True,True,False,terminal model or explicit checkpoint adapter
+src/foldforge/models/af_pairformer.py,31,_TriangleMultiplication,nn.Module,False,True,True,False,terminal model or explicit checkpoint adapter
+src/foldforge/models/af_pairformer.py,44,_TriangleAttention,nn.Module,False,True,True,False,terminal model or explicit checkpoint adapter
+src/foldforge/models/af_pairformer.py,65,_SingleAttention,nn.Module,False,True,True,False,terminal model or explicit checkpoint adapter
+src/foldforge/models/af_pairformer.py,130,AF3Pairformer,ReleasedPairformer,False,True,True,False,terminal model or explicit checkpoint adapter
+src/foldforge/models/af_pairformer.py,153,ProtenixPairformer,ReleasedPairformer,False,True,True,False,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/atom_encoder.py,55,AtomEncoder,nn.Module,False,True,True,True,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/atom_encoder.py,273,InputsEmbedder,nn.Module,False,True,True,True,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/atom_transformer.py,42,SwiGLUFFN,nn.Module,False,True,True,True,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/atom_transformer.py,65,SWAAtomBlock,nn.Module,False,True,True,True,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/atom_transformer.py,123,SWAAtomTransformer,nn.Module,True,True,True,True,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/confidence.py,93,ConfidenceHead,nn.Module,False,True,True,False,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/diffusion.py,68,FourierEmbedding,nn.Module,False,True,True,True,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/diffusion.py,98,DiffusionConditioning,nn.Module,False,True,True,True,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/diffusion.py,238,AtomDecoder,nn.Module,False,True,True,True,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/diffusion.py,302,DiffusionModule,nn.Module,False,True,True,True,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/embeddings.py,11,RelativePositionEncoding,nn.Module,False,True,True,False,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/embeddings.py,87,SingleToPair,nn.Module,False,True,True,False,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/embeddings.py,121,LanguageModelShim,nn.Module,False,True,True,False,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/embeddings.py,180,RowAttentionPooling,nn.Module,False,True,True,False,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/lm.py,280,_FP32NormLinear,torch.nn.Module,False,True,True,False,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/lm.py,301,_FP32NormMLP,torch.nn.Module,False,True,True,False,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/model.py,33,ESMFold2Model,nn.Module,False,True,True,False,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/msa_encoder.py,31,MSAEncoderBlock,nn.Module,False,True,True,True,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/msa_encoder.py,126,MSAEncoder,nn.Module,True,True,True,True,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/pair_trunk.py,45,PairTrunk,nn.Module,False,True,True,False,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/trunk.py,27,PairUpdateBlock,nn.Module,False,True,True,True,terminal model or explicit checkpoint adapter
+src/foldforge/models/esmfold2/trunk.py,87,FoldingTrunk,nn.Module,True,True,True,True,terminal model or explicit checkpoint adapter
+src/foldforge/models/opendde/ported/metrics/clash.py,24,Clash,nn.Module,False,False,False,False,model-specific or source utility; retained
+src/foldforge/models/opendde/ported/model/layer_norm/layer_norm.py,111,FusedLayerNormAffineFunction,torch.autograd.Function,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/opendde/ported/model/layer_norm/layer_norm.py,233,FusedLayerNorm,torch.nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/opendde/ported/model/modules/confidence.py,31,ConfidenceHead,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/opendde/ported/model/modules/diffusion.py,136,DiffusionConditioning,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/opendde/ported/model/modules/diffusion.py,1124,DiffusionModule,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/opendde/ported/model/modules/embedders.py,13,InputFeatureEmbedder,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/opendde/ported/model/modules/embedders.py,211,RelativePositionEncoding,nn.Module,False,False,False,False,model-specific or source utility; retained
+src/foldforge/models/opendde/ported/model/modules/embedders.py,319,FourierEmbedding,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/opendde/ported/model/modules/head.py,12,DistogramHead,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/opendde/ported/model/modules/pairformer.py,192,PairformerBlock,nn.Module,False,True,True,False,reference only; loader replaces composition with team-gm
+src/foldforge/models/opendde/ported/model/modules/pairformer.py,429,PairformerStack,nn.Module,False,True,True,False,model-specific or source utility; retained
+src/foldforge/models/opendde/ported/model/modules/pairformer.py,646,MSAPairWeightedAveraging,nn.Module,False,True,True,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/opendde/ported/model/modules/pairformer.py,856,MSAStack,nn.Module,False,True,True,False,team-gm composition; released signatures/layouts retained
+src/foldforge/models/opendde/ported/model/modules/pairformer.py,973,MSABlock,nn.Module,False,False,True,False,team-gm composition; released signatures/layouts retained
+src/foldforge/models/opendde/ported/model/modules/pairformer.py,1765,MSAModule,nn.Module,False,True,True,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/opendde/ported/model/modules/pairformer.py,2110,TemplateEmbedder,nn.Module,False,True,True,False,team-gm composition; released signatures/layouts retained
+src/foldforge/models/opendde/ported/model/modules/primitives.py,25,Linear,nn.Linear,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/opendde/ported/model/modules/primitives.py,97,AdaptiveLayerNorm,nn.Module,False,True,False,False,conditioned instances converted; unconditioned norm retained
+src/foldforge/models/opendde/ported/model/modules/primitives.py,159,Transition,nn.Module,False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/opendde/ported/model/modules/primitives.py,696,Attention,nn.Module,False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/opendde/ported/model/modules/structural_tokens.py,23,StructuralTokenExpander,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/opendde/ported/model/modules/transformer.py,351,AttentionPairBias,nn.Module,False,True,True,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/opendde/ported/model/modules/transformer.py,1519,DiffusionTransformerBlock,nn.Module,False,True,True,False,team-gm composition; released signatures/layouts retained
+src/foldforge/models/opendde/ported/model/modules/transformer.py,1651,DiffusionTransformer,nn.Module,False,True,True,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/opendde/ported/model/modules/transformer.py,2116,AtomTransformer,nn.Module,False,True,True,False,model-specific or source utility; retained
+src/foldforge/models/opendde/ported/model/modules/transformer.py,2215,ConditionedTransitionBlock,nn.Module,False,True,True,False,conditioned instances converted to engine after strict loading
+src/foldforge/models/opendde/ported/model/modules/transformer.py,2262,AtomAttentionEncoder,nn.Module,False,True,True,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/opendde/ported/model/modules/transformer.py,3641,AtomAttentionDecoder,nn.Module,False,True,True,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/opendde/ported/model/opendde.py,219,OpenDDE,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/opendde/ported/model/triangular/layers.py,130,OpenfoldLinear,nn.Linear,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/opendde/ported/model/triangular/layers.py,228,OpenFoldLayerNorm,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/opendde/ported/model/triangular/layers.py,327,Attention,nn.Module,False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/opendde/ported/model/triangular/layers.py,499,OuterProductMean,nn.Module,False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/opendde/ported/model/triangular/triangular.py,85,BaseTriangleMultiplicativeUpdate,"nn.Module,ABC",False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/opendde/ported/model/triangular/triangular.py,164,TriangleMultiplicativeUpdate,BaseTriangleMultiplicativeUpdate,False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/opendde/ported/model/triangular/triangular.py,591,TriangleAttention,nn.Module,False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/protenix/ported/metrics/clash.py,35,Clash,nn.Module,False,False,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/metrics/lddt_metrics.py,141,LDDT,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/layer_norm/layer_norm.py,69,FusedLayerNormAffineFunction,torch.autograd.Function,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/layer_norm/layer_norm.py,190,FusedLayerNorm,torch.nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/loss.py,63,SmoothLDDTLoss,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/loss.py,299,BondLoss,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/loss.py,515,DistogramLoss,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/loss.py,638,PDELoss,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/loss.py,813,PAELoss,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/loss.py,1010,ExperimentallyResolvedLoss,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/loss.py,1063,MSELoss,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/loss.py,1283,PLDDTLoss,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/loss.py,1442,ProtenixLoss,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/modules/confidence.py,26,ConfidenceHead,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/modules/diffusion.py,33,DiffusionConditioning,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/modules/diffusion.py,233,DiffusionModule,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/modules/embedders.py,28,InputFeatureEmbedder,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/modules/embedders.py,124,RelativePositionEncoding,nn.Module,False,False,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/modules/embedders.py,216,FourierEmbedding,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/modules/embedders.py,251,SubstructureEmbedder,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/modules/embedders.py,335,ConstraintEmbedder,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/modules/head.py,22,DistogramHead,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/modules/pairformer.py,56,PairformerBlock,nn.Module,False,True,True,False,reference only; loader replaces composition with team-gm
+src/foldforge/models/protenix/ported/model/modules/pairformer.py,241,PairformerStack,nn.Module,False,True,True,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/modules/pairformer.py,357,MSAPairWeightedAveraging,nn.Module,False,True,True,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/protenix/ported/model/modules/pairformer.py,439,MSAStack,nn.Module,False,True,True,False,team-gm composition; released signatures/layouts retained
+src/foldforge/models/protenix/ported/model/modules/pairformer.py,583,MSABlock,nn.Module,False,False,True,False,team-gm composition; released signatures/layouts retained
+src/foldforge/models/protenix/ported/model/modules/pairformer.py,683,MSAModule,nn.Module,False,True,True,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/protenix/ported/model/modules/pairformer.py,920,TemplateEmbedder,nn.Module,False,True,True,False,team-gm composition; released signatures/layouts retained
+src/foldforge/models/protenix/ported/model/modules/primitives.py,33,Linear,nn.Linear,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/modules/primitives.py,104,AdaptiveLayerNorm,nn.Module,False,True,False,False,conditioned instances converted; unconditioned norm retained
+src/foldforge/models/protenix/ported/model/modules/primitives.py,166,Transition,nn.Module,False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/protenix/ported/model/modules/primitives.py,636,Attention,nn.Module,False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/protenix/ported/model/modules/primitives.py,982,DropPath,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/modules/transformer.py,41,AttentionPairBias,nn.Module,False,True,True,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/protenix/ported/model/modules/transformer.py,258,DiffusionTransformerBlock,nn.Module,False,True,True,False,team-gm composition; released signatures/layouts retained
+src/foldforge/models/protenix/ported/model/modules/transformer.py,347,DiffusionTransformer,nn.Module,False,True,True,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/protenix/ported/model/modules/transformer.py,462,AtomTransformer,nn.Module,False,True,True,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/modules/transformer.py,541,ConditionedTransitionBlock,nn.Module,False,True,True,False,conditioned instances converted to engine after strict loading
+src/foldforge/models/protenix/ported/model/modules/transformer.py,588,AtomAttentionEncoder,nn.Module,False,True,True,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/protenix/ported/model/modules/transformer.py,943,AtomAttentionDecoder,nn.Module,False,True,True,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/protenix/ported/model/protenix.py,91,Protenix,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/tri_attention/op.py,36,TriAttentionFunction,torch.autograd.Function,False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/protenix/ported/model/tri_attention/op.py,167,TriAttention,torch.nn.Module,False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/protenix/ported/model/triangular/layers.py,119,OpenfoldLinear,nn.Linear,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/triangular/layers.py,215,OpenFoldLayerNorm,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/triangular/layers.py,314,Attention,nn.Module,False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/protenix/ported/model/triangular/layers.py,614,Dropout,nn.Module,False,True,False,False,model-specific or source utility; retained
+src/foldforge/models/protenix/ported/model/triangular/layers.py,672,OuterProductMean,nn.Module,False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/protenix/ported/model/triangular/triangular.py,95,BaseTriangleMultiplicativeUpdate,"nn.Module,ABC",False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/protenix/ported/model/triangular/triangular.py,174,TriangleMultiplicativeUpdate,BaseTriangleMultiplicativeUpdate,False,True,False,False,shared candidate; upstream composition/equation remains
+src/foldforge/models/protenix/ported/model/triangular/triangular.py,593,TriangleAttention,nn.Module,False,True,False,False,shared candidate; upstream composition/equation remains

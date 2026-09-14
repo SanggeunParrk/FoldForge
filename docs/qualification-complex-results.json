@@ -1,0 +1,178 @@
+[
+  {
+    "target": "3ptb",
+    "model": "af3",
+    "status": "passed",
+    "max_graph_eager_abs": 0.0,
+    "denoiser_calls_checked": 2,
+    "steps": 2,
+    "recycles": 1,
+    "msa_depth": 128,
+    "samples": 1
+  },
+  {
+    "target": "3ptb",
+    "model": "protenix",
+    "status": "passed",
+    "max_graph_eager_abs": 0.0,
+    "denoiser_calls_checked": 2,
+    "steps": 2,
+    "recycles": 1,
+    "msa_depth": 128,
+    "samples": 1
+  },
+  {
+    "target": "3ptb",
+    "model": "opendde",
+    "status": "passed",
+    "max_graph_eager_abs": 0.0,
+    "denoiser_calls_checked": 2,
+    "steps": 2,
+    "recycles": 1,
+    "msa_depth": 128,
+    "samples": 1
+  },
+  {
+    "target": "3ptb",
+    "model": "esmfold2",
+    "status": "passed",
+    "max_graph_eager_abs": 0.0,
+    "denoiser_calls_checked": 2,
+    "steps": 2,
+    "recycles": 1,
+    "msa_depth": 128,
+    "samples": 1
+  },
+  {
+    "target": "1a1k",
+    "model": "af3",
+    "status": "passed",
+    "max_graph_eager_abs": 0.0,
+    "denoiser_calls_checked": 2,
+    "steps": 2,
+    "recycles": 1,
+    "msa_depth": 128,
+    "samples": 1
+  },
+  {
+    "target": "1a1k",
+    "model": "protenix",
+    "status": "passed",
+    "max_graph_eager_abs": 0.0,
+    "denoiser_calls_checked": 2,
+    "steps": 2,
+    "recycles": 1,
+    "msa_depth": 128,
+    "samples": 1
+  },
+  {
+    "target": "1a1k",
+    "model": "opendde",
+    "status": "passed",
+    "max_graph_eager_abs": 0.0,
+    "denoiser_calls_checked": 2,
+    "steps": 2,
+    "recycles": 1,
+    "msa_depth": 128,
+    "samples": 1
+  },
+  {
+    "target": "1a1k",
+    "model": "esmfold2",
+    "status": "passed",
+    "max_graph_eager_abs": 0.0,
+    "denoiser_calls_checked": 2,
+    "steps": 2,
+    "recycles": 1,
+    "msa_depth": 128,
+    "samples": 1
+  },
+  {
+    "target": "4yx2",
+    "model": "af3",
+    "status": "passed",
+    "max_graph_eager_abs": 0.0,
+    "denoiser_calls_checked": 2,
+    "steps": 2,
+    "recycles": 1,
+    "msa_depth": 128,
+    "samples": 1
+  },
+  {
+    "target": "4yx2",
+    "model": "protenix",
+    "status": "passed",
+    "max_graph_eager_abs": 0.0,
+    "denoiser_calls_checked": 2,
+    "steps": 2,
+    "recycles": 1,
+    "msa_depth": 128,
+    "samples": 1
+  },
+  {
+    "target": "4yx2",
+    "model": "opendde",
+    "status": "passed",
+    "max_graph_eager_abs": 0.0,
+    "denoiser_calls_checked": 2,
+    "steps": 2,
+    "recycles": 1,
+    "msa_depth": 128,
+    "samples": 1
+  },
+  {
+    "target": "4yx2",
+    "model": "esmfold2",
+    "status": "passed",
+    "max_graph_eager_abs": 0.0,
+    "denoiser_calls_checked": 2,
+    "steps": 2,
+    "recycles": 1,
+    "msa_depth": 128,
+    "samples": 1
+  },
+  {
+    "target": "rna-smoke",
+    "model": "af3",
+    "status": "passed",
+    "max_graph_eager_abs": 0.0,
+    "denoiser_calls_checked": 2,
+    "steps": 2,
+    "recycles": 1,
+    "msa_depth": 128,
+    "samples": 1
+  },
+  {
+    "target": "rna-smoke",
+    "model": "protenix",
+    "status": "passed",
+    "max_graph_eager_abs": 0.0,
+    "denoiser_calls_checked": 2,
+    "steps": 2,
+    "recycles": 1,
+    "msa_depth": 128,
+    "samples": 1
+  },
+  {
+    "target": "rna-smoke",
+    "model": "opendde",
+    "status": "passed",
+    "max_graph_eager_abs": 0.0,
+    "denoiser_calls_checked": 2,
+    "steps": 2,
+    "recycles": 1,
+    "msa_depth": 128,
+    "samples": 1
+  },
+  {
+    "target": "rna-smoke",
+    "model": "esmfold2",
+    "status": "passed",
+    "max_graph_eager_abs": 0.0,
+    "denoiser_calls_checked": 2,
+    "steps": 2,
+    "recycles": 1,
+    "msa_depth": 128,
+    "samples": 1
+  }
+]

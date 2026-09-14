@@ -1,13 +1,18 @@
-"""AlphaFold 3 (DeepMind).
+# GPU dependencies are imported at the model boundary so registry/help stay cheap.
+# ruff: noqa: PLC0415
+"""af3: released-checkpoint model port using shared MiniWorld operations.
 
-**Not ported.** Weights are access-gated by DeepMind and have to be requested
-per-user, so this is the one predictor whose port cannot be unblocked by a
-download.
-
-Record here, as the port is made: which of team-gm's blocks map onto the
-upstream stack unchanged, where the input featurisation diverges from
-``foldforge.data``, and any place the released weights disagree with the paper.
-AF3 is the architecture team-gm's representative blocks were written against, so
-this port is the one that tests whether the shared-block premise holds — treat a
-block that needs a FoldForge-local variant as a finding, not a workaround.
+See SOURCE.json for the pinned origin and docs/MODEL-INTEGRATION.md for
+validated settings and the exact engine coverage.
 """
+
+from __future__ import annotations
+
+from typing import Any
+
+
+def load(*args: Any, **kwargs: Any) -> Any:
+    """Load the model lazily; importing the package does not initialize Torch."""
+    from .model import load as load_checkpoint
+
+    return load_checkpoint(*args, **kwargs)

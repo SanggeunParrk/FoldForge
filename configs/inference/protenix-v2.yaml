@@ -1,0 +1,3 @@
+backend: miniworld
+precision: bf16
+variant: protenix-v2

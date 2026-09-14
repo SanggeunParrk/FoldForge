@@ -1,0 +1,446 @@
+{
+  "repository": "https://github.com/bytedance/Protenix",
+  "revision": "4c355be4553512f72453ecbfb65e69f4c35d1413",
+  "files": {
+    "__init__.py": {
+      "source": "protenix/__init__.py",
+      "sha256": "2736ff45f82f5c2ae6fd243801f786562d4ddfa6326f19cce66a72c6b9e28602"
+    },
+    "config/__init__.py": {
+      "source": "protenix/config/__init__.py",
+      "sha256": "50d0fc5cbb80a0ef4c68227b9a523b0042ce101f1954126d9b4dcc0ffb5f84a5"
+    },
+    "config/config.py": {
+      "source": "protenix/config/config.py",
+      "sha256": "22c134a75bf00c98b1ec85d9fb753830bca97e8b782a3c90ec60109087854c7e"
+    },
+    "config/extend_types.py": {
+      "source": "protenix/config/extend_types.py",
+      "sha256": "279c6eff86e90ca22bbd91e904a1c748773a745b92ab0735d0ec7325f1baeba4"
+    },
+    "data/__init__.py": {
+      "source": "protenix/data/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "data/constants.py": {
+      "source": "protenix/data/constants.py",
+      "sha256": "10a526bd64e1206052c307239ff92109c245aec3d2c10e6ef0d4deae295092a4"
+    },
+    "data/constraint/__init__.py": {
+      "source": "protenix/data/constraint/__init__.py",
+      "sha256": "9448792dbd9aa44112cb16e9cdb77cca263cd50193ab8c7761d6a51d6d0d4d29"
+    },
+    "data/constraint/constraint_featurizer.py": {
+      "source": "protenix/data/constraint/constraint_featurizer.py",
+      "sha256": "a413febd327df54065dd4cc1786870f7f617f29a4e46214f9edaf472f99eaab4"
+    },
+    "data/core/__init__.py": {
+      "source": "protenix/data/core/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "data/core/ccd.py": {
+      "source": "protenix/data/core/ccd.py",
+      "sha256": "c69019288f65cbf08ec42a9692ac8861ef506f7388d1ffb9cedc2a79ec6c3a95"
+    },
+    "data/core/featurizer.py": {
+      "source": "protenix/data/core/featurizer.py",
+      "sha256": "21b8829aa46d66dd09ebdf1cecff90b91cb938aa49c39df8ed36c50ca4e5a14b"
+    },
+    "data/core/filter.py": {
+      "source": "protenix/data/core/filter.py",
+      "sha256": "cd7bb1c57be89c4f7b2585b7320e3c2f290aabb635cda12943a17063af62af25"
+    },
+    "data/core/geometry_featurizer.py": {
+      "source": "protenix/data/core/geometry_featurizer.py",
+      "sha256": "598617093850cfe02ca6b3a586f8c0749473e40a2b2c86d5d6f8a178e032498a"
+    },
+    "data/core/parser.py": {
+      "source": "protenix/data/core/parser.py",
+      "sha256": "dbbfa07a51ba82fe42bc8d539a3bd97fb19f6b42930988b66a6b40068bffea4c"
+    },
+    "data/core/substructure_perms.py": {
+      "source": "protenix/data/core/substructure_perms.py",
+      "sha256": "da92fbb4fcaca716a9e7f32eff4119375e131b4684ca5a33f84c5cdcc98709a6"
+    },
+    "data/esm/__init__.py": {
+      "source": "protenix/data/esm/__init__.py",
+      "sha256": "42489adb08de889bb649185121b7d86b2aed3b4ea89b1ffdaa2d8d8bdf87f413"
+    },
+    "data/esm/compute_esm.py": {
+      "source": "protenix/data/esm/compute_esm.py",
+      "sha256": "ce3fc45709d088ecba45fb49c8dafd4882a74401a24f7df9a91f8115091a9363"
+    },
+    "data/esm/esm_featurizer.py": {
+      "source": "protenix/data/esm/esm_featurizer.py",
+      "sha256": "2ac3a6fa513e84a736f14e5d2d57ad156014b5cb7e785e2ca17e6f9d896ea657"
+    },
+    "data/inference/__init__.py": {
+      "source": "protenix/data/inference/__init__.py",
+      "sha256": "beeabcb42895075d0b6d5ab678307bbdfc87820273374dd5b685618272ecdbce"
+    },
+    "data/inference/infer_dataloader.py": {
+      "source": "protenix/data/inference/infer_dataloader.py",
+      "sha256": "47d20b580d2d23b51e19b576b043953ed660337f13c07cfd9c06db6cc91f742a"
+    },
+    "data/inference/json_maker.py": {
+      "source": "protenix/data/inference/json_maker.py",
+      "sha256": "de9fdfc297886d924d1c207d8e1e79109087f32339c1c0ac25469bd32e8caf29"
+    },
+    "data/inference/json_parser.py": {
+      "source": "protenix/data/inference/json_parser.py",
+      "sha256": "7382846ad09d52b19edd5161fcfcc52ef91f29b47ffb47083b2c403fa24d5c53"
+    },
+    "data/inference/json_to_feature.py": {
+      "source": "protenix/data/inference/json_to_feature.py",
+      "sha256": "2950c7406dd91902df8bcce305ba0bc79a52d55e80efa6013127aa5bae53214a"
+    },
+    "data/msa/__init__.py": {
+      "source": "protenix/data/msa/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "data/msa/msa_featurizer.py": {
+      "source": "protenix/data/msa/msa_featurizer.py",
+      "sha256": "cac245cd3165fc3ca2318ffa8dba0b77ac961024f09e6b3dec48d768001e8fd6"
+    },
+    "data/msa/msa_utils.py": {
+      "source": "protenix/data/msa/msa_utils.py",
+      "sha256": "fbacbbdfa5afd0e17cacb9dba33f8e9e094531640ff665a285f507ecd4395918"
+    },
+    "data/pipeline/__init__.py": {
+      "source": "protenix/data/pipeline/__init__.py",
+      "sha256": "61b7184ce678a06c93ae88d2e1a27d00fa3621d3da15959f7b276c353e63bc2a"
+    },
+    "data/pipeline/data_pipeline.py": {
+      "source": "protenix/data/pipeline/data_pipeline.py",
+      "sha256": "ca9638d7c1141a6bceb32d2c3dcc0173d320646991d41dc19e233bb9f017fb43"
+    },
+    "data/pipeline/dataloader.py": {
+      "source": "protenix/data/pipeline/dataloader.py",
+      "sha256": "2f6a68ba8a85c130001ecc18033722e86d99054ecc3954bb995578bb47e5cc29"
+    },
+    "data/pipeline/dataset.py": {
+      "source": "protenix/data/pipeline/dataset.py",
+      "sha256": "82af4612dc052e3217fea534926a3587ea89cba115f2aa9c5fcea381f99a9cbd"
+    },
+    "data/template/__init__.py": {
+      "source": "protenix/data/template/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "data/template/template_featurizer.py": {
+      "source": "protenix/data/template/template_featurizer.py",
+      "sha256": "4ca729c373915bbfc1015dc8a54505eaa7149118f9c1e810a29ae21c34b1fa96"
+    },
+    "data/template/template_parser.py": {
+      "source": "protenix/data/template/template_parser.py",
+      "sha256": "80c02ce0e444f4b5427d0b8b749896e158b6dcbef75fc036f231840268ef3a77"
+    },
+    "data/template/template_utils.py": {
+      "source": "protenix/data/template/template_utils.py",
+      "sha256": "ba75f5242614e2572445ddbed8060c2f9370f6d218757b9570013ddf5ee6f3b8"
+    },
+    "data/tokenizer.py": {
+      "source": "protenix/data/tokenizer.py",
+      "sha256": "ad70ef6e5a0c976132ee1e96af71b8ba0d27b92ab9d9284a1c68326ca8d1a265"
+    },
+    "data/tools/__init__.py": {
+      "source": "protenix/data/tools/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "data/tools/common.py": {
+      "source": "protenix/data/tools/common.py",
+      "sha256": "833ceeb47c1460a1ac7bed498a536284f30e6af3e9bbf43a74cd03aefdd6c14b"
+    },
+    "data/tools/kalign.py": {
+      "source": "protenix/data/tools/kalign.py",
+      "sha256": "df068344839cda5d89df8bffe885b8b7a19918828aa3a21622b5530c76eaa48f"
+    },
+    "data/tools/logger.py": {
+      "source": "protenix/data/tools/logger.py",
+      "sha256": "147e5989c631988d2a355622f6b031a94207e5e12391994013223d21628ad0fb"
+    },
+    "data/tools/rewrite_biotite.py": {
+      "source": "protenix/data/tools/rewrite_biotite.py",
+      "sha256": "6cb47314d42e7aa0b413ab6bfb4c7cc0fc4712522770b7830c156722557089fe"
+    },
+    "data/tools/search.py": {
+      "source": "protenix/data/tools/search.py",
+      "sha256": "2a33e74ddfb42d14026b2c2b219438babf9337f2e59c5754b36c9ccee7bb576c"
+    },
+    "data/utils.py": {
+      "source": "protenix/data/utils.py",
+      "sha256": "52b1603509d4d67aecbc2e09f52979c6f50e220819d88ccfe23a50546eea4508"
+    },
+    "metrics/__init__.py": {
+      "source": "protenix/metrics/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "metrics/clash.py": {
+      "source": "protenix/metrics/clash.py",
+      "sha256": "4f8f47b8020cdf21c3332a87561ecbfb7e826ddcf23512fc10ad940d758f0adc"
+    },
+    "metrics/lddt_metrics.py": {
+      "source": "protenix/metrics/lddt_metrics.py",
+      "sha256": "f78dde38592ee2bbdb8386b83e038255a6fae2fbc24d4f6b08885970d52b0501"
+    },
+    "metrics/rmsd.py": {
+      "source": "protenix/metrics/rmsd.py",
+      "sha256": "23ec3fc1993fafa6323fb6fc2a4662212e5f7ba667f12b3e9922bf8bbac6ff46"
+    },
+    "model/__init__.py": {
+      "source": "protenix/model/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "model/generator.py": {
+      "source": "protenix/model/generator.py",
+      "sha256": "822be0a1a872f7f725a2690258c676d9e5fb5510f7a92f72ef0d8c4f04db164a"
+    },
+    "model/layer_norm/__init__.py": {
+      "source": "protenix/model/layer_norm/__init__.py",
+      "sha256": "1c21a7a0bf9787f07c68caf16dfe80c7451bc28ff138bc8510cb9e0712a4333d"
+    },
+    "model/layer_norm/layer_norm.py": {
+      "source": "protenix/model/layer_norm/layer_norm.py",
+      "sha256": "30b9a8803530a6fbdaa3c9302a7091eb04bca2d10dd2f79aa79a5efc1e4dfb8a"
+    },
+    "model/layer_norm/torch_ext_compile.py": {
+      "source": "protenix/model/layer_norm/torch_ext_compile.py",
+      "sha256": "1237b09c7a3f3494429d1dbb6547aad66a0682b199b3274e7d2e18b975ce2c1d"
+    },
+    "model/loss.py": {
+      "source": "protenix/model/loss.py",
+      "sha256": "c5a8c348d589829f3ed1eee36dbc04206773b50a4f22cac00f11fa4d7d978a88"
+    },
+    "model/modules/__init__.py": {
+      "source": "protenix/model/modules/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "model/modules/confidence.py": {
+      "source": "protenix/model/modules/confidence.py",
+      "sha256": "064375730d100f1536cf1a2061fa08ad0a039f21c4bf2965275a74646d33cebd"
+    },
+    "model/modules/diffusion.py": {
+      "source": "protenix/model/modules/diffusion.py",
+      "sha256": "c92001aeb046ea9a5dbbc8120a5487c76d0497c52ff7fe178143f443dd4cc988"
+    },
+    "model/modules/embedders.py": {
+      "source": "protenix/model/modules/embedders.py",
+      "sha256": "05e9e8d7bc8e9f917a6cadb3534b4b95764ea9968c19bc38d4743a29daf982f8"
+    },
+    "model/modules/frames.py": {
+      "source": "protenix/model/modules/frames.py",
+      "sha256": "375bc7478c566338c5bce6e325f7dd912c1865df51bc373e1b9a21477a1f80b1"
+    },
+    "model/modules/fused_ops.py": {
+      "source": "protenix/model/modules/fused_ops.py",
+      "sha256": "89d80eae7d5fd688fac7c2c3f956de943022acd486427047eb1c584b0b58cd23"
+    },
+    "model/modules/head.py": {
+      "source": "protenix/model/modules/head.py",
+      "sha256": "5b79308417267c7072b9d220c78970d458ea44b94450e5e3f14140459331f1b4"
+    },
+    "model/modules/pairformer.py": {
+      "source": "protenix/model/modules/pairformer.py",
+      "sha256": "876b29a323ebf5a9929be0b8efa6b45027108640784a250e3ce446e39ccae2eb"
+    },
+    "model/modules/primitives.py": {
+      "source": "protenix/model/modules/primitives.py",
+      "sha256": "48474abdd5b37a70f5d2579c0c2f1b2d2e6876961db7100f0eb9ebfad0198363"
+    },
+    "model/modules/transformer.py": {
+      "source": "protenix/model/modules/transformer.py",
+      "sha256": "4d4d56b0fdf0f0fd6eff2cbcafd4a2f35b24f217746e671cac4e1238ae649ed6"
+    },
+    "model/protenix.py": {
+      "source": "protenix/model/protenix.py",
+      "sha256": "2ab922aae47e9344d92f515c450c2bd8182aa5c63e60329b5fbd9ed9f8eac163"
+    },
+    "model/sample_confidence.py": {
+      "source": "protenix/model/sample_confidence.py",
+      "sha256": "55a027379458f8981b2526c74be9a095587a82ab255a0a45de77db05ab9b33a6"
+    },
+    "model/tri_attention/__init__.py": {
+      "source": "protenix/model/tri_attention/__init__.py",
+      "sha256": "f738f69a1e4c6036957b5e852e139629bf3f3cf29a0a88220e8c1b00cb19c7eb"
+    },
+    "model/tri_attention/autotune.py": {
+      "source": "protenix/model/tri_attention/autotune.py",
+      "sha256": "4da7f146f0c7e399b624ed818354c6e5044213ff873a3b995f66d3af988f0de8"
+    },
+    "model/tri_attention/autotune_helpers.py": {
+      "source": "protenix/model/tri_attention/autotune_helpers.py",
+      "sha256": "e9f1a96c63a0218b2bd25198d9aa31a9165a0ec20534e5607a0692995d3743d7"
+    },
+    "model/tri_attention/backward.py": {
+      "source": "protenix/model/tri_attention/backward.py",
+      "sha256": "fac61c5601a2b0fe5d6f236f5de0e59a3382e094115f8654c0f9d675c14eea46"
+    },
+    "model/tri_attention/forward.py": {
+      "source": "protenix/model/tri_attention/forward.py",
+      "sha256": "42fc170c998d3170fbf5781837a71b7d7b9f7e569be7554f39287236a7d4ae93"
+    },
+    "model/tri_attention/op.py": {
+      "source": "protenix/model/tri_attention/op.py",
+      "sha256": "e0942e6d6b06607ad399ee972465edbcb868fa1328cf39322730f3b3e4a4135b"
+    },
+    "model/triangular/__init__.py": {
+      "source": "protenix/model/triangular/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "model/triangular/layers.py": {
+      "source": "protenix/model/triangular/layers.py",
+      "sha256": "1928d7fcb21750ce613949461ecd8ab5ff2323c19761be5b2d6f24064c3c1bbd"
+    },
+    "model/triangular/triangular.py": {
+      "source": "protenix/model/triangular/triangular.py",
+      "sha256": "4700a0abe41253a44a6504b1d11051010e5a67f9b63c29fd7535dfb033337ca2"
+    },
+    "model/utils.py": {
+      "source": "protenix/model/utils.py",
+      "sha256": "81784461673c929002f59a43c4a8980e7c638a01e0d0a7d8ec14263b0c76f5ef"
+    },
+    "tfg/__init__.py": {
+      "source": "protenix/tfg/__init__.py",
+      "sha256": "ecae9bb2512f7d522e02dd7d6d9eabe77b41649273b9a93bc7fcaaed2b6d5f45"
+    },
+    "tfg/config.py": {
+      "source": "protenix/tfg/config.py",
+      "sha256": "206276a4386085a7d85ab6a0a022461d022068a7068c455e3bdf0e471cfb885b"
+    },
+    "tfg/engine.py": {
+      "source": "protenix/tfg/engine.py",
+      "sha256": "94ae8e68e5b4b3ff7741bd68e630ee352e17875c220831462cf74e81e2ece6f2"
+    },
+    "tfg/potentials.py": {
+      "source": "protenix/tfg/potentials.py",
+      "sha256": "add08371d3f2312413aa6f042ebbfb5df76716915fb155959f8488e9e25e1fc1"
+    },
+    "utils/__init__.py": {
+      "source": "protenix/utils/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "utils/cropping.py": {
+      "source": "protenix/utils/cropping.py",
+      "sha256": "5a6045b2df53822313bd67a792972452b35cef8da5f72cfdf27640d0c8b9ab0b"
+    },
+    "utils/distributed.py": {
+      "source": "protenix/utils/distributed.py",
+      "sha256": "10e8a47fe679cfc8844534e45f032d9908bb16fb8ab714e90d74ebfc439fbbb2"
+    },
+    "utils/file_io.py": {
+      "source": "protenix/utils/file_io.py",
+      "sha256": "ff17fac71adf30131790328c008b38de549357d42259d40ef9fcfd38c7f6947b"
+    },
+    "utils/geometry.py": {
+      "source": "protenix/utils/geometry.py",
+      "sha256": "18bf79f41026e8211196ae8d789849252e5b93f54c19ca94179ed8e7e6ca9622"
+    },
+    "utils/logger.py": {
+      "source": "protenix/utils/logger.py",
+      "sha256": "d4597c92f044ea5a3c9954e44824928aeb7f6f222e0050754eb495025280995a"
+    },
+    "utils/lr_scheduler.py": {
+      "source": "protenix/utils/lr_scheduler.py",
+      "sha256": "a4758ed1e3df0d623b5ca3c829edb88dd027624178ecc17aea6baf43b5487ba0"
+    },
+    "utils/metrics.py": {
+      "source": "protenix/utils/metrics.py",
+      "sha256": "e69dbd717875f876ab21e33c17fa7eaa6a7d11a4543dd6d54c1ce63b188dac71"
+    },
+    "utils/permutation/__init__.py": {
+      "source": "protenix/utils/permutation/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "utils/permutation/atom_permutation.py": {
+      "source": "protenix/utils/permutation/atom_permutation.py",
+      "sha256": "428dfb0e6e7362435c5132b064888e63751a58d1e63f460053258f48a7527fca"
+    },
+    "utils/permutation/chain_permutation/__init__.py": {
+      "source": "protenix/utils/permutation/chain_permutation/__init__.py",
+      "sha256": "e9b9411bbb55acd7f59db7e767268d7b24d5d2ce46552fc7b447366ac8b1c182"
+    },
+    "utils/permutation/chain_permutation/heuristic.py": {
+      "source": "protenix/utils/permutation/chain_permutation/heuristic.py",
+      "sha256": "63164ba4f8c33b2877c30af36ae0e2fb0db296016b026cf43c9ce2557bcc90e9"
+    },
+    "utils/permutation/chain_permutation/pocket_based_permutation.py": {
+      "source": "protenix/utils/permutation/chain_permutation/pocket_based_permutation.py",
+      "sha256": "854c650f45eec574e3dbd4fbb958d4b6330341bf5498cfa69765f8e1902249c9"
+    },
+    "utils/permutation/chain_permutation/utils.py": {
+      "source": "protenix/utils/permutation/chain_permutation/utils.py",
+      "sha256": "7a8d7d0882f6ff7e8db25ede61bb23c5439d46a3b6ae8e865a4e229dda69707d"
+    },
+    "utils/permutation/permutation.py": {
+      "source": "protenix/utils/permutation/permutation.py",
+      "sha256": "4684fcf24b0fa01e58703d907db6d4cca9e51cf9ed50781a7723244497c2682e"
+    },
+    "utils/permutation/utils.py": {
+      "source": "protenix/utils/permutation/utils.py",
+      "sha256": "22549e0cc17fecde6e37804a0c651da9a1d62f20a6c4ce12378b30bbe31685b7"
+    },
+    "utils/scatter_utils.py": {
+      "source": "protenix/utils/scatter_utils.py",
+      "sha256": "5a4683c560140529f2ffc9e948206d46d80586c2a06ca17a9d498fc2e8917dad"
+    },
+    "utils/seed.py": {
+      "source": "protenix/utils/seed.py",
+      "sha256": "dfb5611fd421d1316eafde5ecc82879a736682b4613ad9465a3982059148e744"
+    },
+    "utils/torch_utils.py": {
+      "source": "protenix/utils/torch_utils.py",
+      "sha256": "f7e60efd6c069c71cf7d2accb9204441168763c7629e723b8c93a3dcad8aa5c8"
+    },
+    "utils/training.py": {
+      "source": "protenix/utils/training.py",
+      "sha256": "b97c8904f6a7517e592b1730fb9cf74299717ca057400529dc116cef3498742f"
+    },
+    "version.py": {
+      "source": "protenix/version.py",
+      "sha256": "b27dde18350e230ceab2e4edd48df60640d6d23433c9e61ac035dfcb87c1a5e7"
+    },
+    "web_service/__init__.py": {
+      "source": "protenix/web_service/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "web_service/colab_request_parser.py": {
+      "source": "protenix/web_service/colab_request_parser.py",
+      "sha256": "cc22484679a3a95e20af30f2154f64a974faae7ef375de2f7801f076596acb6d"
+    },
+    "web_service/colab_request_utils.py": {
+      "source": "protenix/web_service/colab_request_utils.py",
+      "sha256": "11cf40531d6af7b335c21846d4199033ec1964b7cb6a649e122c869238cba1e7"
+    },
+    "web_service/dependency_url.py": {
+      "source": "protenix/web_service/dependency_url.py",
+      "sha256": "f91393e44c52aab7a555b1d80d29714d10cec026896df600cd08e0ba8d64a862"
+    },
+    "web_service/prediction_visualization.py": {
+      "source": "protenix/web_service/prediction_visualization.py",
+      "sha256": "a0f149784b2efaafae217c11610cab7471f85a29be61b36df1907ada1abb107c"
+    },
+    "web_service/viewer.py": {
+      "source": "protenix/web_service/viewer.py",
+      "sha256": "d72c11014161b34e5d1fd9f77ec4e76e19264858b9db56600616f61591a68ec3"
+    },
+    "configs/__init__.py": {
+      "source": "configs/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "configs/configs_base.py": {
+      "source": "configs/configs_base.py",
+      "sha256": "36c298136de4c72229aa00a13bd31552dd6995ba4a69d8e11c5372410101e566"
+    },
+    "configs/configs_data.py": {
+      "source": "configs/configs_data.py",
+      "sha256": "6726361b80bcf74286a9c3b7937b2d889ded241d4a2f39ff893fb6abe9889806"
+    },
+    "configs/configs_inference.py": {
+      "source": "configs/configs_inference.py",
+      "sha256": "0a1b8f79f6b770af74d3e27f3b60b21f05848aa3477bc33ca9b16abcd7755bab"
+    },
+    "configs/configs_model_type.py": {
+      "source": "configs/configs_model_type.py",
+      "sha256": "b3d3c3ca64e8030e6469143831dd246d26a73c687a998ec3beb5faf98f1fe377"
+    }
+  }
+}

@@ -88,3 +88,32 @@ def test_tm_score_beats_a_single_kabsch_fit_on_a_displaced_tail():
     naive = float((1 / (1 + centred.norm(dim=-1) ** 2)).mean())
     assert tm_score(model, native) > naive
     assert kabsch_rmsd(model, native) > 5.0
+
+
+def test_prediction_cif_without_occupancy_keeps_only_first_model_ca(tmp_path):
+    from foldforge.eval.structure import deposit_ca  # noqa: PLC0415
+
+    path = tmp_path / "prediction.cif"
+    path.write_text("""data_prediction
+loop_
+_atom_site.label_atom_id
+_atom_site.type_symbol
+_atom_site.label_comp_id
+_atom_site.auth_asym_id
+_atom_site.auth_seq_id
+_atom_site.Cartn_x
+_atom_site.Cartn_y
+_atom_site.Cartn_z
+_atom_site.pdbx_PDB_model_num
+CA C ALA A 1 1 2 3 1
+CB C ALA A 1 90 90 90 1
+CA C ALA A 1 99 99 99 2
+CA Ca CA B 2 100 100 100 1
+#
+loop_
+_chem_comp_atom.atom_id
+_chem_comp_atom.type_symbol
+CA C
+#
+""")
+    assert deposit_ca(path) == {("A", 1): ("ALA", (1.0, 2.0, 3.0))}

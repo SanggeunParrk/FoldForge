@@ -17,12 +17,10 @@ Two things here are easy to get wrong and are handled explicitly:
 
 from __future__ import annotations
 
-import warnings
 from typing import TYPE_CHECKING
 
 import torch
-from Bio.PDB import MMCIFParser
-from Bio.PDB.PDBExceptions import PDBConstructionWarning
+from Bio.PDB.MMCIF2Dict import MMCIF2Dict
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -41,19 +39,27 @@ def deposit_ca(path: Path) -> dict[tuple[str, int], tuple[str, tuple[float, ...]
     duplicates for this purpose, and averaging them would move atoms to places
     the crystallographer never saw.
     """
-    parser = MMCIFParser(QUIET=True)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", PDBConstructionWarning)
-        structure = parser.get_structure("deposit", str(path))
+    # Model-produced CIFs can omit occupancy/B factors. Read the atom-site
+    # table with Biopython's CIF tokenizer instead of requiring a full Structure.
+    data = MMCIF2Dict(str(path))
+    atoms = data["_atom_site.label_atom_id"]
+    count = len(atoms)
+    chains = data.get("_atom_site.auth_asym_id", data.get("_atom_site.label_asym_id"))
+    labels = data.get("_atom_site.label_seq_id", ["?"] * count)
+    numbers = data.get("_atom_site.auth_seq_id", labels)
+    names = data["_atom_site.label_comp_id"]
+    elements = data.get("_atom_site.type_symbol", ["C"] * count)
+    models = data.get("_atom_site.pdbx_PDB_model_num", ["1"] * count)
     out: dict[tuple[str, int], tuple[str, tuple[float, ...]]] = {}
-    for chain in next(structure.get_models()):
-        for residue in chain:
-            if "CA" not in residue:
-                continue
-            out.setdefault(
-                (chain.id, int(residue.id[1])),
-                (residue.get_resname().strip(), tuple(residue["CA"].coord.tolist())),
-            )
+    for index, atom in enumerate(atoms):
+        if atom != "CA" or elements[index].upper() != "C" or models[index] != models[0]:
+            continue
+        number = numbers[index] if numbers[index] not in {".", "?"} else labels[index]
+        if number in {".", "?"}:
+            continue
+        xyz = tuple(float(data[f"_atom_site.Cartn_{axis}"][index]) for axis in "xyz")
+        out.setdefault((chains[index], int(number)), (names[index].strip(), xyz))
+
     return out
 
 

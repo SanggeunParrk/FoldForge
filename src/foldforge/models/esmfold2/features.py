@@ -8,51 +8,14 @@ plumbing. A shared FoldForge feature pipeline, when there is one, adapts to this
 rather than replacing it.
 """
 
-import importlib.util
 import json
-import sys
-import types
 from pathlib import Path
 
-
-def _install_stubs() -> None:
-    """Stand in for backends the PYTORCH implementation path never calls."""
-    core = types.ModuleType("team_gm.core")
-    core.BaseBatch = type("BaseBatch", (), {})
-    core.BaseClient = type("BaseClient", (), {})
-    sys.modules.setdefault("team_gm.core", core)
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name: str) -> types.ModuleType:
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Stub(f"{self.__name__}.{name}")
-
-    for name in (
-        "lightning",
-        "cuequivariance_torch",
-        "cuequivariance_torch.primitives",
-        "cuequivariance_torch.primitives.triangle",
-    ):
-        if name in sys.modules:
-            continue
-        # Only stub what is genuinely absent. Blanket-stubbing shadows a real
-        # installation — a stub for cuequivariance_torch silently wins over the
-        # package on sys.path and every cueq call dies with
-        # "'_Stub' object is not callable" instead of running.
-        if importlib.util.find_spec(name.split(".")[0]) is not None:
-            continue
-        sys.modules[name] = _Stub(name)
-
-
-# Import order matters: the stubs must be in place before `esm` is imported.
-_install_stubs()
-
-import torch  # noqa: E402
-from esm.models.esmfold2.processor import ESMFold2InputBuilder  # noqa: E402
-from esm.utils.msa.msa import MSA  # noqa: E402
-from esm.utils.parsing import FastaEntry  # noqa: E402
-from esm.utils.structure.input_builder import (  # noqa: E402
+import torch
+from foldforge.models.esmfold2.input.processor import ESMFold2InputBuilder
+from esm.utils.msa.msa import MSA
+from esm.utils.parsing import FastaEntry
+from esm.utils.structure.input_builder import (
     DNAInput,
     LigandInput,
     ProteinInput,
@@ -102,7 +65,8 @@ def build_input(sample: Path, msa_depth: int) -> StructurePredictionInput:
         chain_id = chr(ord("A") + index)
         kind = chain["type"]
         if kind == "ligand":
-            sequences.append(LigandInput(id=[chain_id], ccd=chain["ccd"]))
+            codes = chain["ccd"]
+            sequences.append(LigandInput(id=[chain_id], ccd=[codes] if isinstance(codes, str) else codes))
             continue
         cls = POLYMER_INPUT[kind]
         if kind == "protein":

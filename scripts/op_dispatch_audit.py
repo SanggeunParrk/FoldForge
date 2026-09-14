@@ -29,6 +29,7 @@ import torch
 from safetensors.torch import load_file
 from team_gm.modules.exceptions import ImplementationType
 
+from foldforge.data.ccd import CCDDatabase, default_path
 from foldforge.models.esmfold2 import ESMFold2Config, convert
 from foldforge.models.esmfold2 import ESMFold2Model as Model
 from foldforge.models.esmfold2.features import (
@@ -109,6 +110,7 @@ def census(model: torch.nn.Module) -> dict[str, dict[str, int]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--ccd-db", type=Path, default=default_path())
     parser.add_argument("--target", default="4yx2")
     parser.add_argument("--data-root", default="validation/data")
     parser.add_argument("--out", default="benchmark/esmfold2/op_dispatch")
@@ -123,7 +125,7 @@ def main() -> int:
     dtype = getattr(torch, args.dtype)
     checkpoint = Path(args.checkpoint)
     sample = Path(args.data_root) / args.target
-    builder = ESMFold2InputBuilder(ccd_cache=checkpoint)
+    builder = ESMFold2InputBuilder(ccd_db=CCDDatabase(args.ccd_db))
     features, _ = builder.prepare_input(
         build_input(sample, args.msa_depth), seed=0, device=device
     )

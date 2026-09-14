@@ -1,0 +1,15 @@
+{
+  "repository": "https://github.com/Biohub/esm",
+  "revision": "fba1e42a8a0f8df2b7e08611c88807aa32a25d9c",
+  "files": {
+    "prepare_input.py": {
+      "sha256": "59b46b5387e9dc460ce7e4fd39a8f25844134dafd75b1299487399ca4dfcb1d6"
+    },
+    "processor.py": {
+      "sha256": "9545f26f9f85fc745bfd244b3efebd0b69ed8ad64483a787d36495b3768ccd32"
+    },
+    "conformers.py": {
+      "sha256": "55cba851f0dd76f3227dcab9c0f8e13a7bc56e1daf0146f1ee2cbfcc5198fad3"
+    }
+  }
+}

@@ -36,9 +36,15 @@ def test_registered_is_only_what_is_actually_ported():
 
 def test_planned_model_fails_at_lookup_not_mid_forward():
     with pytest.raises(NotImplementedError, match="not ported yet"):
-        get_model("af3")
+        get_model("boltz2")
 
 
 def test_unknown_model_names_the_known_ones():
     with pytest.raises(KeyError, match="esmfold2"):
         get_model("no-such-model")
+
+
+@pytest.mark.parametrize("name", ["af3", "protenix", "opendde"])
+def test_new_ports_are_loadable(name):
+    assert name in registered_models()
+    assert callable(get_model(name))

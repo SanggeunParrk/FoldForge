@@ -1,0 +1,13 @@
+# Paths are relative to this spec. Prepared validation data is not downloaded.
+name: 1ubq
+chain_letters:
+  0: A
+fasta:
+  A: ../../validation/data/1ubq/1ubq.fasta
+a3m:
+  A: ../../validation/data/1ubq/msa/A.a3m
+ccd_db: ../../data/ccd/preprocessed_CCD.lmdb
+n_trunk_samples: 1
+n_diffusion_samples: 1
+diffusion_batch_size: 1
+save_trajectory: false

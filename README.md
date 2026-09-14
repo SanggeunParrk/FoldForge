@@ -2,11 +2,13 @@
 
 **Many structure predictors, one environment, one set of kernels.**
 
-AF3, Boltz-2, Chai-1, Protenix v1/v2, ESMFold2 and OpenDDE, rebuilt on a shared
-block library instead of six vendored upstream repos. A change to a triangle
-multiplication is then a change to all of them at once, and a speed comparison
-between two of them is a comparison of the models rather than of whose kernels
-happen to be newer.
+AF3, Protenix v1/v2, ESMFold2 and OpenDDE share MiniWorld-format inputs,
+one CCD LMDB, team-gm block compositions and miniworld-engine kernels.
+Released model equations, checkpoint layouts and confidence heads remain explicit
+in each adapter. Boltz-2 and Chai-1 are planned and are not implemented.
+
+See [current qualification](docs/QUALIFICATION-20260914.md) for complex inputs,
+actual compilation/CUDA graph boundaries and remaining deployment requirements.
 
 ## Where this sits
 
@@ -34,6 +36,22 @@ uv sync --extra cu12    # CUDA 12.8   (or --extra cu13 for CUDA 13)
 
 For an existing checkout: `git submodule update --init --recursive`.
 
+The pinned Biohub ESMFold2 processor requires **Python 3.12**. For
+A5000/A6000/A100, the complete environment includes FA2, Quack 0.5.0 and
+CUTLASS DSL 4.5.2. On this cluster:
+
+```bash
+mkdir -p validation/logs
+sbatch scripts/setup_env.sbatch
+# After installation succeeds, before running Python directly:
+source scripts/activate_env.sh
+```
+
+Use the setup script for updates too: it reuses the verified FA2 wheel when
+available, otherwise builds the pinned release. Model runners activate `.venv`
+with its required C++ runtime. See [the environment record](docs/ENVIRONMENT-20260913.md).
+
+
 > [!NOTE]
 > Resolve with **uv**, not plain pip. The CUDA index routing that picks a torch
 > build matching `cuequivariance-ops-torch-cuNN` is uv-specific; pip ignores it
@@ -44,10 +62,12 @@ For an existing checkout: `git submodule update --init --recursive`.
 ### The engine pin
 
 `miniworld-engine` is a git dependency, pinned by `rev` in **both**
-`pyproject.toml` and `libs/team-gm/pyproject.toml`. uv does not inherit a path
-dependency's `[tool.uv.sources]`, so the two are separate declarations that must
-be bumped together. If they drift, team-gm's blocks and the engine ops they call
-come from different builds.
+`pyproject.toml` and `libs/team-gm/pyproject.toml`. team-gm is a uv workspace member;
+the root source declaration governs the workspace. Keep the member's pin aligned
+so its standalone environment uses the same engine revision.
+
+See [the integration handoff](docs/ENGINE-INTEGRATION-20260913.md) for the pinned
+revision, validation results, and FlashAttention setup required for GPU SWA.
 
 ## Layout
 
@@ -61,7 +81,7 @@ src/foldforge/
   modules/               blocks two+ predictors need that team-gm does not carry
   data/                  shared input features (sequence, MSA, templates)
   eval/                  RMSD / lDDT / TM against a deposit or another predictor
-  cli/                   foldforge fold, foldforge bench
+  cli/                   foldforge models, foldforge fold <model>
 scripts/                 Slurm wrappers and measurement drivers
 configs/  tests/  docs/
 ```
@@ -72,9 +92,9 @@ source.
 
 ## Conventions
 
-- **bf16 is the default.** The released checkpoints are fp32 on disk, but the
-  fused kernels are ~2x slower on fp32 input and the reference attention casts
-  to bf16 regardless. fp32 only when a task explicitly calls for it.
+- **bf16 is the default.** The released checkpoints are fp32 on disk. Model
+  loading selects the runtime precision; engine attention preserves its caller's
+  dtype. Use fp32 when a task explicitly calls for it.
 - **Never quote a speed number without its conditions** — device, dtype, MSA
   depth, warm or cold, and which backend *both* sides ran. Fold times on the
   same target and config have differed by 6% across processes purely from
@@ -102,5 +122,37 @@ decisions get made, and they belong next to the model rather than in an issue.
 
 | predictor | state |
 |---|---|
-| ESMFold2 | written and working on team-gm `exp/miniworld-integrated`; the move here is a rewire, see [docs/PORTING-esmfold2.md](docs/PORTING-esmfold2.md) |
-| AF3, Boltz-2, Chai-1, Protenix v1/v2, OpenDDE | not started |
+| ESMFold2 | ported; live ESMC → folding → CIF runs through the public CLI; see [integration verification](docs/MODEL-INTEGRATION.md) |
+| AF3 | ported; strict released weights, full 1UBQ inference and PyTorch comparison verified |
+| Protenix v1/v2 | ported; both variants passed full 1UBQ inference and PyTorch comparison |
+| OpenDDE | ported; strict released weights, full 1UBQ inference and PyTorch comparison verified |
+| Boltz-2, Chai-1 | not ported |
+
+### Run ESMFold2
+
+On an allocated GPU node:
+
+```bash
+source scripts/activate_env.sh
+foldforge models
+foldforge fold esmfold2 --target 1ubq --lm-source compute \
+  --out validation/results/esmfold2-live
+```
+
+Targets use prepared `validation/data/<target>/target.json` and MSA files.
+`--lm-source compute` runs the ESMC checkpoint; `cache` explicitly reuses an existing
+embedding file. The command writes CIF and JSON with actual precision, sampling,
+compile and CUDA-graph settings. See [the integration record](docs/MODEL-INTEGRATION.md)
+for the additional models' source/checkpoint status and validation scope.
+All four predictors use the MiniWorld BioMol LMDB at
+`data/ccd/preprocessed_CCD.lmdb`. Use the same MiniWorld YAML with each model:
+
+```bash
+foldforge fold af3 --spec configs/inference/1ubq.yaml --out predictions/af3
+foldforge fold protenix --spec configs/inference/1ubq.yaml --out predictions/protenix
+foldforge fold opendde --spec configs/inference/1ubq.yaml --out predictions/opendde
+foldforge fold esmfold2 --spec configs/inference/1ubq.yaml --out predictions/esmfold2
+```
+
+See [MiniWorld formats](docs/MINIWORLD-FORMAT.md) for database migration,
+nested model settings, data conventions and checkpoint-specific capabilities.

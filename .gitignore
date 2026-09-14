@@ -20,3 +20,6 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 uv.lock.bak
+
+# Shared local chemistry assets, separate from model weights.
+/data/ccd/

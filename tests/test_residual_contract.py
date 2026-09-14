@@ -29,27 +29,42 @@ from pathlib import Path
 MODELS = Path(__file__).resolve().parents[1] / "src" / "foldforge" / "models"
 
 #: Self-residual sites that are model-level and correct, with why. Keyed by
-#: "<file>:<callee>" — not by line number, which every edit invalidates.
+#: "<model-relative-path>:<callee>" — not by line number, which every edit invalidates.
 ALLOWED = {
+    # AF3 Evoformer keeps GridSelfAttention raw deltas; these are not engine
+    # TriangleAttention modules (which already own their residual).
+    "af3/ported/nn/pairformer.py:pair_attention1",
+    "af3/ported/nn/pairformer.py:pair_attention2",
     # A projection add, not an op residual: single features broadcast into the
     # token track (AF3 diffusion conditioning).
-    "diffusion.py:single_to_token",
+    "esmfold2/diffusion.py:single_to_token",
     # Whole-stack residuals around a FoldingTrunk. The blocks apply their own
     # residuals internally; this outer one is the released architecture (the
     # confidence head and the LM-side pair encoder both have it).
-    "confidence.py:folding_trunk",
-    "pair_trunk.py:lm_encoder",
+    "esmfold2/confidence.py:folding_trunk",
+    "esmfold2/pair_trunk.py:lm_encoder",
     # Pair-track feature adds in the confidence head's conditioning: row/col
     # projections of `single` and the distance-bin embedding, none of them ops.
-    "confidence.py:single_to_pair_row",
-    "confidence.py:single_to_pair_col",
-    "confidence.py:single_to_pair_prod_out",
-    "confidence.py:distance_bin_embed",
+    "esmfold2/confidence.py:single_to_pair_row",
+    "esmfold2/confidence.py:single_to_pair_col",
+    "esmfold2/confidence.py:single_to_pair_prod_out",
+    "esmfold2/confidence.py:distance_bin_embed",
     # Reference-conformer coordinates projected into the atom track.
-    "atom_encoder.py:coords_linear",
+    "esmfold2/atom_encoder.py:coords_linear",
     # Cross-tensor: OuterProductMean reads msa and adds into pair, so the engine
     # returns a raw delta and the model supplies the target. Passed as
     # `residual=`, so it never appears as `x = x + ...` — listed for the reader.
+    # These are the upstream raw-delta modules, not shared residual wrappers.
+    # Fold-CP calls Transition.forward directly (linear SwiGLU output only).
+    "opendde/ported/distributed/foldcp/real_pairformer.py:single_transition",
+    # TriangleAttention returns projected attention only; Pairformer owns the add.
+    "opendde/ported/model/modules/pairformer.py:tri_att_start",
+    "opendde/ported/model/modules/pairformer.py:tri_att_end",
+    # Sequential Linear/ReLU atom-pair MLP has no internal residual.
+    "protenix/ported/model/modules/transformer.py:small_mlp",
+    # Guidance projection returns an accumulated coordinate delta (zero if disabled).
+    "protenix/ported/tfg/engine.py:_project",
+    "opendde/ported/tfg/engine.py:_project",
 }
 
 
@@ -109,7 +124,7 @@ def test_every_self_residual_is_classified():
     unlisted = []
     for path in sorted(MODELS.rglob("*.py")):
         for line, callee in find_self_residuals(path.read_text()):
-            if f"{path.name}:{callee}" not in ALLOWED:
+            if f"{path.relative_to(MODELS)}:{callee}" not in ALLOWED:
                 unlisted.append(f"{path.relative_to(MODELS)}:{line} -> {callee}")
     assert not unlisted, (
         "Unclassified self-residual(s). If the callee is an engine op, DELETE the "

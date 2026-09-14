@@ -28,6 +28,7 @@ import torch
 from safetensors.torch import load_file
 from team_gm.modules.exceptions import ImplementationType
 
+from foldforge.data.ccd import CCDDatabase, default_path
 from foldforge.models.esmfold2 import ESMFold2Config, convert
 from foldforge.models.esmfold2 import ESMFold2Model as TeamGMModel
 from foldforge.models.esmfold2.features import (
@@ -144,6 +145,7 @@ def instrument_pair_trunk(trunk: torch.nn.Module) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--ccd-db", type=Path, default=default_path())
     parser.add_argument("--target", default="3ptb")
     parser.add_argument("--data-root", default="validation/data")
     parser.add_argument("--out", default="benchmark/esmfold2/profile")
@@ -162,7 +164,7 @@ def main() -> int:
     dtype = getattr(torch, args.dtype)
     checkpoint = Path(args.checkpoint)
     sample = Path(args.data_root) / args.target
-    builder = ESMFold2InputBuilder(ccd_cache=checkpoint)
+    builder = ESMFold2InputBuilder(ccd_db=CCDDatabase(args.ccd_db))
     features, _ = builder.prepare_input(
         build_input(sample, args.msa_depth), seed=args.seed, device=device
     )

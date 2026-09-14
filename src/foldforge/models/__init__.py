@@ -1,3 +1,5 @@
+# GPU dependencies are imported at the model boundary so registry/help stay cheap.
+# ruff: noqa: PLC0415
 """The predictors, and the name -> loader table that finds them.
 
 A registry rather than a package of imports because loading any one predictor
@@ -20,9 +22,8 @@ registry still needs neither the weights nor an upstream package::
 
         return load
 
-There is deliberately no ``FoldingModel`` Protocol yet. With one predictor
-ported, any interface written now would be a guess dressed as a contract; the
-second one is what tells us where the models actually agree.
+The loaders keep model-specific input signatures; inference adapters normalize
+coordinates and confidence into :class:`foldforge.prediction.Prediction`.
 """
 
 from __future__ import annotations
@@ -47,19 +48,37 @@ class Entry:
 def _esmfold2() -> Any:
     # Imported on call, not at module scope: this pulls in torch, the engine and
     # transformers, and listing the registry must need none of them.
-    from foldforge.models.esmfold2 import load  # noqa: PLC0415
+    from foldforge.models.esmfold2 import load
+
+    return load
+
+
+def _af3() -> Any:
+    from foldforge.models.af3 import load
+
+    return load
+
+
+def _protenix() -> Any:
+    from foldforge.models.protenix import load
+
+    return load
+
+
+def _opendde() -> Any:
+    from foldforge.models.opendde import load
 
     return load
 
 
 #: Every predictor this repo plans to run.
 _REGISTRY: dict[str, Entry] = {
-    "af3": Entry(None, "AlphaFold 3 — DeepMind; weights are access-gated"),
+    "af3": Entry(_af3, "AlphaFold 3 — DeepMind; weights are access-gated"),
     "boltz2": Entry(None, "Boltz-2 — MIT"),
     "chai1": Entry(None, "Chai-1 — Chai Discovery"),
     "esmfold2": Entry(_esmfold2, "ESMFold2 — biohub/ESMFold2 + ESMC-6B"),
-    "opendde": Entry(None, "OpenDDE"),
-    "protenix": Entry(None, "Protenix v1 / v2 — ByteDance"),
+    "opendde": Entry(_opendde, "OpenDDE"),
+    "protenix": Entry(_protenix, "Protenix v1 / v2 — ByteDance"),
 }
 
 

@@ -1,0 +1,134 @@
+{
+  "repository": "https://github.com/Shenggan/xfold",
+  "revision": "22bdeedfa309ef4ff6f9199910d8403915de69d6",
+  "files": {
+    "alphafold3.py": {
+      "source": "xfold/alphafold3.py",
+      "sha256": "42b432e1d7afe77eab9ee54bac36affe4ddb522d594f2c1c9fd3d3684b7a99e3"
+    },
+    "constants/__init__.py": {
+      "source": "xfold/constants/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "constants/atom_types.py": {
+      "source": "xfold/constants/atom_types.py",
+      "sha256": "d4742b0ab6315c92f8e3463fe45fc4462eb76af8fbb2f76fa71c0c6b93479fcf"
+    },
+    "constants/mmcif_names.py": {
+      "source": "xfold/constants/mmcif_names.py",
+      "sha256": "feb93d00994eb4df40d72f0767c7c9048545b4bfc4feb545859aac3289636519"
+    },
+    "constants/periodic_table.py": {
+      "source": "xfold/constants/periodic_table.py",
+      "sha256": "f689edee59e14c6d15559d394bc7fb497e1e068fc9b1d1231f1f0bef841e2b8c"
+    },
+    "constants/residue_names.py": {
+      "source": "xfold/constants/residue_names.py",
+      "sha256": "005f7ba6ef82615dc3eacda24931b3be17e62d01937708d21e60d31f5a9e6a86"
+    },
+    "constants/side_chains.py": {
+      "source": "xfold/constants/side_chains.py",
+      "sha256": "fce4f6c0357d5d4d0c22fa0d6d3540f53d871eb1df9462e36a99a3d008673fd3"
+    },
+    "fastnn/__init__.py": {
+      "source": "xfold/fastnn/__init__.py",
+      "sha256": "241adc8d23d3c76b8c636b84b520f5344d709ce6ff52432c08bbf4e1ba886de1"
+    },
+    "fastnn/attention.py": {
+      "source": "xfold/fastnn/attention.py",
+      "sha256": "1e8463297c50df5fcba3069da15e82882ecb00fce0c7ec4e45f4f4b8362a528d"
+    },
+    "fastnn/config.py": {
+      "source": "xfold/fastnn/config.py",
+      "sha256": "681bf2a12e78534d24f1b1e4b941f2eb63727afb17c1fbad3f2f4daf90a8c636"
+    },
+    "fastnn/gated_linear_unit.py": {
+      "source": "xfold/fastnn/gated_linear_unit.py",
+      "sha256": "53b7296beab58ae9f1ff51774a807c6a723c2ee668ee3d4a91d82929fa879738"
+    },
+    "fastnn/layer_norm.py": {
+      "source": "xfold/fastnn/layer_norm.py",
+      "sha256": "50fd38e4ae21b37ea10aeb9246e3d30d727fc3ccded8e0abae601c936c6f18d5"
+    },
+    "feat_batch.py": {
+      "source": "xfold/feat_batch.py",
+      "sha256": "51f919e828977d73186fa4894857f85103cb745393ceccdafe36537726a2a814"
+    },
+    "features.py": {
+      "source": "xfold/features.py",
+      "sha256": "4eb1542861be293365ae3ee318143c0db8b3046f87646e4d7718bb419593fbc0"
+    },
+    "geometry.py": {
+      "source": "xfold/geometry.py",
+      "sha256": "6772960d7a0f5a8d666c704c53d99600df1773dc6f1702a5a95485148e530ec0"
+    },
+    "nn/__init__.py": {
+      "source": "xfold/nn/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "nn/atom_cross_attention.py": {
+      "source": "xfold/nn/atom_cross_attention.py",
+      "sha256": "be5d3bdcce7571259c5a147a702eb78bfa7bd3b17e12e54b019faec623a9df67"
+    },
+    "nn/atom_layout.py": {
+      "source": "xfold/nn/atom_layout.py",
+      "sha256": "8e1f402825a2688d0d27c8cbbe1d2b4e0ef2597da7179aaeb171a18fd5a65963"
+    },
+    "nn/attention.py": {
+      "source": "xfold/nn/attention.py",
+      "sha256": "32aae2da83c7055abf0b851db134dcddb98d2ab3219ee631c5cadd213669abac"
+    },
+    "nn/diffusion_head.py": {
+      "source": "xfold/nn/diffusion_head.py",
+      "sha256": "80960bf12d525ec1a70bcb22165e16fed92039104e0eaafc0d7074abeb7b8b86"
+    },
+    "nn/diffusion_transformer.py": {
+      "source": "xfold/nn/diffusion_transformer.py",
+      "sha256": "16c537fb367c0899d7c52c799aec624f63d776e208bb710f7687b4fd3e099518"
+    },
+    "nn/featurization.py": {
+      "source": "xfold/nn/featurization.py",
+      "sha256": "5ee034a60485bf2336d6e1345ae7ac12e4f19901af7d1cd26d5afba50355301b"
+    },
+    "nn/head.py": {
+      "source": "xfold/nn/head.py",
+      "sha256": "985bbccd8ca979f51158aa0071e4cc784ad1b33bbace49152173d34e38d93392"
+    },
+    "nn/pairformer.py": {
+      "source": "xfold/nn/pairformer.py",
+      "sha256": "fc2c18993328a801545120b74d646154278a75a21cfeeff395430ae802973a08"
+    },
+    "nn/primitives.py": {
+      "source": "xfold/nn/primitives.py",
+      "sha256": "eecbd48bcef28813b39b255c8b9c24746bbc6181ba2e9504e9607f4f4b322073"
+    },
+    "nn/template.py": {
+      "source": "xfold/nn/template.py",
+      "sha256": "9ef385c95ffa560be76007a73526f725ca9bfd2695831a596a1a56d94469e05e"
+    },
+    "nn/triangle_multiplication.py": {
+      "source": "xfold/nn/triangle_multiplication.py",
+      "sha256": "21aaaa202504518a835be57b087f98928c49e444f2f132df424cef9d76457b6c"
+    },
+    "nn/utils.py": {
+      "source": "xfold/nn/utils.py",
+      "sha256": "bc71575c9ab2c2c2eb74fc31132ba30219e68e1b3e4489ea8d635bb148b62fd0"
+    },
+    "params.py": {
+      "source": "xfold/params.py",
+      "sha256": "fa2fef2eaa0c8e29308fe50dc30f28ad8061ae74752780bc90ab058a322ad718"
+    },
+    "protein_data_processing.py": {
+      "source": "xfold/protein_data_processing.py",
+      "sha256": "c8671a110334e96c885ffeca0ddbfec8a7e8b2fa3ac7e7d7150152a078dc49be"
+    },
+    "scoring.py": {
+      "source": "xfold/scoring.py",
+      "sha256": "2f1abc0a10ddd8b46926bf0dc0b8c47d79fea2d475cfd3878c7f02f6d56e4da1"
+    },
+    "version.py": {
+      "source": "xfold/version.py",
+      "sha256": "584b6f672c68ce35c9e175ceeb6b201a9e3cb718850204cd161cfd5c5fb71b35"
+    }
+  }
+}

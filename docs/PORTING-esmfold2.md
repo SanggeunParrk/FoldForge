@@ -1,6 +1,10 @@
 # Porting ESMFold2 from team-gm into FoldForge
 
-**Status:** PLANNED. The working ESMFold2 port lives in team-gm's
+**Current status:** model code is in FoldForge. Current installation, command and
+verification are recorded in [MODEL-INTEGRATION.md](MODEL-INTEGRATION.md).
+The sections below retain the original migration history and old branch details.
+
+**Original plan:** The working ESMFold2 port lives in team-gm's
 `exp/miniworld-integrated` branch, **uncommitted**, at
 `src/team_gm/models/esmfold2/` plus ~17 driver scripts. It was written against
 team-gm at `63cc244`. `origin/exp/miniworld` has since moved 10 commits ahead and

@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 from jaxtyping import Bool, Float, Int
 from team_gm import typecheck
+from team_gm.modules.tensor_layout import aggregate_atom_to_token
 
 
 @typecheck
@@ -139,13 +140,9 @@ def mean_per_token(
         Per-token means; tokens with no valid atoms come out as zero.
 
     """
-    batch = per_atom.shape[0]
-    weights = atom_mask.to(per_atom.dtype)
-    totals = torch.zeros(batch, n_tokens, device=per_atom.device, dtype=per_atom.dtype)
-    counts = torch.zeros_like(totals)
-    totals.scatter_add_(1, atom_to_token, per_atom * weights)
-    counts.scatter_add_(1, atom_to_token, weights)
-    return totals / counts.clamp(min=1e-6)
+    return aggregate_atom_to_token(
+        per_atom.unsqueeze(-1), atom_to_token, n_tokens, atom_mask=atom_mask
+    ).squeeze(-1)
 
 
 @typecheck
@@ -177,20 +174,6 @@ def scatter_mean_to_token(
         Per-token means.
 
     """
-    batch, _, width = atom_features.shape
-    index = atom_to_token
-    n_out = n_tokens
-    if atom_mask is not None:
-        index = torch.where(atom_mask, atom_to_token, n_tokens)
-        n_out = n_tokens + 1
-    out = torch.zeros(
-        batch, n_out, width, device=atom_features.device, dtype=atom_features.dtype
+    return aggregate_atom_to_token(
+        atom_features, atom_to_token, n_tokens, atom_mask=atom_mask
     )
-    out.scatter_reduce_(
-        1,
-        index.unsqueeze(-1).expand(batch, index.shape[1], width),
-        atom_features,
-        reduce="mean",
-        include_self=False,
-    )
-    return out[:, :n_tokens, :]

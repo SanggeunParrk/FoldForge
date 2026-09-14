@@ -11,14 +11,9 @@
 set -euo pipefail
 cd /home/psk6950/practice/FoldForge
 
-ENV=/home/casp17/.conda/envs/esmfold2
-STUBS=$HOME/.cache/team-gm-stubs/py312
-LIBS=$HOME/.cache/team-gm-libs
-ENGINE=$HOME/.cache/foldforge-engine/src
-export LD_LIBRARY_PATH="$LIBS/cuequivariance_ops/lib:${LD_LIBRARY_PATH:-}"
-# No uv on this cluster, so the layers go on PYTHONPATH directly: FoldForge,
-# the team-gm submodule, and the engine checked out at the rev pyproject pins.
-export PYTHONPATH="$LIBS:$STUBS:/home/psk6950/practice/FoldForge/src:/home/psk6950/practice/FoldForge/libs/team-gm/src:$ENGINE"
+# Use the repository environment and its locked engine dependency.
+source scripts/activate_env.sh
+ENV=$VIRTUAL_ENV
 export HF_HUB_OFFLINE=1
 
 "$ENV/bin/python" scripts/fold_esmfold2.py "$@"

@@ -1,10 +1,18 @@
-"""OpenDDE.
+# GPU dependencies are imported at the model boundary so registry/help stay cheap.
+# ruff: noqa: PLC0415
+"""opendde: released-checkpoint model port using shared MiniWorld operations.
 
-**Not ported.** Nothing has been decided about this one yet — checkpoint source,
-block mapping, and whether it shares enough with the AF3 stack to reuse
-team-gm's blocks are all open.
-
-First step is a read of the upstream model definition against
-``libs/team-gm/docs/ARCHITECTURE.md``: if its blocks do not compose out of engine
-ops, that belongs in the port notes here before any code is written.
+See SOURCE.json for the pinned origin and docs/MODEL-INTEGRATION.md for
+validated settings and the exact engine coverage.
 """
+
+from __future__ import annotations
+
+from typing import Any
+
+
+def load(*args: Any, **kwargs: Any) -> Any:
+    """Load the model lazily; importing the package does not initialize Torch."""
+    from .model import load as load_checkpoint
+
+    return load_checkpoint(*args, **kwargs)

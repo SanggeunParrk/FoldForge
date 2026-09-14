@@ -2629,8 +2629,10 @@ source = { editable = "libs/team-gm" }
 dependencies = [
     { name = "beartype" },
     { name = "biomol" },
+    { name = "biopython" },
     { name = "cuequivariance-torch" },
     { name = "einops" },
+    { name = "esm" },
     { name = "hydra-core" },
     { name = "jaxtyping" },
     { name = "lightning" },
@@ -2639,7 +2641,10 @@ dependencies = [
     { name = "numpy" },
     { name = "omegaconf" },
     { name = "pandas" },
+    { name = "pydantic" },
+    { name = "safetensors" },
     { name = "scipy" },
+    { name = "transformers" },
     { name = "wandb" },
 ]
 
@@ -2657,6 +2662,9 @@ cu13 = [
 flash = [
     { name = "flash-attn-4" },
 ]
+flash2 = [
+    { name = "flash-attn" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -2672,10 +2680,13 @@ dev = [
 requires-dist = [
     { name = "beartype", specifier = ">=0.21,<1" },
     { name = "biomol", specifier = ">=1.0,<2" },
+    { name = "biopython", specifier = ">=1.85,<2" },
     { name = "cuequivariance-ops-torch-cu12", marker = "extra == 'cu12'" },
     { name = "cuequivariance-ops-torch-cu13", marker = "extra == 'cu13'" },
     { name = "cuequivariance-torch", specifier = ">=0.9,<1" },
     { name = "einops", specifier = ">=0.8,<1" },
+    { name = "esm", git = "https://github.com/Biohub/esm.git?rev=fba1e42a8a0f8df2b7e08611c88807aa32a25d9c" },
+    { name = "flash-attn", marker = "extra == 'flash2'", specifier = "==2.8.3.post1" },
     { name = "flash-attn-4", marker = "extra == 'flash'" },
     { name = "hydra-core", specifier = ">=1.3,<2" },
     { name = "jaxtyping", specifier = ">=0.3,<1" },
@@ -2687,12 +2698,15 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.2,<3" },
     { name = "omegaconf", specifier = ">=2.3,<3" },
     { name = "pandas", specifier = ">=2.3,<3" },
+    { name = "pydantic", specifier = ">=2,<3" },
+    { name = "safetensors", specifier = ">=0.4,<1" },
     { name = "scipy", specifier = ">=1.15,<2" },
     { name = "torch", marker = "extra == 'cu12'", specifier = "==2.10.0", index = "https://download.pytorch.org/whl/cu128", conflict = { package = "team-gm", extra = "cu12" } },
     { name = "torch", marker = "extra == 'cu13'", specifier = ">=2.10,<3", index = "https://download.pytorch.org/whl/cu130", conflict = { package = "team-gm", extra = "cu13" } },
+    { name = "transformers", git = "https://github.com/Biohub/transformers.git?rev=b435f1f92dd5b4a653be57157d4f4f5ddba4f145" },
     { name = "wandb", specifier = ">=0.21,<1" },
 ]
-provides-extras = ["cu12", "cu13", "flash"]
+provides-extras = ["cu12", "cu13", "flash", "flash2"]
 
 [package.metadata.requires-dev]
 dev = [

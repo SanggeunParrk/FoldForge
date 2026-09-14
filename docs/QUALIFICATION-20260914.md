@@ -1,5 +1,9 @@
 # FoldForge inference qualification — 2026-09-14
 
+Follow-up operational DB discovery and cache-builder repairs are recorded in
+[CLOSEOUT-20260914.md](CLOSEOUT-20260914.md). The absent-mount notes below describe
+the original qualification; the follow-up directly reads the operational database.
+
 This is an inference integration qualification. It does not qualify training,
 new GPU architectures, or structure-prediction accuracy from two-step smoke runs.
 Pinned environments, checkpoint files and the CCD database were preserved.

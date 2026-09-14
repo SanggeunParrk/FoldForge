@@ -22,7 +22,15 @@ def run(model: str, argv: list[str]):
     parser.add_argument("--checkpoint", type=Path)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--lm-cache", type=Path)
+    parser.add_argument("--engine-cache-dir", type=Path)
     args = parser.parse_args(argv)
+    if args.engine_cache_dir is not None:
+        if not args.engine_cache_dir.is_dir():
+            parser.error("--engine-cache-dir must be an existing cache directory")
+        from miniworld_engine.autotune import cache
+
+        cache._CACHE_ROOT = args.engine_cache_dir.resolve()
+        cache._load_cache.clear()
     config = (
         Config.model_validate(yaml.safe_load(args.config.read_text()) or {})
         if args.config

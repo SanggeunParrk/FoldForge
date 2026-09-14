@@ -9,7 +9,8 @@ Run model and measurement jobs on allocated compute nodes.
   explicitly for existing embeddings.
 - `esmfold2_profile.py` / `.sbatch`: stage timings with cached embeddings.
 - `op_dispatch_audit.py` / `.sbatch`: inspect which backend executes.
-- `build_autotune_cache.py` / `.sbatch`: model-shape cache driver.
+- `build_autotune_cache.py` / `.sbatch`: bounded, resumable model-shape gap builder.
+  See [cache build commands](../docs/CACHE-BUILD.md) for its private cache and replay options.
 
 The folding command now lives in the installed model package and writes both CIF
 and JSON. See [the model integration record](../docs/MODEL-INTEGRATION.md).
@@ -20,9 +21,9 @@ schemas, checkpoint/CCD paths and complete commands. Shared CCD assets live
 outside `.venv`, so environment reinstallation preserves them. All model
 execution belongs on allocated GPU nodes.
 
-All FoldForge inference, profiling and cache-building scripts now accept the same
-`--ccd-db` (or `FOLDFORGE_CCD_DB`). Prepare with `foldforge ccd prepare` and verify
-with `foldforge ccd verify`. Do not point this at a model checkpoint directory.
+The common inference and cache-building paths read `ccd_db` from the MiniWorld
+input YAML. Compatibility scripts additionally accept `--ccd-db`. Prepare with
+`foldforge ccd prepare` and verify with `foldforge ccd verify`.
 `audit_model_boundaries.py --out docs/model-boundaries-20260913.csv` inventories
 all model classes with forward methods without loading the GPU stack.
 

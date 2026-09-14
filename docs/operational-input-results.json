@@ -1,0 +1,293 @@
+[
+  {
+    "target": "1ubq",
+    "resources": [
+      {
+        "chain_index": 0,
+        "msa_db": "/public_data02/BioMolDB_20260224/a3m.lmdb",
+        "msa_key": "P0000780",
+        "msa_rows": 16177,
+        "template_db": "/public_data02/BioMolDB_20260224/template.lmdb",
+        "template_key": "P0000780",
+        "templates": [
+          {
+            "id": "2MSG_A",
+            "backbone_residues": 72,
+            "observed_atoms": 284,
+            "release_date": null
+          },
+          {
+            "id": "3ONS_A",
+            "backbone_residues": 72,
+            "observed_atoms": 284,
+            "release_date": null
+          },
+          {
+            "id": "3WXG_C",
+            "backbone_residues": 72,
+            "observed_atoms": 284,
+            "release_date": null
+          },
+          {
+            "id": "3WXG_F",
+            "backbone_residues": 72,
+            "observed_atoms": 284,
+            "release_date": null
+          }
+        ]
+      }
+    ],
+    "status": "pass"
+  },
+  {
+    "target": "3ptb",
+    "resources": [
+      {
+        "chain_index": 0,
+        "msa_db": "/public_data02/BioMolDB_20260224/a3m.lmdb",
+        "msa_key": "P0001410",
+        "msa_rows": 34324,
+        "template_db": "/public_data02/BioMolDB_20260224/template.lmdb",
+        "template_key": "P0001410",
+        "templates": [
+          {
+            "id": "5JBB_B",
+            "backbone_residues": 210,
+            "observed_atoms": 819,
+            "release_date": null
+          },
+          {
+            "id": "5JBC_B",
+            "backbone_residues": 210,
+            "observed_atoms": 819,
+            "release_date": null
+          },
+          {
+            "id": "5JBA_B",
+            "backbone_residues": 210,
+            "observed_atoms": 819,
+            "release_date": null
+          },
+          {
+            "id": "2WPI_C",
+            "backbone_residues": 210,
+            "observed_atoms": 819,
+            "release_date": null
+          }
+        ]
+      },
+      {
+        "chain_index": 1,
+        "msa_db": null,
+        "msa_key": null,
+        "msa_rows": null,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      },
+      {
+        "chain_index": 2,
+        "msa_db": null,
+        "msa_key": null,
+        "msa_rows": null,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      }
+    ],
+    "status": "pass"
+  },
+  {
+    "target": "1a1k",
+    "resources": [
+      {
+        "chain_index": 0,
+        "msa_db": null,
+        "msa_key": null,
+        "msa_rows": null,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      },
+      {
+        "chain_index": 1,
+        "msa_db": null,
+        "msa_key": null,
+        "msa_rows": null,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      },
+      {
+        "chain_index": 2,
+        "msa_db": "/public_data02/BioMolDB_20260224/a3m.lmdb",
+        "msa_key": "P0000338",
+        "msa_rows": 46338,
+        "template_db": "/public_data02/BioMolDB_20260224/template.lmdb",
+        "template_key": "P0000338",
+        "templates": [
+          {
+            "id": "2M0E_A",
+            "backbone_residues": 29,
+            "observed_atoms": 114,
+            "release_date": null
+          },
+          {
+            "id": "2M0F_A",
+            "backbone_residues": 29,
+            "observed_atoms": 112,
+            "release_date": null
+          },
+          {
+            "id": "2N25_A",
+            "backbone_residues": 29,
+            "observed_atoms": 116,
+            "release_date": null
+          },
+          {
+            "id": "2N26_A",
+            "backbone_residues": 27,
+            "observed_atoms": 104,
+            "release_date": null
+          }
+        ]
+      },
+      {
+        "chain_index": 3,
+        "msa_db": null,
+        "msa_key": null,
+        "msa_rows": null,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      },
+      {
+        "chain_index": 4,
+        "msa_db": null,
+        "msa_key": null,
+        "msa_rows": null,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      },
+      {
+        "chain_index": 5,
+        "msa_db": null,
+        "msa_key": null,
+        "msa_rows": null,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      }
+    ],
+    "status": "pass"
+  },
+  {
+    "target": "4yx2",
+    "resources": [
+      {
+        "chain_index": 0,
+        "msa_db": "/public_data02/BioMolDB_20260224/a3m.lmdb",
+        "msa_key": "P0103521",
+        "msa_rows": 429,
+        "template_db": "/public_data02/BioMolDB_20260224/template.lmdb",
+        "template_key": "P0103521",
+        "templates": [
+          {
+            "id": "2N53_A",
+            "backbone_residues": 143,
+            "observed_atoms": 560,
+            "release_date": null
+          },
+          {
+            "id": "6FNV_A",
+            "backbone_residues": 140,
+            "observed_atoms": 547,
+            "release_date": null
+          },
+          {
+            "id": "7LNA_A",
+            "backbone_residues": 130,
+            "observed_atoms": 512,
+            "release_date": null
+          },
+          {
+            "id": "7LNA_B",
+            "backbone_residues": 130,
+            "observed_atoms": 512,
+            "release_date": null
+          }
+        ]
+      },
+      {
+        "chain_index": 1,
+        "msa_db": "/public_data02/BioMolDB_20260224/a3m.lmdb",
+        "msa_key": "P0081753",
+        "msa_rows": 9772,
+        "template_db": "/public_data02/BioMolDB_20260224/template.lmdb",
+        "template_key": "P0081753",
+        "templates": [
+          {
+            "id": "4HJJ_C",
+            "backbone_residues": 206,
+            "observed_atoms": 814,
+            "release_date": null
+          },
+          {
+            "id": "5FHX_C",
+            "backbone_residues": 204,
+            "observed_atoms": 804,
+            "release_date": null
+          },
+          {
+            "id": "5HCG_B",
+            "backbone_residues": 201,
+            "observed_atoms": 792,
+            "release_date": null
+          },
+          {
+            "id": "6O89_B",
+            "backbone_residues": 206,
+            "observed_atoms": 812,
+            "release_date": null
+          }
+        ]
+      },
+      {
+        "chain_index": 2,
+        "msa_db": "/public_data02/BioMolDB_20260224/a3m.lmdb",
+        "msa_key": "P0081754",
+        "msa_rows": 9043,
+        "template_db": "/public_data02/BioMolDB_20260224/template.lmdb",
+        "template_key": "P0081754",
+        "templates": [
+          {
+            "id": "7KQY_A",
+            "backbone_residues": 197,
+            "observed_atoms": 770,
+            "release_date": null
+          },
+          {
+            "id": "7KQY_B",
+            "backbone_residues": 189,
+            "observed_atoms": 739,
+            "release_date": null
+          },
+          {
+            "id": "7KQY_C",
+            "backbone_residues": 188,
+            "observed_atoms": 735,
+            "release_date": null
+          },
+          {
+            "id": "7KQY_D",
+            "backbone_residues": 191,
+            "observed_atoms": 747,
+            "release_date": null
+          }
+        ]
+      }
+    ],
+    "status": "pass"
+  }
+]

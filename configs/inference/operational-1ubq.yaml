@@ -1,0 +1,15 @@
+# Cluster example: use the matching FASTA sequence with the operational entity key.
+name: 1ubq
+fasta:
+  A: 1ubq.fasta
+ccd_db: ../../data/ccd/preprocessed_CCD.lmdb
+msa:
+  A: P0000780
+msa_db:
+  A: /public_data02/BioMolDB_20260224/a3m.lmdb
+chain_letters:
+  '0': A
+template:
+  '0': P0000780
+template_db: /public_data02/BioMolDB_20260224/template.lmdb
+save_trajectory: false

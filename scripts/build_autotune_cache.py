@@ -1,227 +1,193 @@
-"""Build the engine's Triton autotune cache for THIS GPU from real folds.
+# ruff: noqa: T201, S603, SLF001 - CLI diagnostics, argv execution, pinned engine bridge
+"""Fill cache gaps through the ordinary released-model inference entry point.
 
-The engine ships caches keyed by `(op, dtype, shape-bucket)`. On an A6000 most
-trunk ops have no entry at all (`layernorm_main_fwd`, `trimul_gate_elem_mul`,
-`trimul_back*` carry H100 only) and the ones that do are tuned for L 314-384 —
-so every validation target misses, the autotuner falls back to the full grid per
-process, and the chosen config "may be suboptimal" for 78% of a fold.
-
-The capture hook patches `Autotuner._bench`, so it records whatever fires during a
-real forward pass. That makes the WORKLOAD the sweep, which for an inference-only
-cache beats a synthetic one:
-
-* the shapes are exactly the ones we run, not a guess at which L matters
-* ops the synthetic sweep never touches (atom track, LM encoder, confidence head)
-  are covered for free
-* inference-only by construction — the model's forward is `@torch.no_grad`
-
-One process, every target, one flush: the per-target buckets accumulate in the
-same `_CAPTURE` dict, and flushing once avoids two runs racing on one JSON.
-
-Known limits, worth reading before trusting the result:
-
-* **Bucket coarseness is not fixed by this.** `get_seq_group` puts every L >= 385
-  in one bucket, so a config tuned at 594 also serves L=2048. Fine while our
-  workload sits in that range; a much larger target needs a re-capture.
-* The cache records `built_utc/torch/triton` but NOT the L it was measured at, so
-  a bucket-vs-actual-shape mismatch is invisible after the fact.
-* Capture runs the FULL grid per kernel, so a fold takes far longer than normal.
-
-Usage (GPU node, hours)::
-
-    sbatch scripts/build_autotune_cache.sbatch --targets 1ubq,1a1k,3ptb,4yx2
+Run on an allocated GPU. Each invocation owns a subprocess, timeout, log and shard.
+A successful unit merges into a private cache directory, seeded from shipped data.
+Use --engine-cache-dir with ordinary inference to consume that directory.
 """
 
+from __future__ import annotations
+
 import argparse
+import contextlib
 import json
-import logging
+import os
+import shutil
+import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
 
-import torch
-from safetensors.torch import load_file
-from team_gm.modules.exceptions import ImplementationType
 
-from foldforge.data.ccd import CCDDatabase, default_path
-from foldforge.models.esmfold2 import ESMFold2Config, convert
-from foldforge.models.esmfold2 import ESMFold2Model as Model
-from foldforge.models.esmfold2.features import (
-    ESMFold2InputBuilder,
-    build_input,
-    model_kwargs,
-)
+def supervise(command: list[str], log: Path, seconds: float) -> int:
+    """Bound the whole unit including descendants, retaining its log on failure."""
+    start = time.monotonic()
+    with log.open("w") as output:
+        process = subprocess.Popen(
+            command, stdout=output, stderr=subprocess.STDOUT, start_new_session=True
+        )
+        try:
+            while True:
+                remaining = seconds - (time.monotonic() - start)
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(command, seconds)  # noqa: TRY301 - one cleanup boundary
+                try:
+                    return process.wait(timeout=min(30, remaining))
+                except subprocess.TimeoutExpired:
+                    print(
+                        f"unit elapsed={time.monotonic() - start:.0f}s log={log}",
+                        flush=True,
+                    )
+        except BaseException:
+            # Compiler workers create their own sessions. Reuse the engine's
+            # ancestry/start-time checked cleanup; killpg alone misses them.
+            from miniworld_engine.autotune.builder import _kill_unit_tree
 
-logger = logging.getLogger("build_autotune_cache")
+            _kill_unit_tree(process.pid)
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+            raise
 
 
-def fold_once(target: str, args: argparse.Namespace, model_cache: dict) -> float:
-    """One forward pass for ``target``; returns wall seconds."""
-    device = torch.device("cuda")
-    dtype = getattr(torch, args.dtype)
-    checkpoint = Path(args.checkpoint)
-    sample = Path(args.data_root) / target
+def validate_backend(fold_args: list[str]) -> None:
+    """A PyTorch baseline must never be reported as an engine cache build."""
+    import yaml
+    from foldforge.models.config import Config
 
-    if "ccd" not in model_cache:
-        model_cache["ccd"] = CCDDatabase(args.ccd_db)
-    builder = ESMFold2InputBuilder(ccd_db=model_cache["ccd"])
-    features, _ = builder.prepare_input(
-        build_input(sample, args.msa_depth), seed=0, device=device
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--config", type=Path)
+    options, _ = parser.parse_known_args(fold_args)
+    config = (
+        Config.model_validate(yaml.safe_load(options.config.read_text()) or {})
+        if options.config
+        else Config()
     )
-    lm_hidden = torch.load(
-        sample / "cache" / "esmc_hidden_states.pt", map_location=device
-    ).to(dtype)
-
-    # One model reused across targets: rebuilding it per target would re-pay the
-    # weight load without changing a single autotune key.
-    if "model" not in model_cache:
-        config = ESMFold2Config.from_json(checkpoint)
-        model = (
-            Model(config, ImplementationType.MINIWORLD_ENGINE)
-            .to(device=device, dtype=dtype)
-            .eval()
-        )
-        model.load_state_dict(
-            convert.convert_model(load_file(checkpoint / "model.safetensors"), config)
-        )
-        model_cache["model"] = model
-    model = model_cache["model"]
-
-    torch.cuda.synchronize()
-    start = time.perf_counter()
-    with torch.no_grad():
-        model(
-            **model_kwargs(features, dtype),
-            lm_hidden_states=lm_hidden,
-            num_diffusion_samples=1,
-            generator=torch.Generator(device=device).manual_seed(0),
-        )
-    torch.cuda.synchronize()
-    return time.perf_counter() - start
+    if config.backend != "miniworld":
+        message = "Cache building requires backend=miniworld in the model config"
+        raise ValueError(message)
 
 
-def synthetic_once(length: int, args: argparse.Namespace) -> float:
-    """Tune the trunk block at ``length`` without a real target of that size.
+def worker(args: argparse.Namespace, fold_args: list[str]) -> int:
+    from miniworld_engine import settings
+    from miniworld_engine.autotune import cache, capture
 
-    The row buckets above our largest validation target (594) have no entry, and a
-    protein of that size is not something we have on disk. One `PairUpdateBlock` is
-    the two triangle multiplications plus the transition — 77% of a fold's time and
-    every row-bucketed kernel that matters — so driving it directly covers the
-    bucket without inventing a sequence and an MSA to go with it.
-    """
-    from foldforge.models.esmfold2.trunk import PairUpdateBlock
-
-    device = torch.device("cuda")
-    dtype = getattr(torch, args.dtype)
-    config = ESMFold2Config.from_json(Path(args.checkpoint))
-    block = (
-        PairUpdateBlock(
-            d_pair=config.d_pair, implementation=ImplementationType.MINIWORLD_ENGINE
-        )
-        .to(device=device, dtype=dtype)
-        .eval()
+    cache._CACHE_ROOT = args.cache_dir.resolve()
+    settings.configure(
+        autotune_on_miss_shards=str(args.out / "partial"),
+        compile_jobs=args.compile_jobs,
     )
-    pair = torch.randn(1, length, length, config.d_pair, device=device, dtype=dtype)
-    mask = torch.ones(1, length, dtype=torch.bool, device=device)
-    torch.cuda.synchronize()
-    start = time.perf_counter()
-    with torch.no_grad():
-        block(pair, mask)
-    torch.cuda.synchronize()
-    del pair, block
-    torch.cuda.empty_cache()
-    return time.perf_counter() - start
+    capture.set_round_cache(str(args.cache_dir.with_suffix(".rounds")))
+    capture.set_incremental(True)
+    capture.install()
+    os.environ["MINIWORLD_SMEM_LOG"] = str(args.out / "compile.smem")
+
+    def terminate(signum: int, _frame: object) -> None:
+        raise SystemExit(128 + signum)
+
+    signal.signal(signal.SIGTERM, terminate)
+    from foldforge.models.inference import run
+
+    success = False
+    try:
+        result = run(args.model, fold_args)
+        if capture.record_errors():
+            message = f"capture errors: {capture.record_errors()}"
+            raise RuntimeError(message)
+        success = result in (None, 0)
+        return result or 0
+    finally:
+        capture.dump_shard(str(args.out / "unit.json"), unit_complete=success)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ccd-db", type=Path, default=default_path())
-    parser.add_argument("--targets", default="1ubq,1a1k,3ptb,4yx2")
-    parser.add_argument("--data-root", default="validation/data")
-    parser.add_argument("--checkpoint", default="model_checkpoints/esmfold2")
-    parser.add_argument("--msa-depth", type=int, default=512)
-    parser.add_argument("--dtype", default="bfloat16", choices=("bfloat16", "float32"))
-    parser.add_argument("--top-k", type=int, default=5)
-    parser.add_argument("--out", default="benchmark/esmfold2/autotune")
     parser.add_argument(
-        "--cache-dir",
-        default=None,
-        help=(
-            "write the captured cache here instead of in-repo. Parallel jobs on one "
-            "GPU MUST each use their own, or they lose each other's updates racing "
-            "on shared op files; merge afterwards with submits/_merge_caches.py"
-        ),
+        "--model", required=True, choices=("af3", "protenix", "opendde", "esmfold2")
     )
-    parser.add_argument(
-        "--synthetic",
-        default="",
-        help=(
-            "comma-separated L values to tune with a synthetic trunk block instead "
-            "of a fold. For sizes we have no target at (1024+) — the row buckets "
-            "still need entries, and the trunk block is 77%% of a fold"
-        ),
-    )
-    args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    torch.backends.cuda.matmul.allow_tf32 = True
+    parser.add_argument("--cache-dir", required=True, type=Path)
+    parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument("--timeout", type=float, default=3600)
+    parser.add_argument("--compile-jobs", type=int, default=8)
+    parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
+    args, fold_args = parser.parse_known_args()
+    if fold_args[:1] == ["--"]:
+        fold_args = fold_args[1:]
+    if args.timeout <= 0 or args.compile_jobs < 1:
+        parser.error("timeout and compile-jobs must be positive")
+    args.out = args.out.resolve()
+    args.cache_dir = args.cache_dir.resolve()
+    validate_backend(fold_args)
+    if args.worker:
+        return worker(args, fold_args)
+    import fcntl
 
     from miniworld_engine.autotune import cache, capture
 
-    seconds = {}
-    model_cache: dict = {}
-    # capturing() installs, flushes and uninstalls as a unit, so an exception in the
-    # middle of a fold cannot leave the Autotuner patched for the rest of the process.
-    root = Path(args.cache_dir).expanduser() if args.cache_dir else None
-    with capture.capturing(top_k=args.top_k, root=root) as written:
-        for target in filter(None, args.targets.split(",")):
-            elapsed = fold_once(target, args, model_cache)
-            seconds[target] = round(elapsed, 1)
-            logger.info("captured %s in %.1f s", target, elapsed)
-        for length in filter(None, args.synthetic.split(",")):
-            elapsed = synthetic_once(int(length), args)
-            seconds[f"synthetic_L{length}"] = round(elapsed, 1)
-            logger.info("captured synthetic L=%s in %.1f s", length, elapsed)
-
-    report = {
-        "gpu": cache.gpu_key(),
-        "dtype": args.dtype,
-        "targets": args.targets.split(","),
-        "fold_seconds": seconds,
-        "entries_written": len(written),
-        "ops": sorted({op for op, *_ in written}),
-        "by_entry": [
-            {"op": op, "dtype": dt, "bucket": b, "n_configs": n}
-            for op, dt, b, n, _ in written
-        ],
-    }
-    # Name the report after what this job captured. The cache dirs are isolated per
-    # job but a shared report path is not: six parallel jobs each wrote
-    # "capture.json" and only the last one survived, so the record of which job
-    # produced which buckets was lost.
-    tag = (
-        "_".join(
-            filter(
-                None,
-                [
-                    *args.targets.split(","),
-                    *(f"L{n}" for n in filter(None, args.synthetic.split(","))),
-                ],
+    if args.cache_dir == cache._CACHE_ROOT.resolve():
+        parser.error("use a separate cache directory; shipped data is preserved")
+    args.cache_dir.parent.mkdir(parents=True, exist_ok=True)
+    with args.cache_dir.with_suffix(".build.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if not args.cache_dir.exists():
+            seed = args.cache_dir.with_name(
+                args.cache_dir.name + f".seed-{os.getpid()}"
             )
-        )
-        or "capture"
-    )
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    (out / f"{tag}.json").write_text(json.dumps(report, indent=2) + "\n")
-    logger.info(
-        "%s",
-        json.dumps(
-            {k: report[k] for k in ("gpu", "entries_written", "ops", "fold_seconds")},
-            indent=2,
-        ),
-    )
-    return 0
+            shutil.copytree(cache._CACHE_ROOT, seed)
+            seed.rename(args.cache_dir)
+        args.out.mkdir(parents=True, exist_ok=True)
+        if (args.out / "unit.json").exists():
+            parser.error("output already contains a shard; choose another --out")
+        command = [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "--worker",
+            "--model",
+            args.model,
+            "--cache-dir",
+            str(args.cache_dir),
+            "--out",
+            str(args.out),
+            "--compile-jobs",
+            str(args.compile_jobs),
+            "--",
+            *fold_args,
+            "--engine-cache-dir",
+            str(args.cache_dir),
+            "--out",
+            str(args.out / "prediction"),
+        ]
+        start = time.monotonic()
+        try:
+            code = supervise(command, args.out / "worker.log", args.timeout)
+            status = "complete" if code == 0 else "failed"
+        except subprocess.TimeoutExpired:
+            code, status = 124, "timeout"
+        report = {
+            "model": args.model,
+            "status": status,
+            "returncode": code,
+            "seconds": time.monotonic() - start,
+            "arguments": fold_args,
+            "cache_dir": str(args.cache_dir),
+            "merged_entries": 0,
+        }
+        if code == 0:
+            shard = args.out / "unit.json"
+            if not json.loads(shard.read_text()).get("_unit_complete"):
+                message = "worker did not finish its unit"
+                raise RuntimeError(message)
+            cache._CACHE_ROOT = args.cache_dir
+            written = capture.merge_shards([shard])
+            if capture._MERGE_SKIPPED:
+                message = f"merge rejected: {capture._MERGE_SKIPPED}"
+                raise RuntimeError(message)
+            report["merged_entries"] = len(written)
+        (args.out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+        print(json.dumps(report), flush=True)
+        return code
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

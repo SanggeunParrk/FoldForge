@@ -1,3 +1,5 @@
+# Optional chemistry/model dependencies load only at their execution boundary.
+# ruff: noqa: PLC0415
 """Build MiniWorld CCDMol records without changing atom or conformer identity."""
 
 from __future__ import annotations
@@ -5,23 +7,35 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import os
+import logging
 import pickle
 import shutil
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import lmdb
 import numpy as np
 from biomol.core import EdgeFeature, FeatureContainer, IndexTable, NodeFeature
-from biotite.structure.io.pdbx import CIFFile
+from biotite.structure.io.pdbx import CIFBlock, CIFFile
 from rdkit import Chem
 
-from .lmdb_store import SCHEMA
-from .mol import CCDMol
+from foldforge.data.ccd.lmdb_store import SCHEMA
+from foldforge.data.ccd.mol import CCDMol
+
+if TYPE_CHECKING:
+    from rdkit.Chem.rdchem import Mol
 
 
-def record(name, block, molecule, af3_fields=None):
+logger = logging.getLogger(__name__)
+
+
+def record(  # noqa: C901, PLR0912, PLR0915 - retain atom identity, bond and metadata serialization together
+    name: str,
+    block: CIFBlock,
+    molecule: Mol | None,
+    af3_fields: dict[str, list[str]] | None = None,
+) -> CCDMol:
     """Keep canonical heavy atoms in views and lossless raw chemistry in metadata."""
     raw = {
         f"_{cat}.{col}": block[cat][col].as_array().tolist()
@@ -29,7 +43,10 @@ def record(name, block, molecule, af3_fields=None):
         for col in block[cat]
     }
 
-    def values(category, column, length=0, default="?"):
+    def values(
+        category: str, column: str, length: int = 0, default: str = "?"
+    ) -> np.ndarray:
+        """Compute values."""
         return np.asarray(
             raw.get(f"_{category}.{column}", [default] * length), dtype=str
         )
@@ -39,7 +56,10 @@ def record(name, block, molecule, af3_fields=None):
     keep = ~np.isin(element, ["H", "D"])
     ids = all_ids[keep]
     n = len(ids)
-    nodes = {"id": NodeFeature(ids), "element": NodeFeature(element[keep])}
+    nodes: dict[str, NodeFeature | EdgeFeature] = {
+        "id": NodeFeature(ids),
+        "element": NodeFeature(element[keep]),
+    }
     for feature, column in [
         ("aromatic", "pdbx_aromatic_flag"),
         ("stereo", "pdbx_stereo_config"),
@@ -67,7 +87,8 @@ def record(name, block, molecule, af3_fields=None):
     src = np.array([index[a] for a in src_names[bond_keep]], dtype=np.int64)
     dst = np.array([index[a] for a in dst_names[bond_keep]], dtype=np.int64)
 
-    def edge(v):
+    def edge(v: np.ndarray) -> EdgeFeature:
+        """Compute edge."""
         return EdgeFeature(value=np.asarray(v), src_indices=src, dst_indices=dst)
 
     for feature, column in [
@@ -90,10 +111,12 @@ def record(name, block, molecule, af3_fields=None):
         if set(atom_map) != set(all_ids) or sorted(atom_map.values()) != list(
             range(molecule.GetNumAtoms())
         ):
-            raise ValueError(f"CIF/RDKit atom identity mismatch: {name}")
+            msg = f"CIF/RDKit atom identity mismatch: {name}"
+            raise ValueError(msg)
         molecule.GetConformer(molecule.ref_conf_id)
         if len(molecule.ref_mask) != molecule.GetNumAtoms():
-            raise ValueError(f"Invalid reference mask: {name}")
+            msg = f"Invalid reference mask: {name}"
+            raise ValueError(msg)
         props = dict(molecule.__dict__)
         for key, value in props.items():
             if isinstance(value, np.ndarray):
@@ -133,7 +156,8 @@ def record(name, block, molecule, af3_fields=None):
                 for a, b in zip(src, dst, strict=True)
             ]
             if any(b is None for b in bonds):
-                raise ValueError(f"CIF/RDKit bond identity mismatch: {name}")
+                msg = f"CIF/RDKit bond identity mismatch: {name}"
+                raise ValueError(msg)
             nodes["bond_conjugation"] = edge(
                 np.asarray([b.GetIsConjugated() for b in bonds], dtype=bool)
             )
@@ -173,12 +197,13 @@ def record(name, block, molecule, af3_fields=None):
     )
 
 
-def sha256(path):
+def sha256(path: Path) -> str:
+    """Compute sha256."""
     with Path(path).open("rb") as handle:
         return hashlib.file_digest(handle, "sha256").hexdigest()
 
 
-def prepare(components: Path, rdkit: Path, destination: Path):
+def prepare(components: Path, rdkit: Path, destination: Path) -> None:
     """Build atomically; old databases and source assets are never overwritten."""
     destination = destination.expanduser().resolve()
     if destination.exists():
@@ -220,7 +245,7 @@ def prepare(components: Path, rdkit: Path, destination: Path):
                                 if "linking" in kind
                                 else "glycans_other"
                             ].append(name)
-                print(f"CCD {min(start + 256, len(cif))}/{len(cif)}", flush=True)
+                logger.info("%s", f"CCD {min(start + 256, len(cif))}/{len(cif)}")
             env.sync()
         finally:
             env.close()
@@ -239,7 +264,7 @@ def prepare(components: Path, rdkit: Path, destination: Path):
             "fragmentation_unavailable": unavailable,
         }
         (temporary / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-        os.rename(temporary, destination)
+        Path(temporary).rename(destination)
     except BaseException:
         shutil.rmtree(temporary)
         raise

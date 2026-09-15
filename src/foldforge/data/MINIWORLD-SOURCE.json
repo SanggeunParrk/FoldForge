@@ -14,15 +14,15 @@
       "source": "src/miniworld/data/pipeline/frament.py",
       "sha256": "95af4c62257d7e9a7ba805b34abed7e0ffc8746b9479e0b167e387706a55751e"
     },
-    "data/inference/spec.py": {
+    "data/inputs/spec.py": {
       "source": "src/miniworld/data/inference/spec.py",
       "sha256": "cc061233cf572fca80e262d2bb23c6c9c1b55f8b4fa3cad4d3bd0d7757493d8e"
     },
-    "data/inference/fasta.py": {
+    "data/inputs/fasta.py": {
       "source": "src/miniworld/data/inference/fasta.py",
       "sha256": "12af132bfcd5e472abfeeaf0ddbf17df86d3de5267ef18768774441c49887ab8"
     },
-    "data/inference/template_mol.py": {
+    "data/inputs/template_mol.py": {
       "source": "src/miniworld/data/mols/template_mol.py",
       "sha256": "8add19767a67d8fe854dab16de466a5ce9e7afe4c085664a4004c009719f3626"
     }

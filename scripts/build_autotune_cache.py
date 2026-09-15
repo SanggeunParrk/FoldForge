@@ -205,7 +205,12 @@ def main() -> int:
         fold_args = fold_args[1:]
     if args.timeout <= 0 or args.compile_jobs < 1:
         parser.error("timeout and compile-jobs must be positive")
-    args.out = args.out.resolve()
+    from foldforge.models.io.paths import run_directory
+
+    try:
+        args.out = run_directory(args.out, model=args.model)
+    except ValueError as error:
+        parser.error(str(error))
     args.cache_dir = args.cache_dir.resolve()
     validate_backend(fold_args)
     if args.worker:

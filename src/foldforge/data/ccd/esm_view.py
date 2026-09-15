@@ -1,3 +1,5 @@
+# Optional chemistry/model dependencies load only at their execution boundary.
+# ruff: noqa: PLC0415
 """ESMFold2 reference-coordinate view of the shared CCD database.
 
 Adapted from pinned Biohub ESM; the model chooses conformer/atom policy,
@@ -6,21 +8,31 @@ while the database owns the chemistry, source identity and lookup caches.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 from esm.models.esmfold2.constants import RES_TYPE_TO_CCD
 
-from .database import current_database
+from foldforge.data.ccd.database import current_database
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from rdkit.Chem.rdchem import Conformer, Mol
 
 
-def load_ccd(*_args):
+def load_ccd(*_args: object) -> Mapping[str, Mol]:
+    """Load ccd."""
     return current_database().esm_molecules
 
 
-def _get_ccd_molecules():
+def _get_ccd_molecules() -> Mapping[str, Mol]:
     return current_database().esm_molecules
 
 
-def _get_ccd_mol_with_significant_h(comp_id: str):
+def _get_ccd_mol_with_significant_h(
+    comp_id: str,
+) -> tuple[Mol, Conformer] | tuple[None, None]:
     """Get CCD molecule with only chemically significant hydrogens.
 
     Returns (mol, conformer) tuple or (None, None) if not available.
@@ -66,7 +78,7 @@ def get_ccd_conformer(comp_id: str) -> dict[str, np.ndarray] | None:
     """
     if comp_id in current_database().cache("esm_ccd_conformers"):
         cached = current_database().cache("esm_ccd_conformers")[comp_id]
-        return cached if cached else None
+        return cached or None
 
     mol, conf = _get_ccd_mol_with_significant_h(comp_id)
     if mol is None or conf is None:
@@ -84,7 +96,7 @@ def get_ccd_conformer(comp_id: str) -> dict[str, np.ndarray] | None:
         conformer[atom_name] = np.array([pos.x, pos.y, pos.z], dtype=np.float32)
 
     current_database().cache("esm_ccd_conformers")[comp_id] = conformer
-    return conformer if conformer else None
+    return conformer or None
 
 
 def get_idealized_atom_pos(res_type: int, atom_name: str) -> np.ndarray | None:
@@ -138,7 +150,7 @@ def get_ligand_ccd_atoms_with_charges(
     """
     if comp_id in current_database().cache("esm_ccd_atom_cache"):
         cached = current_database().cache("esm_ccd_atom_cache")[comp_id]
-        return cached if cached else None
+        return cached or None
 
     mol, _ = _get_ccd_mol_with_significant_h(comp_id)
     if mol is None:
@@ -156,7 +168,7 @@ def get_ligand_ccd_atoms_with_charges(
         atoms.append((atom_name, element, charge))
 
     current_database().cache("esm_ccd_atom_cache")[comp_id] = atoms
-    return atoms if atoms else None
+    return atoms or None
 
 
 def get_ligand_ccd_bonds(comp_id: str) -> list[tuple[str, str]] | None:
@@ -166,7 +178,7 @@ def get_ligand_ccd_bonds(comp_id: str) -> list[tuple[str, str]] | None:
     """
     if comp_id in current_database().cache("esm_ccd_bonds_cache"):
         cached = current_database().cache("esm_ccd_bonds_cache")[comp_id]
-        return cached if cached else None
+        return cached or None
 
     mol, _ = _get_ccd_mol_with_significant_h(comp_id)
     if mol is None:
@@ -198,7 +210,7 @@ def get_ligand_ccd_bonds(comp_id: str) -> list[tuple[str, str]] | None:
             bonds.append((n1, n2))
 
     current_database().cache("esm_ccd_bonds_cache")[comp_id] = bonds
-    return bonds if bonds else None
+    return bonds or None
 
 
 def get_ccd_leaving_atoms(comp_id: str) -> set[str]:
@@ -217,11 +229,10 @@ def get_ccd_leaving_atoms(comp_id: str) -> set[str]:
     mol = ccd[comp_id]
     leaving_atoms = set()
     for atom in mol.GetAtoms():
-        if atom.HasProp("leaving_atom"):
-            if atom.GetProp("leaving_atom") == "1":
-                name = atom.GetProp("name") if atom.HasProp("name") else ""
-                if name:
-                    leaving_atoms.add(name)
+        if atom.HasProp("leaving_atom") and atom.GetProp("leaving_atom") == "1":
+            name = atom.GetProp("name") if atom.HasProp("name") else ""
+            if name:
+                leaving_atoms.add(name)
 
     current_database().cache("esm_ccd_leaving_atoms_cache")[comp_id] = leaving_atoms
     return leaving_atoms

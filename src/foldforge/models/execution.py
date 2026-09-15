@@ -1,28 +1,25 @@
+# Optional chemistry/GPU backends load at the selected execution boundary.
+# ruff: noqa: PLC0415
 """Model-specific execution boundaries and complete-forward measurements."""
 
 from __future__ import annotations
 
 import random
 import time
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import numpy as np
 import torch
+from team_gm.modules.execution import ExecutedCallable
 from team_gm.modules.execution import (
-    ExecutedCallable,
-)
-from team_gm.modules.execution import (
-    _flatten as _flatten,  # noqa: PLC0414 - shared diagnostic contract
-)
-from team_gm.modules.execution import (
-    copy_containers as copy_containers,  # noqa: PLC0414 - runner API
+    copy_containers as copy_containers,  # noqa: PLC0414 - intentional public re-export
 )
 from torch._dynamo.utils import counters
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from .config import ExecutionConfig
+    from foldforge.models.config import ExecutionConfig
 
 Result = TypeVar("Result")
 MAX_BENCHMARK_REPEATS = 20
@@ -37,20 +34,44 @@ class Execution:
         torch.set_float32_matmul_precision("highest")
         self.config = config
         self.wrappers = []
+        self.bucket_adapter = None
+        self.bucket_model = None
         self.initial_graphs = counters["stats"]["unique_graphs"]
-        if not (config.compile or config.cuda_graph):
+        flat_buckets = config.bucketing and family in {"protenix", "opendde"}
+        if flat_buckets:
+            if config.scope != "denoiser":
+                msg = "Flat-atom bucketing requires scope=denoiser"
+                raise ValueError(msg)
+            from team_gm.modules.checkpoints.stacks import PairformerStack
+            from team_gm.modules.checkpoints.triangle import TriangleAttention
+
+            setattr(model, "inference_bucketing", True)  # noqa: B010 - runtime metadata
+            self.bucket_model = model
+            for layer in model.modules():
+                if isinstance(layer, (PairformerStack, TriangleAttention)):
+                    setattr(layer, "inference_bucketing", True)  # noqa: B010 - runtime metadata
+        if not (config.compile or config.cuda_graph or flat_buckets):
             return
         if config.scope == "model":
             owner, method = model, "forward"
         elif family == "esmfold2":
-            owner, method = model.structure_head.diffusion_module, "denoise"
+            owner, method = (
+                model.get_submodule("structure_head.diffusion_module"),
+                "denoise",
+            )
         elif family == "af3":
-            owner, method = model.diffusion_head, "forward"
+            owner, method = model.get_submodule("diffusion_head"), "forward"
         else:
-            owner, method = model.diffusion_module, "forward"
+            owner, method = model.get_submodule("diffusion_module"), "forward"
         label = f"{family}.{config.scope}"
         wrapped = ExecutedCallable(getattr(owner, method), config, label)
-        setattr(owner, method, wrapped)
+        if flat_buckets:
+            from team_gm.modules.checkpoints.padding import BucketedDenoiser
+
+            self.bucket_adapter = BucketedDenoiser(wrapped)
+            setattr(owner, method, self.bucket_adapter)
+        else:
+            setattr(owner, method, wrapped)
         self.wrappers.append(wrapped)
 
     def report(self) -> dict[str, Any]:
@@ -60,7 +81,25 @@ class Execution:
             message = "Compilation was requested but no compiled graph executed"
             raise RuntimeError(message)
         replays = sum(x.replays for x in self.wrappers)
+        buckets = {}
+        if self.bucket_model is not None:
+            buckets = {
+                "denoiser_buckets": None
+                if self.bucket_adapter is None or self.bucket_adapter.shape is None
+                else vars(self.bucket_adapter.shape),
+                "pair_buckets": {
+                    name: layer.inference_pair_shape
+                    for name, layer in self.bucket_model.named_modules()
+                    if hasattr(layer, "inference_pair_shape")
+                },
+                "sampled_msa_buckets": {
+                    name: layer.inference_msa_shape
+                    for name, layer in self.bucket_model.named_modules()
+                    if hasattr(layer, "inference_msa_shape")
+                },
+            }
         return {
+            **buckets,
             "compile_requested": self.config.compile,
             "cuda_graph_requested": self.config.cuda_graph,
             "compile": self.config.compile and compiled > 0,
@@ -68,12 +107,13 @@ class Execution:
             "execution_scope": self.config.scope,
             "compiled_graphs": compiled,
             "cuda_graph_captures": sum(x.captures for x in self.wrappers),
+            "cuda_graph_evictions": sum(x.evictions for x in self.wrappers),
             "cuda_graph_replays": replays,
             "wrapped_calls": sum(x.calls for x in self.wrappers),
         }
 
 
-def measured_forward(
+def measured_forward[Result](
     fn: Callable[[], Result], repeats: int
 ) -> tuple[Result, dict[str, Any]]:
     """Time complete model forwards, preserving identical per-call random state."""
@@ -83,8 +123,12 @@ def measured_forward(
     py_state, np_state = random.getstate(), np.random.get_state()
     cpu_state, cuda_state = torch.get_rng_state(), torch.cuda.get_rng_state()
     timings = []
+    result = None
     torch.cuda.reset_peak_memory_stats()
-    for _ in range(repeats + 1):
+    for iteration in range(repeats + 1):
+        if iteration:
+            # Do not inflate peak memory by retaining the previous full prediction.
+            del result
         random.setstate(py_state)
         np.random.set_state(np_state)
         torch.set_rng_state(cpu_state)
@@ -94,7 +138,8 @@ def measured_forward(
         result = fn()
         torch.cuda.synchronize()
         timings.append(time.perf_counter() - start)
-    return result, {
+    # repeats + 1 always executes at least once after the range check.
+    return cast("Result", result), {
         "model_seconds_cold": timings[0],
         "model_seconds_warm": timings[1:],
         "model_seconds_warm_median": float(np.median(timings[1:])) if repeats else None,

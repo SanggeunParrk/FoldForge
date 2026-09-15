@@ -30,9 +30,10 @@ from safetensors.torch import load_file
 from team_gm.modules.exceptions import ImplementationType
 
 from foldforge.data.ccd import CCDDatabase, default_path
-from foldforge.models.esmfold2 import ESMFold2Config, convert
-from foldforge.models.esmfold2 import ESMFold2Model as Model
-from foldforge.models.esmfold2.features import (
+from foldforge.models.architectures.esmfold2 import ESMFold2Model as Model
+from foldforge.models.checkpoints import esmfold2 as convert
+from foldforge.models.config.esmfold2 import ESMFold2Config
+from foldforge.modules.sequence.features import (
     ESMFold2InputBuilder,
     build_input,
     model_kwargs,
@@ -112,7 +113,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ccd-db", type=Path, default=default_path())
     parser.add_argument("--target", default="4yx2")
-    parser.add_argument("--data-root", default="validation/data")
+    parser.add_argument("--data-root", default="validation/inputs/data")
     parser.add_argument("--out", default="benchmark/esmfold2/op_dispatch")
     parser.add_argument("--checkpoint", default="model_checkpoints/esmfold2")
     parser.add_argument("--msa-depth", type=int, default=512)

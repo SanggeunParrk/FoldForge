@@ -77,7 +77,7 @@ conditioning, BF16 and FP32 residual inputs, semantic batch axes, broadcasting,
 MSA masks and last-block ordering. Additional template cases include zero,
 one and two templates, interchain and pair masks; atom tests cover local query/
 key windows. Frozen pre-change forward bodies are versioned under
-`tests/reference_af_family`, so applying the patch cannot turn the comparison
+`tests/references`, so applying the patch cannot turn the comparison
 into a comparison of the new function against itself. Constructors and unchanged
 primitive operators remain shared and are not an independent full-model oracle.
 

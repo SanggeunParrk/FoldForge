@@ -10,9 +10,9 @@ from pathlib import Path
 
 def inventory(root: Path) -> list[dict]:
     rows = []
-    for path in sorted((root / "src/foldforge/models").rglob("*.py")):
+    for path in sorted((root / "src/foldforge").rglob("*.py")):
         relative = path.relative_to(root).as_posix()
-        if "/input/" in relative:
+        if not any(f"/{part}/" in relative for part in ("models", "modules")):
             continue
         tree = ast.parse(path.read_text())
         imports = [
@@ -41,20 +41,27 @@ def inventory(root: Path) -> list[dict]:
             )
             bases = ",".join(ast.unparse(b) for b in node.bases)
             name = node.name
-            if "/ported/" not in relative:
+            if "/architectures/" in relative:
                 status = "terminal model or explicit checkpoint adapter"
             elif name == "PairformerBlock":
                 status = "reference only; loader replaces composition with team-gm"
             elif name in {"ConditionedTransitionBlock", "DiffusionTransition"}:
-                status = "conditioned instances converted to engine after strict loading"
+                status = (
+                    "conditioned instances converted to engine after strict loading"
+                )
             elif name == "AdaptiveLayerNorm":
                 status = "conditioned instances converted; unconditioned norm retained"
             elif any(
                 isinstance(n, ast.Call)
                 and isinstance(n.func, ast.Name)
-                and n.func.id in {
-                    "conditioned_residual", "msa_pair_update", "msa_row_update",
-                    "template_embedding_mean", "outer_product_projection", "af3_outer_product_mean",
+                and n.func.id
+                in {
+                    "conditioned_residual",
+                    "msa_pair_update",
+                    "msa_row_update",
+                    "template_embedding_mean",
+                    "outer_product_projection",
+                    "af3_outer_product_mean",
                 }
                 for n in ast.walk(node)
             ):

@@ -66,7 +66,7 @@ compare coordinates against a same-code repeat: the fold is not bit-deterministi
 | `team_gm.modules.layers` → `Transition`, `TriangleMultiplication` | `miniworld_engine.modules` |
 | `team_gm.modules.layers.swa_atom_attention` → `build_attention_params` | `miniworld_engine.modules.swa_atom_attention` |
 | `team_gm.modules.exceptions.ImplementationType.MINIWORLD_KERNELS` | `…MINIWORLD_ENGINE` |
-| `team_gm.checkpoints` | `foldforge.checkpoints` (added here; it was never upstream) |
+| `team_gm.checkpoints` | `foldforge.models.checkpoints` (added here; it was never upstream) |
 | `team_gm.modules.blocks` → `DiffusionTransformer` | unchanged |
 | `team_gm.diffusion`, `team_gm.modules.primitives`, `team_gm.utils.transform`, `team_gm.typecheck` | unchanged |
 

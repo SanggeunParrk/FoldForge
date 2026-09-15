@@ -1,0 +1,69 @@
+{
+  "date": "2026-09-15",
+  "cpu_job": 1697729,
+  "gpu_job": 1697709,
+  "gpu": "NVIDIA RTX A6000",
+  "structure_job": 1697700,
+  "cancelled_cssb3_job": 45287,
+  "tests": {
+    "last-cpu-tests.xml": [
+      {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "164",
+        "tests": "344",
+        "time": "35.203",
+        "timestamp": "2026-09-15T14:21:32.739955+09:00",
+        "hostname": "node01"
+      }
+    ],
+    "local-gpu-tests.xml": [
+      {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "37",
+        "time": "345.023",
+        "timestamp": "2026-09-15T14:16:03.873976+09:00",
+        "hostname": "gpu01"
+      }
+    ]
+  },
+  "structure": {
+    "af3": {
+      "state_entries": 3771,
+      "modules": 3827,
+      "keys_shapes_dtypes_and_topology_identical": true
+    },
+    "protenix-v1": {
+      "state_entries": 4174,
+      "modules": 4790,
+      "keys_shapes_dtypes_and_topology_identical": true
+    },
+    "protenix-v2": {
+      "state_entries": 4174,
+      "modules": 4790,
+      "keys_shapes_dtypes_and_topology_identical": true
+    },
+    "opendde": {
+      "state_entries": 4482,
+      "modules": 5128,
+      "keys_shapes_dtypes_and_topology_identical": true
+    },
+    "esmfold2": {
+      "state_entries": 2043,
+      "modules": 2069,
+      "keys_shapes_dtypes_and_topology_identical": true
+    }
+  },
+  "scope": "Architecture state contract comparison and module numerical/compile/CUDA graph regression; no new end-to-end timing or all-model full-checkpoint numerical qualification.",
+  "wheel": {
+    "name": "foldforge-0.1.0-py3-none-any.whl",
+    "sha256": "6a5b659c4cfceaea0668a412ed4ae79947586a075a349752e49fb77c591d022f",
+    "build": "uv build --offline --wheel",
+    "retired_packages_absent": true,
+    "source_licenses_included": true
+  }
+}

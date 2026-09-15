@@ -17,7 +17,12 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from alphafold3.constants.chemical_components import Ccd
+    from biotite.structure.io.pdbx import CIFBlock
+    from rdkit.Chem.rdchem import Mol
 
 from pydantic import BaseModel, ConfigDict
 
@@ -37,14 +42,15 @@ class CCDDatabase:
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root).expanduser().resolve()
-        from .lmdb_store import SCHEMA, CCDLookup
+        from foldforge.data.ccd.lmdb_store import SCHEMA, CCDLookup
 
         manifest = self.root / "manifest.json"
         data = json.loads(manifest.read_text())
         if data.get("schema") != SCHEMA:
-            raise ValueError(
+            msg = (
                 "CCD must use MiniWorld BioMol LMDB; migrate with foldforge ccd prepare"
             )
+            raise ValueError(msg)
         self.manifest = data
         self.config = CCDConfig(
             ccd_db=self.root, source_sha256=data["sources"]["components_sha256"]
@@ -52,7 +58,8 @@ class CCDDatabase:
         for item in data["files"].values():
             path = (self.root / item["path"]).resolve()
             if not path.is_relative_to(self.root):
-                raise ValueError("CCD manifest paths must stay inside its database")
+                msg = "CCD manifest paths must stay inside its database"
+                raise ValueError(msg)
             if not path.is_file():
                 raise FileNotFoundError(path)
         self.lookup = CCDLookup(self.root)
@@ -72,30 +79,29 @@ class CCDDatabase:
         """Lazy references; no whole-database pickle is loaded at runtime."""
         return _MoleculeView(self)
 
-    def af3_ccd(self, user_ccd=None):
+    def af3_ccd(self, user_ccd: str | None = None) -> Ccd:
         """AF3 mapping over the exact same records, with explicit user overrides."""
-        from collections import ChainMap
-
         from alphafold3.constants.chemical_components import Ccd
         from alphafold3.cpp import cif_dict
 
-        view = _AF3View(self)
+        view: Mapping = _AF3View(self)
         if user_ccd is not None:
             if not user_ccd:
-                raise ValueError("User CCD cannot be empty")
+                msg = "User CCD cannot be empty"
+                raise ValueError(msg)
             overrides = {
                 k: {c: tuple(v) for c, v in record.items()}
                 for k, record in cif_dict.parse_multi_data_cif(user_ccd).items()
             }
-            view = ChainMap(overrides, view)
+            view = _OverlayView(overrides, view)
         # Ccd's public Mapping contract is retained, without reading a pickle.
         result = Ccd.__new__(Ccd)
-        result._dict = view
-        result._ccd_pickle_path = None
+        result._dict = view  # noqa: SLF001 - shared runtime integration hook
         return result
 
     @property
-    def chemical_component_sets(self):
+    def chemical_component_sets(self) -> dict[str, frozenset[str]]:
+        """Compute chemical component sets."""
         return {
             key: frozenset(value)
             for key, value in self.manifest["chemical_component_sets"].items()
@@ -157,18 +163,22 @@ class CCDDatabase:
 
 
 class _RecordView(Mapping):
-    def __init__(self, database):
+    """Represent record view."""
+
+    def __init__(self, database: CCDDatabase) -> None:
         self.database = database
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         return iter(self.database.lookup)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.database.lookup)
 
 
 class _AF3View(_RecordView):
-    def __getitem__(self, key):
+    """Represent a f3 view."""
+
+    def __getitem__(self, key: str) -> dict[str, list[str]]:
         metadata = self.database.lookup.ccdmol(key).metadata
         return {
             "data_": [key],
@@ -178,7 +188,9 @@ class _AF3View(_RecordView):
 
 
 class _CIFView(_RecordView):
-    def __getitem__(self, key):
+    """Represent c i f view."""
+
+    def __getitem__(self, key: str) -> CIFBlock:
         from biotite.structure.io.pdbx import CIFBlock, CIFCategory
 
         cache = self.database.cache("cif_block")
@@ -196,7 +208,9 @@ class _CIFView(_RecordView):
 
 
 class _MoleculeView(_RecordView):
-    def __getitem__(self, key):
+    """Represent molecule view."""
+
+    def __getitem__(self, key: str) -> Mol | None:
         import numpy as np
         from rdkit import Chem
 
@@ -206,7 +220,10 @@ class _MoleculeView(_RecordView):
             if reference is None:
                 cache[key] = None
             else:
-                mol = Chem.Mol(base64.b64decode(reference["rdkit_binary"]))
+                # RDKit supports binary construction; its stubs omit this overload.
+
+                from_binary = cast("Callable[[bytes], Mol]", Chem.Mol)
+                mol = from_binary(base64.b64decode(reference["rdkit_binary"]))
                 mol.__dict__.update(reference["properties"])
                 mol.ref_mask = np.asarray(mol.ref_mask, dtype=bool)
                 cache[key] = mol
@@ -271,8 +288,11 @@ def database_cache(function: Callable | None = None, **_options: Any) -> Callabl
     """Cache a lookup inside the selected database, including missing entries."""
 
     def decorate(fn: Callable) -> Callable:
+        """Compute decorate."""
+
         @functools.wraps(fn)
         def wrapped(*args: Any, **kwargs: Any) -> Any:
+            """Compute wrapped."""
             cache = current_database().cache(fn.__module__ + "." + fn.__qualname__)
             key = (args, tuple(sorted(kwargs.items())))
             if key not in cache:
@@ -287,3 +307,23 @@ def database_cache(function: Callable | None = None, **_options: Any) -> Callabl
 def default_path() -> Path:
     """Shared CLI default, independent of the selected model."""
     return Path(os.environ.get("FOLDFORGE_CCD_DB", "data/ccd/preprocessed_CCD.lmdb"))
+
+
+class _OverlayView(Mapping):
+    """Read user overrides ahead of lazy CCD records without materializing the DB."""
+
+    def __init__(self, overrides: Mapping, base: Mapping) -> None:
+        self.overrides = overrides
+        self.base = base
+
+    def __getitem__(self, key: str) -> Any:
+        if key in self.overrides:
+            return self.overrides[key]
+        return self.base[key]
+
+    def __iter__(self) -> Iterator[str]:
+        yield from self.overrides
+        yield from (key for key in self.base if key not in self.overrides)
+
+    def __len__(self) -> int:
+        return len(self.base) + sum(key not in self.base for key in self.overrides)

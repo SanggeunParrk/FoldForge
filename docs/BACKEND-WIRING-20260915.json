@@ -1,0 +1,558 @@
+{
+  "before_wiring": {
+    "miniworld": {
+      "backend": "miniworld",
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "job": "43907",
+      "rows": [
+        {
+          "index": 0,
+          "warmup": true,
+          "cuda_graph": false,
+          "seconds": 122.00724461302161,
+          "replays": 0,
+          "captures": 0,
+          "peak_allocated_bytes": 7219368960
+        },
+        {
+          "index": 1,
+          "warmup": true,
+          "cuda_graph": true,
+          "seconds": 59.059920673957095,
+          "replays": 1000,
+          "captures": 1,
+          "peak_allocated_bytes": 6670373888
+        },
+        {
+          "index": 2,
+          "warmup": false,
+          "cuda_graph": false,
+          "seconds": 52.3491673420649,
+          "replays": 0,
+          "captures": 0,
+          "peak_allocated_bytes": 6922936832
+        },
+        {
+          "index": 3,
+          "warmup": false,
+          "cuda_graph": true,
+          "seconds": 50.99590729502961,
+          "replays": 1000,
+          "captures": 0,
+          "peak_allocated_bytes": 6914989056
+        },
+        {
+          "index": 4,
+          "warmup": false,
+          "cuda_graph": true,
+          "seconds": 51.0211682501249,
+          "replays": 1000,
+          "captures": 0,
+          "peak_allocated_bytes": 7029304320
+        },
+        {
+          "index": 5,
+          "warmup": false,
+          "cuda_graph": false,
+          "seconds": 52.508718342054635,
+          "replays": 0,
+          "captures": 0,
+          "peak_allocated_bytes": 7131528192
+        },
+        {
+          "index": 6,
+          "warmup": false,
+          "cuda_graph": true,
+          "seconds": 51.10970815294422,
+          "replays": 1000,
+          "captures": 0,
+          "peak_allocated_bytes": 7131528192
+        },
+        {
+          "index": 7,
+          "warmup": false,
+          "cuda_graph": false,
+          "seconds": 52.53712027496658,
+          "replays": 0,
+          "captures": 0,
+          "peak_allocated_bytes": 7237282304
+        }
+      ]
+    },
+    "pytorch": {
+      "backend": "pytorch",
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "job": "43908",
+      "rows": [
+        {
+          "index": 0,
+          "warmup": true,
+          "cuda_graph": false,
+          "seconds": 79.30531206796877,
+          "replays": 0,
+          "captures": 0,
+          "peak_allocated_bytes": 6670373888
+        },
+        {
+          "index": 1,
+          "warmup": true,
+          "cuda_graph": true,
+          "seconds": 74.95195368491113,
+          "replays": 1000,
+          "captures": 1,
+          "peak_allocated_bytes": 6670373888
+        },
+        {
+          "index": 2,
+          "warmup": false,
+          "cuda_graph": false,
+          "seconds": 68.27827217709273,
+          "replays": 0,
+          "captures": 0,
+          "peak_allocated_bytes": 6922567168
+        },
+        {
+          "index": 3,
+          "warmup": false,
+          "cuda_graph": true,
+          "seconds": 67.43982615391724,
+          "replays": 1000,
+          "captures": 0,
+          "peak_allocated_bytes": 6916467712
+        },
+        {
+          "index": 4,
+          "warmup": false,
+          "cuda_graph": true,
+          "seconds": 67.44193962891586,
+          "replays": 1000,
+          "captures": 0,
+          "peak_allocated_bytes": 7028749824
+        },
+        {
+          "index": 5,
+          "warmup": false,
+          "cuda_graph": false,
+          "seconds": 68.26494444999844,
+          "replays": 0,
+          "captures": 0,
+          "peak_allocated_bytes": 7130788864
+        },
+        {
+          "index": 6,
+          "warmup": false,
+          "cuda_graph": true,
+          "seconds": 67.45569734997116,
+          "replays": 1000,
+          "captures": 0,
+          "peak_allocated_bytes": 7130788864
+        },
+        {
+          "index": 7,
+          "warmup": false,
+          "cuda_graph": false,
+          "seconds": 68.31029621977359,
+          "replays": 0,
+          "captures": 0,
+          "peak_allocated_bytes": 7244305920
+        }
+      ]
+    }
+  },
+  "after_wiring": {
+    "backend": "miniworld",
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "job": "43917",
+    "rows": [
+      {
+        "index": 0,
+        "warmup": true,
+        "cuda_graph": false,
+        "seconds": 234.8238698770292,
+        "replays": 0,
+        "captures": 0,
+        "peak_allocated_bytes": 4133278720
+      },
+      {
+        "index": 1,
+        "warmup": true,
+        "cuda_graph": true,
+        "seconds": 34.50178585899994,
+        "replays": 1000,
+        "captures": 1,
+        "peak_allocated_bytes": 3584283648
+      },
+      {
+        "index": 2,
+        "warmup": false,
+        "cuda_graph": false,
+        "seconds": 32.397574626025744,
+        "replays": 0,
+        "captures": 0,
+        "peak_allocated_bytes": 3836292096
+      },
+      {
+        "index": 3,
+        "warmup": false,
+        "cuda_graph": true,
+        "seconds": 26.135087994975038,
+        "replays": 1000,
+        "captures": 0,
+        "peak_allocated_bytes": 3830192640
+      },
+      {
+        "index": 4,
+        "warmup": false,
+        "cuda_graph": true,
+        "seconds": 26.239725289982744,
+        "replays": 1000,
+        "captures": 0,
+        "peak_allocated_bytes": 3942844416
+      },
+      {
+        "index": 5,
+        "warmup": false,
+        "cuda_graph": false,
+        "seconds": 31.949534610961564,
+        "replays": 0,
+        "captures": 0,
+        "peak_allocated_bytes": 4045068288
+      },
+      {
+        "index": 6,
+        "warmup": false,
+        "cuda_graph": true,
+        "seconds": 26.329414175939746,
+        "replays": 1000,
+        "captures": 0,
+        "peak_allocated_bytes": 4045068288
+      },
+      {
+        "index": 7,
+        "warmup": false,
+        "cuda_graph": false,
+        "seconds": 32.275385080021806,
+        "replays": 0,
+        "captures": 0,
+        "peak_allocated_bytes": 4156718592
+      }
+    ]
+  },
+  "numerics": [
+    {
+      "case": "af3-start-mixed",
+      "relative_rms": 0.0053473953157663345,
+      "max_abs": 0.0029296875
+    },
+    {
+      "case": "af3-end-mixed",
+      "relative_rms": 0.005347020458430052,
+      "max_abs": 0.00390625
+    },
+    {
+      "case": "shared-start-mixed",
+      "relative_rms": 0.005261644721031189,
+      "max_abs": 0.0029296875
+    },
+    {
+      "case": "shared-end-mixed",
+      "relative_rms": 0.00526997959241271,
+      "max_abs": 0.00390625
+    },
+    {
+      "case": "af3-token-mixed",
+      "relative_rms": 0.006900662090629339,
+      "max_abs": 0.0048828125
+    },
+    {
+      "case": "shared-token-mixed",
+      "relative_rms": 0.0036010569892823696,
+      "max_abs": 0.001953125
+    },
+    {
+      "case": "af3-start-empty",
+      "relative_rms": 0.00032921458478085697,
+      "max_abs": 0.0009765625
+    },
+    {
+      "case": "af3-end-empty",
+      "relative_rms": 0.00041301370947621763,
+      "max_abs": 0.0009765625
+    },
+    {
+      "case": "shared-start-empty",
+      "relative_rms": 0.00032034635660238564,
+      "max_abs": 0.0009765625
+    },
+    {
+      "case": "shared-end-empty",
+      "relative_rms": 0.0003874018439091742,
+      "max_abs": 0.0009765625
+    },
+    {
+      "case": "af3-token-empty",
+      "relative_rms": 0.0,
+      "max_abs": 0.0
+    },
+    {
+      "case": "shared-token-empty",
+      "relative_rms": 0.002468244871124625,
+      "max_abs": 0.0009765625
+    },
+    {
+      "case": "compile-graph",
+      "relative_rms": 0.0,
+      "max_abs": 0.0
+    },
+    {
+      "case": "pair-ln-linear",
+      "relative_rms": 0.0025668779853731394,
+      "max_abs": 0.015625
+    },
+    {
+      "case": "cueq-outside-pairformer",
+      "relative_rms": 0.0021819835528731346,
+      "max_abs": 0.00048828125
+    }
+  ],
+  "smokes": {
+    "af3-cuequivariance": {
+      "model": "af3",
+      "backend": "cuequivariance",
+      "job": "43925",
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "checkpoint": {
+        "checkpoint": "/home/psk6950/practice/FoldForge/model_checkpoints/af3/af3.bin.zst",
+        "strict": true,
+        "source_records": 405,
+        "mapped_records": 404,
+        "team_gm_pairformer_blocks": 54,
+        "engine_adaln": 75,
+        "engine_conditioned_transition": 33
+      },
+      "ops": {
+        "cuequivariance::layer_norm_transpose": 512,
+        "cuequivariance::fused_gated_dual_gemm": 512,
+        "cuequivariance::triangle_attention": 256
+      },
+      "graphs": [
+        {
+          "captures": 1,
+          "replays": 4
+        }
+      ],
+      "status": 0
+    },
+    "af3-miniworld": {
+      "model": "af3",
+      "backend": "miniworld",
+      "job": "43915",
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "checkpoint": {
+        "checkpoint": "/home/psk6950/practice/FoldForge/model_checkpoints/af3/af3.bin.zst",
+        "strict": true,
+        "source_records": 405,
+        "mapped_records": 404,
+        "team_gm_pairformer_blocks": 54,
+        "engine_adaln": 75,
+        "engine_conditioned_transition": 33
+      },
+      "ops": {
+        "miniworld_engine::layernorm_fwd": 1537,
+        "miniworld_engine::adaln_inference_fused": 226,
+        "miniworld_engine::conditioned_transition_inference": 75,
+        "miniworld_engine::trimul_bidir_front": 240,
+        "miniworld_engine::trimul_back_fused": 240,
+        "miniworld_engine::augmented_attention_fwd": 647,
+        "miniworld_engine::transition_fused_fwd": 128,
+        "miniworld_engine::layernorm_stats": 128,
+        "miniworld_engine::transition_expand_swiglu": 96
+      },
+      "graphs": [
+        {
+          "captures": 1,
+          "replays": 4
+        }
+      ],
+      "status": 0
+    },
+    "esmfold2-miniworld": {
+      "model": "esmfold2",
+      "backend": "miniworld",
+      "job": "43921",
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "checkpoint": {},
+      "ops": {
+        "miniworld_engine::layernorm_fwd": 511,
+        "miniworld_engine::qk_norm_rope_fwd": 32,
+        "miniworld_engine::swa_atom_attention_flash_window": 33,
+        "miniworld_engine::swa_gate_out_fwd": 32,
+        "miniworld_engine::layernorm_dispatch_fwd": 276,
+        "miniworld_engine::transition_fused_fwd": 6,
+        "miniworld_engine::layernorm_stats": 294,
+        "miniworld_engine::trimul_bidir_front": 456,
+        "miniworld_engine::trimul_back_fused": 456,
+        "miniworld_engine::transition_expand_swiglu": 256,
+        "miniworld_engine::adaln_cond_affine": 288,
+        "miniworld_engine::adaln_gemm_gate": 288,
+        "miniworld_engine::augmented_attention_fwd": 144,
+        "miniworld_engine::conditioned_transition_composed_expand_swiglu": 144,
+        "miniworld_engine::conditioned_transition_composed_squeeze_gate": 144
+      },
+      "graphs": [
+        {
+          "captures": 1,
+          "replays": 4
+        }
+      ],
+      "status": 0
+    },
+    "opendde-miniworld": {
+      "model": "opendde",
+      "backend": "miniworld",
+      "job": "43920",
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "checkpoint": {
+        "checkpoint": "/home/psk6950/practice/FoldForge/model_checkpoints/opendde/opendde.pt",
+        "variant": "opendde_v1",
+        "state_entries": 4482,
+        "strict": true,
+        "team_gm_pairformer_blocks": 62,
+        "engine_adaln": 75,
+        "engine_conditioned_transition": 33
+      },
+      "ops": {
+        "miniworld_engine::adaln_inference_fused": 18,
+        "miniworld_engine::layernorm_linear_pair_bias_fwd": 6,
+        "miniworld_engine::conditioned_transition_inference": 6,
+        "miniworld_engine::layernorm_fwd": 1120,
+        "miniworld_engine::trimul_bidir_front": 272,
+        "miniworld_engine::trimul_back_fused": 272,
+        "miniworld_engine::augmented_attention_fwd": 384,
+        "miniworld_engine::transition_fused_fwd": 24,
+        "miniworld_engine::layernorm_stats": 24,
+        "miniworld_engine::transition_expand_swiglu": 254
+      },
+      "graphs": [
+        {
+          "captures": 1,
+          "replays": 4
+        }
+      ],
+      "status": 0
+    },
+    "protenix-miniworld": {
+      "model": "protenix",
+      "backend": "miniworld",
+      "job": "43916",
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "checkpoint": {
+        "checkpoint": "/home/psk6950/practice/FoldForge/model_checkpoints/protenix/protenix_base_default_v1.0.0.pt",
+        "variant": "protenix_base_default_v1.0.0",
+        "state_entries": 4174,
+        "strict": true,
+        "team_gm_pairformer_blocks": 58,
+        "engine_adaln": 75,
+        "engine_conditioned_transition": 33
+      },
+      "ops": {
+        "miniworld_engine::adaln_inference_fused": 18,
+        "miniworld_engine::layernorm_linear_pair_bias_fwd": 6,
+        "miniworld_engine::conditioned_transition_inference": 6,
+        "miniworld_engine::layernorm_fwd": 938,
+        "miniworld_engine::augmented_attention_fwd": 360,
+        "miniworld_engine::transition_fused_fwd": 136,
+        "miniworld_engine::layernorm_stats": 136,
+        "miniworld_engine::trimul_bidir_front": 224,
+        "miniworld_engine::trimul_back_fused": 224,
+        "miniworld_engine::transition_expand_swiglu": 126
+      },
+      "graphs": [
+        {
+          "captures": 1,
+          "replays": 4
+        }
+      ],
+      "status": 0
+    },
+    "esmfold2-cuequivariance": {
+      "model": "esmfold2",
+      "backend": "cuequivariance",
+      "job": "43914",
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "checkpoint": {},
+      "ops": {
+        "miniworld_engine::swa_atom_attention_flash_window": 30,
+        "cuequivariance::layer_norm_transpose": 912,
+        "cuequivariance::fused_gated_dual_gemm": 912
+      },
+      "graphs": [
+        {
+          "captures": 1,
+          "replays": 4
+        }
+      ],
+      "status": 0
+    },
+    "opendde-cuequivariance": {
+      "model": "opendde",
+      "backend": "cuequivariance",
+      "job": "43935",
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "checkpoint": {
+        "checkpoint": "/home/psk6950/practice/FoldForge/model_checkpoints/opendde/opendde.pt",
+        "variant": "opendde_v1",
+        "state_entries": 4482,
+        "strict": true,
+        "team_gm_pairformer_blocks": 62,
+        "engine_adaln": 75,
+        "engine_conditioned_transition": 33
+      },
+      "ops": {
+        "cuequivariance::layer_norm_transpose": 544,
+        "cuequivariance::fused_gated_dual_gemm": 544,
+        "cuequivariance::triangle_attention": 272
+      },
+      "graphs": [
+        {
+          "captures": 1,
+          "replays": 4
+        }
+      ],
+      "status": 0
+    },
+    "protenix-cuequivariance": {
+      "model": "protenix",
+      "backend": "cuequivariance",
+      "job": "43928",
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "checkpoint": {
+        "checkpoint": "/home/psk6950/practice/FoldForge/model_checkpoints/protenix/protenix_base_default_v1.0.0.pt",
+        "variant": "protenix_base_default_v1.0.0",
+        "state_entries": 4174,
+        "strict": true,
+        "team_gm_pairformer_blocks": 58,
+        "engine_adaln": 75,
+        "engine_conditioned_transition": 33
+      },
+      "ops": {
+        "cuequivariance::triangle_attention": 256,
+        "cuequivariance::layer_norm_transpose": 448,
+        "cuequivariance::fused_gated_dual_gemm": 448
+      },
+      "graphs": [
+        {
+          "captures": 1,
+          "replays": 4
+        }
+      ],
+      "status": 0
+    }
+  },
+  "regressions": {
+    "backend_tests": 19,
+    "unit_norm_backend_tests": 19,
+    "existing_tests": 90,
+    "snapshot_helper_omission": "43919: 89 passed + 1 missing helper; helper copied unchanged; 43937: affected test passed"
+  }
+}

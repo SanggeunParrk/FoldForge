@@ -12,14 +12,14 @@ records remain available for another invocation with a new output directory.
 ```bash
 source scripts/activate_env.sh
 python scripts/build_autotune_cache.py \
-  --model af3 --cache-dir validation/cache/a6000 \
-  --out validation/cache-units/af3-1ubq --timeout 3600 -- \
+  --model af3 --cache-dir benchmark/cache/a6000 \
+  --out runs/cache-units/af3-1ubq --timeout 3600 -- \
   --spec configs/inference/operational-1ubq.yaml \
   --config configs/inference/graph-bf16.yaml
 
 foldforge fold af3 --spec configs/inference/operational-1ubq.yaml \
   --config configs/inference/graph-bf16.yaml \
-  --engine-cache-dir validation/cache/a6000 --out outputs/af3-1ubq
+  --engine-cache-dir benchmark/cache/a6000 --out runs/af3-1ubq
 ```
 
 The example uses the cluster's operational BioMol MSA/template stores; edit paths

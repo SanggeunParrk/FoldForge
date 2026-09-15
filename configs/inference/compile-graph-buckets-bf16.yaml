@@ -1,0 +1,10 @@
+# Tokens round up by 128; engine atom ladder; MSA 2048, 4096, 8192, 16384.
+backend: miniworld
+precision: bf16
+execution:
+  compile: true
+  cuda_graph: true
+  bucketing: true
+  scope: denoiser
+  max_graphs: 4
+  benchmark_repeats: 2

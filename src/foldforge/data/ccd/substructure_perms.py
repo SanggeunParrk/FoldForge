@@ -13,13 +13,17 @@
 # limitations under the License.
 
 import itertools
+import logging
 from collections import defaultdict
 
 import numpy as np
 from rdkit import Chem
 
+logger = logging.getLogger(__name__)
 
-def neutralize_atoms(mol: Chem.Mol):
+
+def neutralize_atoms(mol: Chem.Mol) -> Chem.Mol:
+    """Compute neutralize atoms."""
     pattern = Chem.MolFromSmarts(
         "[+1!h0!$([*]~[-1,-2,-3,-4]),-1!#4!#5!$([*]~[+1,+2,+3,+4])]"
     )
@@ -36,7 +40,9 @@ def neutralize_atoms(mol: Chem.Mol):
     return mol
 
 
-def recursive_permutation(atom_inds, permutation_list, res):
+def recursive_permutation(atom_inds, permutation_list, res) -> None:
+    """Compute recursive permutation."""
+
     def _permute_atom_ind(atom_inds, permutation):
         # atom_inds: list of atom (positional) indices
         # permutation: values to be permutated in the given order
@@ -55,20 +61,31 @@ def recursive_permutation(atom_inds, permutation_list, res):
 
 
 def augment_atom_maps_with_conjugate_terminal_groups(
-    original_maps, atomic_number_mapping, terminal_group_tuples, MaxMatches=1e6
-):
-    """
-    Augment atom maps from GetSubstructMatches with extra symmetry from confjugated terminal groups.
+    original_maps, atomic_number_mapping, terminal_group_tuples, MaxMatches: float = 1e6
+) -> tuple:
+    """Compute augment atom maps with conjugate terminal groups.
+
+    Augment atom maps from GetSubstructMatches with extra symmetry from confjugated
+    terminal groups.
+
     Parameters
-    --------------
-    original_maps:  Tuple(Tuples), all possible atom index mappings, note we require that the mappings should range from 0 to n_heavy_atom-1 (a.k.a. no gap in indexing)
-    atomic_number_mapping: dict, mapping from atom (positional) indices to its atomic numbers, for splitting/removing different types of atoms in each terminal group
-    terminal_group_tuples: Tuple(Tuples), a group of pair of atoms whose bonds match the SMARTS string. Ex: ((0, 1), (2, 1), (10, 9), (11, 9), (12, 9), (14, 13), (15, 13))
-    MaxMatches: int, cutoff for total number of matches (n_original_perm * n_conjugate perm)
+    ----------
+    original_maps:  Tuple(Tuples), all possible atom index mappings, note we require
+        that the mappings should range from 0 to n_heavy_atom-1 (a.k.a. no gap in
+        indexing)
+    atomic_number_mapping: dict, mapping from atom (positional) indices to its atomic
+        numbers, for splitting/removing different types of atoms in each terminal group
+    terminal_group_tuples: Tuple(Tuples), a group of pair of atoms whose bonds match
+        the SMARTS string. Ex: ((0, 1), (2, 1), (10, 9), (11, 9), (12, 9), (14, 13),
+        (15, 13))
+    MaxMatches: int, cutoff for total number of matches (n_original_perm * n_conjugate
+        perm)
 
     Returns
-    --------------
-    augmented_maps: Tuple(Tuples) , original_maps augmented by muliplying the permutations induced by terminal_group_tuples.
+    -------
+    augmented_maps: Tuple(Tuples) , original_maps augmented by muliplying the
+        permutations induced by terminal_group_tuples.
+
     """
 
     def _terminal_atom_cluster_from_pairs(edges):
@@ -90,12 +107,14 @@ def augment_atom_maps_with_conjugate_terminal_groups(
             result.extend(mapped_sets.values())
         return result
 
-    # group terminal group tuples with common atom_indices: [{0, 2}, {10, 11, 12}, {14, 15}]
+    # group terminal group tuples with common atom_indices: [{0, 2}, {10, 11, 12}, {14,
+    # 15}]
     terminal_atom_clusters = _terminal_atom_cluster_from_pairs(terminal_group_tuples)
     MaxTerminalGroups = max(
         1, int(np.ceil(np.emath.logn(3, MaxMatches / len(original_maps))))
     )
-    # if MaxTerminalGroups is less than the total number terminal groups, sample the first {MaxTerminalGroups} groups (to remove randomness)
+    # if MaxTerminalGroups is less than the total number terminal groups, sample the
+    # first {MaxTerminalGroups} groups (to remove randomness)
 
     perm_groups = sorted(
         [
@@ -105,12 +124,15 @@ def augment_atom_maps_with_conjugate_terminal_groups(
         ]
     )[: min(MaxTerminalGroups, len(terminal_atom_clusters))]
 
-    # within each terminal group, if there are different atom types, split by atom type (if only one left, discard)
+    # within each terminal group, if there are different atom types, split by atom type
+    # (if only one left, discard)
     perm_groups = _split_sets_by_mapped_values(perm_groups, atomic_number_mapping)
     perm_groups = [p for p in perm_groups if len(p) > 1]
 
-    # all permutations according to symmetric conjugate terminal atoms: [[(0, 2), (2, 0)], [(10, 11, 12), (10, 12, 11), (11, 10, 12), (11, 12, 10), (12, 10, 11), (12, 11, 10)], [(14, 15), (15, 14)]]
-    perm_groups = [sorted(list(itertools.permutations(g))) for g in perm_groups]
+    # all permutations according to symmetric conjugate terminal atoms: [[(0, 2), (2,
+    # 0)], [(10, 11, 12), (10, 12, 11), (11, 10, 12), (11, 12, 10), (12, 10, 11), (12,
+    # 11, 10)], [(14, 15), (15, 14)]]
+    perm_groups = [sorted(itertools.permutations(g)) for g in perm_groups]
 
     # recursively permute the original mappings
     augmented_maps = []
@@ -119,22 +141,25 @@ def augment_atom_maps_with_conjugate_terminal_groups(
 
     # Convert to the same data type as in original_maps
     augmented_maps = tuple(tuple(a) for a in augmented_maps)
-    # Remove duplicates: original_maps might have already permutated some of the conjugate_terminal group indices
+    # Remove duplicates: original_maps might have already permutated some of the
+    # conjugate_terminal group indices
     return tuple(set(augmented_maps))
 
 
 def _get_substructure_perms(
     mol: Chem.Mol,
+    *,
     Neutralize: bool = False,
     CheckStereochem: bool = True,
     SymmetrizeConjugatedTerminal: bool = True,
     MaxMatches: int = 512,
 ) -> np.ndarray:
-    """
-    Args:
+    """Args:
+
         CheckStereochem: whether to assure stereochem does not change after permutation
         Neutralize: if true, neutralize the mol before computing the permutations
-        SymmetrizeConjugatedTerminal: if true, consider symmetrization of conjugated terminal groups
+        SymmetrizeConjugatedTerminal: if true, consider symmetrization of conjugated
+            terminal groups
         MaxMatches: int, cutoff for total number of matches
 
     return shape=[num_perms, num_atoms]
@@ -154,7 +179,9 @@ def _get_substructure_perms(
     base_perms = np.array(
         mol.GetSubstructMatches(mol, uniquify=False, maxMatches=MaxMatches)
     )
-    assert len(base_perms) > 0, "no matches found, error"
+    if not (len(base_perms) > 0):
+        message = "no matches found, error"
+        raise ValueError(message)
     # Check stereochem
     if CheckStereochem:
         chem_order = np.array(
@@ -207,11 +234,13 @@ def _get_substructure_perms(
 
 def get_substructure_perms(
     mol: Chem.Mol,
+    *,
     CheckStereochem: bool = True,
     SymmetrizeConjugatedTerminal: bool = True,
     MaxMatches: int = 512,
     KeepProtonation: bool = False,
 ) -> np.ndarray:
+    """Return substructure perms."""
     kwargs = {
         "CheckStereochem": CheckStereochem,
         "SymmetrizeConjugatedTerminal": SymmetrizeConjugatedTerminal,
@@ -238,19 +267,23 @@ def get_substructure_perms(
     return perms
 
 
-def test():
+def test() -> None:
+    """Compute test."""
     testcases = [
         "C1=CC=CC=C1",
         "CC(=O)OC1=CC=CC=C1C(=O)O",
-        "C[C@H](CCC(=O)O)[C@H]1CC[C@@H]2[C@@]1(CC[C@H]3[C@H]2CC=C4[C@@]3(CC[C@@H](C4)O)C)C",
+        (
+            "C[C@H](CCC(=O)O)[C@H]1CC[C@@H]2[C@@]1(CC[C@H]3[C@H]2CC=C4[C@@]3("
+            "CC[C@@H](C4)O)C)C"
+        ),
         "CN1C=NC2=C1C(=O)N(C(=O)N2C)C",
     ]
     for smiles in testcases:
-        print(smiles)
+        logger.info("%s", smiles)
         molecule = Chem.MolFromSmiles(smiles)
         perms = get_substructure_perms(molecule)
-        print(perms.shape)
-        print(perms.T)
+        logger.info("%s", perms.shape)
+        logger.info("%s", perms.T)
 
 
 if __name__ == "__main__":

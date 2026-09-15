@@ -1,0 +1,1296 @@
+{
+  "af3": {
+    "old": "/home/psk6950/practice/FoldForge/validation/cssb3-runtime/af3/1ubq-seed0.prediction.pt",
+    "new": "/home/psk6950/practice/FoldForge/validation/shared-core-20260914/final/af3/1ubq-seed0.prediction.pt",
+    "tensor_count": 12,
+    "tensors": [
+      {
+        "equal": true,
+        "path": "prediction.coords",
+        "shape": [
+          1,
+          602,
+          3
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "prediction.plddt",
+        "shape": [
+          1,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "prediction.pae",
+        "shape": [
+          1,
+          76,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "full_confidence.coordinates",
+        "shape": [
+          1,
+          602,
+          3
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "full_confidence.plddt",
+        "shape": [
+          1,
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "full_confidence.predicted_lddt",
+        "shape": [
+          1,
+          128,
+          24
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "full_confidence.predicted_experimentally_resolved",
+        "shape": [
+          1,
+          128,
+          24
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "full_confidence.full_pde",
+        "shape": [
+          1,
+          128,
+          128
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "full_confidence.average_pde",
+        "shape": [
+          1
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "full_confidence.full_pae",
+        "shape": [
+          1,
+          128,
+          128
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "full_confidence.tmscore_adjusted_pae_global",
+        "shape": [
+          1,
+          128,
+          128
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "full_confidence.tmscore_adjusted_pae_interface",
+        "shape": [
+          1,
+          128,
+          128
+        ],
+        "max_abs": 0.0
+      }
+    ]
+  },
+  "esmfold2": {
+    "old": "/home/psk6950/practice/FoldForge/validation/cssb3-runtime/esmfold2/1ubq.prediction.pt",
+    "new": "/home/psk6950/practice/FoldForge/validation/shared-core-20260914/final/esmfold2/1ubq.prediction.pt",
+    "tensor_count": 5,
+    "tensors": [
+      {
+        "equal": true,
+        "path": "prediction.coords",
+        "shape": [
+          1,
+          608,
+          3
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "prediction.plddt",
+        "shape": [
+          1,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "prediction.pae",
+        "shape": [
+          1,
+          76,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "prediction.ptm",
+        "shape": [
+          1
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "prediction.iptm",
+        "shape": [
+          1
+        ],
+        "max_abs": 0.0
+      }
+    ]
+  },
+  "protenix": {
+    "old": "/home/psk6950/practice/FoldForge/validation/shared-core-20260914/reference-predictions/protenix/1ubq.prediction.pt",
+    "new": "/home/psk6950/practice/FoldForge/validation/shared-core-20260914/final/protenix/1ubq.prediction.pt",
+    "tensor_count": 59,
+    "tensors": [
+      {
+        "equal": true,
+        "path": "features.token_index",
+        "shape": [
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.residue_index",
+        "shape": [
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.asym_id",
+        "shape": [
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.entity_id",
+        "shape": [
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.sym_id",
+        "shape": [
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.restype",
+        "shape": [
+          76,
+          32
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.token_bonds",
+        "shape": [
+          76,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.ref_pos",
+        "shape": [
+          602,
+          3
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.ref_mask",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.ref_element",
+        "shape": [
+          602,
+          128
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.ref_charge",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.ref_atom_name_chars",
+        "shape": [
+          602,
+          4,
+          64
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.ref_space_uid",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.has_frame",
+        "shape": [
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.frame_atom_index",
+        "shape": [
+          76,
+          3
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.atom_to_token_idx",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.atom_to_tokatom_idx",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.is_protein",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.is_ligand",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.is_dna",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.is_rna",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.resolution",
+        "shape": [
+          1
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.mol_id",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.mol_atom_index",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.entity_mol_id",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.pae_rep_atom_mask",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.plddt_m_rep_atom_mask",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.distogram_rep_atom_mask",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.modified_res_mask",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.bond_mask",
+        "shape": [
+          602,
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.constraint_feature.contact_atom",
+        "shape": [
+          76,
+          76,
+          2
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.constraint_feature.contact",
+        "shape": [
+          76,
+          76,
+          2
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.constraint_feature.pocket",
+        "shape": [
+          76,
+          76,
+          1
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.constraint_feature.substructure",
+        "shape": [
+          76,
+          76,
+          4
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.template_aatype",
+        "shape": [
+          4,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.template_atom_positions",
+        "shape": [
+          4,
+          76,
+          24,
+          3
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.template_atom_mask",
+        "shape": [
+          4,
+          76,
+          24
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.template_pseudo_beta_mask",
+        "shape": [
+          4,
+          76,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.template_distogram",
+        "shape": [
+          4,
+          76,
+          76,
+          39
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.template_unit_vector",
+        "shape": [
+          4,
+          76,
+          76,
+          3
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.template_backbone_frame_mask",
+        "shape": [
+          4,
+          76,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.msa",
+        "shape": [
+          129,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.msa_mask",
+        "shape": [
+          129,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.deletion_matrix",
+        "shape": [
+          129,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.deletion_value",
+        "shape": [
+          129,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.has_deletion",
+        "shape": [
+          129,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.profile",
+        "shape": [
+          76,
+          32
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.deletion_mean",
+        "shape": [
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.prot_unpaired_num_alignments",
+        "shape": [],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.prot_paired_num_alignments",
+        "shape": [],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.rna_unpaired_num_alignments",
+        "shape": [],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.rna_pair_num_alignments",
+        "shape": [],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.prot_pair_num_alignments",
+        "shape": [],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.prot_unpair_num_alignments",
+        "shape": [],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.rna_unpair_num_alignments",
+        "shape": [],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "prediction.coords",
+        "shape": [
+          1,
+          602,
+          3
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "prediction.plddt",
+        "shape": [
+          1,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "prediction.pae",
+        "shape": [
+          1,
+          76,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "prediction.ptm",
+        "shape": [
+          1
+        ],
+        "max_abs": 0.0
+      }
+    ]
+  },
+  "opendde": {
+    "old": "/home/psk6950/practice/FoldForge/validation/shared-core-20260914/reference-predictions/opendde/1ubq.prediction.pt",
+    "new": "/home/psk6950/practice/FoldForge/validation/shared-core-20260914/final/opendde/1ubq.prediction.pt",
+    "tensor_count": 73,
+    "tensors": [
+      {
+        "equal": true,
+        "path": "features.token_index",
+        "shape": [
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.residue_index",
+        "shape": [
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.asym_id",
+        "shape": [
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.entity_id",
+        "shape": [
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.sym_id",
+        "shape": [
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.restype",
+        "shape": [
+          76,
+          32
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.token_bonds",
+        "shape": [
+          76,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.ref_pos",
+        "shape": [
+          602,
+          3
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.ref_mask",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.ref_element",
+        "shape": [
+          602,
+          128
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.ref_charge",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.ref_atom_name_chars",
+        "shape": [
+          602,
+          4,
+          64
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.ref_space_uid",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.has_frame",
+        "shape": [
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.frame_atom_index",
+        "shape": [
+          76,
+          3
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.atom_to_token_idx",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.atom_to_tokatom_idx",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.is_protein",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.is_ligand",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.is_dna",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.is_rna",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.resolution",
+        "shape": [
+          1
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.structural_token_index",
+        "shape": [
+          146
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.residue_token_group_id",
+        "shape": [
+          146
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.subtoken_role",
+        "shape": [
+          146
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.subtoken_role_id",
+        "shape": [
+          146
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.twin_token_idx",
+        "shape": [
+          146
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.parent_residue_idx",
+        "shape": [
+          146
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.atom_to_structural_token_idx",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.atom_to_structural_tokatom_idx",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.structural_distogram_rep_atom_mask",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.structural_pae_rep_atom_mask",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.structural_has_frame",
+        "shape": [
+          146
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.structural_frame_atom_index",
+        "shape": [
+          146,
+          3
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.prev_parent_residue_idx",
+        "shape": [
+          146
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.next_parent_residue_idx",
+        "shape": [
+          146
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.structural_is_polymer",
+        "shape": [
+          146
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.structural_polymer_type",
+        "shape": [
+          146
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.structural_seq_pos",
+        "shape": [
+          146
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.mol_id",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.mol_atom_index",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.entity_mol_id",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.pae_rep_atom_mask",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.plddt_m_rep_atom_mask",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.distogram_rep_atom_mask",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.modified_res_mask",
+        "shape": [
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.bond_mask",
+        "shape": [
+          602,
+          602
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.template_aatype",
+        "shape": [
+          4,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.template_atom_positions",
+        "shape": [
+          4,
+          76,
+          24,
+          3
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.template_atom_mask",
+        "shape": [
+          4,
+          76,
+          24
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.template_pseudo_beta_mask",
+        "shape": [
+          4,
+          76,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.template_distogram",
+        "shape": [
+          4,
+          76,
+          76,
+          39
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.template_unit_vector",
+        "shape": [
+          4,
+          76,
+          76,
+          3
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.template_backbone_frame_mask",
+        "shape": [
+          4,
+          76,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.msa",
+        "shape": [
+          129,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.msa_mask",
+        "shape": [
+          129,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.deletion_matrix",
+        "shape": [
+          129,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.deletion_value",
+        "shape": [
+          129,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.has_deletion",
+        "shape": [
+          129,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.profile",
+        "shape": [
+          76,
+          32
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.deletion_mean",
+        "shape": [
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.prot_unpaired_num_alignments",
+        "shape": [],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.prot_paired_num_alignments",
+        "shape": [],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.rna_unpaired_num_alignments",
+        "shape": [],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.rna_paired_num_alignments",
+        "shape": [],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.rna_pair_num_alignments",
+        "shape": [],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.prot_pair_num_alignments",
+        "shape": [],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.prot_unpair_num_alignments",
+        "shape": [],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "features.rna_unpair_num_alignments",
+        "shape": [],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "prediction.coords",
+        "shape": [
+          1,
+          602,
+          3
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "prediction.plddt",
+        "shape": [
+          1,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "prediction.pae",
+        "shape": [
+          1,
+          76,
+          76
+        ],
+        "max_abs": 0.0
+      },
+      {
+        "equal": true,
+        "path": "prediction.ptm",
+        "shape": [
+          1
+        ],
+        "max_abs": 0.0
+      }
+    ]
+  }
+}

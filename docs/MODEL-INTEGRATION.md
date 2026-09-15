@@ -49,14 +49,14 @@ On an allocated GPU node, after installing the environment:
 source scripts/activate_env.sh
 foldforge models
 foldforge fold esmfold2 --target 1ubq --lm-source compute \
-  --out validation/results/esmfold2-live
+  --out runs/esmfold2-live
 ```
 
 `compute` loads ESMC-6B and computes embeddings from the input sequence; it is the
 default. `--lm-source cache` explicitly uses the existing target embedding file.
 That legacy file has no source-version manifest and is not treated as proof that
 the current LM was executed. `--checkpoint` and `--lm-checkpoint` override the
-checkpoint resolver. Input targets currently use `validation/data/<target>/`
+checkpoint resolver. Input targets currently use `validation/inputs/data/<target>/`
 with `target.json` and prepared MSA files; this command does not run an MSA search.
 
 The registry loader converts and strictly loads the released folding weights.
@@ -136,7 +136,7 @@ Run on an allocated GPU node after `scripts/setup_env.sbatch` completes.
 Input JSON must carry prepared MSA/template data; these commands do not run an
 MSA search. Protenix/OpenDDE use their upstream sequence/job JSON schema, whereas
 AF3 uses the official AF3 JSON schema. Example input files are in
-`validation/data/1ubq/{af3-full,af-family}.json`.
+`validation/inputs/data/1ubq/{af3-full,af-family}.json`.
 
 ```bash
 source scripts/activate_env.sh
@@ -147,20 +147,20 @@ foldforge ccd prepare \
   --out data/ccd/preprocessed_CCD.lmdb
 foldforge ccd verify --ccd-db data/ccd/preprocessed_CCD.lmdb
 
-foldforge fold af3 --input validation/data/1ubq/af3-full.json \
+foldforge fold af3 --input validation/inputs/data/1ubq/af3-full.json \
   --checkpoint model_checkpoints/af3/af3.bin.zst \
-  --ccd-db data/ccd/preprocessed_CCD.lmdb --samples 1 --out validation/results/af3
-foldforge fold protenix --input validation/data/1ubq/af-family.json \
+  --ccd-db data/ccd/preprocessed_CCD.lmdb --samples 1 --out runs/af3
+foldforge fold protenix --input validation/inputs/data/1ubq/af-family.json \
   --checkpoint model_checkpoints/protenix/protenix_base_default_v1.0.0.pt \
-  --ccd-db data/ccd/preprocessed_CCD.lmdb --samples 1 --out validation/results/protenix
+  --ccd-db data/ccd/preprocessed_CCD.lmdb --samples 1 --out runs/protenix
 # For v2, change both --variant and --checkpoint:
 foldforge fold protenix --variant protenix-v2 \
-  --input validation/data/1ubq/af-family.json \
+  --input validation/inputs/data/1ubq/af-family.json \
   --checkpoint model_checkpoints/protenix/protenix-v2.pt \
-  --ccd-db data/ccd/preprocessed_CCD.lmdb --samples 1 --out validation/results/protenix-v2
-foldforge fold opendde --input validation/data/1ubq/af-family.json \
+  --ccd-db data/ccd/preprocessed_CCD.lmdb --samples 1 --out runs/protenix-v2
+foldforge fold opendde --input validation/inputs/data/1ubq/af-family.json \
   --checkpoint model_checkpoints/opendde/opendde.pt \
-  --ccd-db data/ccd/preprocessed_CCD.lmdb --samples 1 --out validation/results/opendde
+  --ccd-db data/ccd/preprocessed_CCD.lmdb --samples 1 --out runs/opendde
 ```
 
 Defaults are MiniWorld, native BF16, 10 recycles, 200 diffusion steps and 5

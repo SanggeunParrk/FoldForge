@@ -34,7 +34,7 @@ above. Both repositories have independent `.venv` environments and lockfiles.
 From either repository root on this cluster:
 
 ```bash
-mkdir -p validation/logs
+mkdir -p validation/reports/logs
 sbatch scripts/setup_env.sbatch
 # Once installation succeeds, for direct Python commands:
 source scripts/activate_env.sh

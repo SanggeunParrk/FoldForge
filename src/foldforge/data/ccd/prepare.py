@@ -7,7 +7,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .build import prepare
+from foldforge.data.ccd.build import prepare
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -24,7 +24,7 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("prepare requires --components, --rdkit and --out")
         prepare(args.components, args.rdkit, args.out)
     else:
-        from .database import CCDDatabase, default_path
+        from foldforge.data.ccd.database import CCDDatabase, default_path
 
         CCDDatabase(args.ccd_db or default_path()).verify()
     return 0

@@ -137,7 +137,7 @@ Reproduce on an allocated GPU node:
 ```bash
 source scripts/activate_env.sh
 python scripts/qualify_execution.py af3 --spec target.yaml \
-  --config configs/inference/graph-bf16.yaml --out validation/af3/graph
+  --config configs/inference/graph-bf16.yaml --out runs/af3/graph
 # For the second run use the same config with execution.compile: true.
 python scripts/compare_execution_structures.py validation/comparison \
   --output validation/comparison.json

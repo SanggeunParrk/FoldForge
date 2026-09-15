@@ -23,3 +23,9 @@ uv.lock.bak
 
 # Shared local chemistry assets, separate from model weights.
 /data/ccd/
+
+# Every structure-prediction run and archived prediction.
+/runs/
+
+# Local compile caches, validation snapshots, and experiment scratch files.
+/.bench/

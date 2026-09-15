@@ -11,8 +11,8 @@ OpenDDE run off *one* set of blocks and one set of kernels, so a change to a
 triangle multiplication is a change to all of them at once.
 """
 
-from foldforge.checkpoints import available, resolve
-from foldforge.models import describe, get_model, known_models, registered_models
+from foldforge.models import describe, get_model, known_models, load, registered_models
+from foldforge.models.checkpoints import available, resolve
 from foldforge.prediction import Prediction
 
 __all__ = [
@@ -21,6 +21,7 @@ __all__ = [
     "describe",
     "get_model",
     "known_models",
+    "load",
     "registered_models",
     "resolve",
 ]

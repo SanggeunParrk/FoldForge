@@ -5,7 +5,7 @@
 #SBATCH --mem=80G
 #SBATCH -t 04:00:00
 #SBATCH -J foldforge-env
-#SBATCH -o validation/logs/setup-env-%j.log
+#SBATCH -o validation/reports/logs/setup-env-%j.log
 
 # Submit from this repository's root. Ampere: A5000/A6000/A100.
 set -euo pipefail

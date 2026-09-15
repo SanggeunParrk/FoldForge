@@ -5,8 +5,8 @@
 #SBATCH --mem=64g
 #SBATCH -c 8
 #SBATCH -t 2:00:00
-#SBATCH -o validation/logs/%x_%j.log
-#SBATCH -e validation/logs/%x_%j.err
+#SBATCH -o validation/reports/logs/%x_%j.log
+#SBATCH -e validation/reports/logs/%x_%j.err
 
 set -euo pipefail
 cd /home/psk6950/practice/FoldForge

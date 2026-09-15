@@ -12,6 +12,22 @@ actual compilation/CUDA graph boundaries and remaining deployment requirements.
 [The follow-up](docs/CLOSEOUT-20260914.md) records operational DB reads, A5000
 execution and the large-input AF3 compiler numerical regression that did not pass.
 
+## Code and loading
+
+Start with [the directory guide](docs/CODE-STRUCTURE.md).
+`foldforge.load(model, checkpoint, backend=..., dtype=..., device=...)` is the
+single loading API. Model directories and `ported/` packages have been removed;
+architecture assembly, configuration, weight mapping and feature processing each
+have their own owner.
+
+```python
+import torch
+from foldforge import load
+
+model = load("protenix", "/path/to/protenix-v2.pt", variant="protenix-v2",
+             backend="miniworld", dtype=torch.bfloat16, device="cuda")
+```
+
 ## Where this sits
 
 FoldForge is a **terminal** repo in a three-layer stack. The boundary rules —
@@ -37,13 +53,16 @@ uv sync --extra cu12    # CUDA 12.8   (or --extra cu13 for CUDA 13)
 ```
 
 For an existing checkout: `git submodule update --init --recursive`.
+The checked-in submodule revision is the validated dependency: team-gm
+`b57e918` with engine `d2266a03`. Keep that revision when reproducing the
+recorded results; newer `exp/miniworld` commits use a different engine/patch set.
 
 The pinned Biohub ESMFold2 processor requires **Python 3.12**. For
 A5000/A6000/A100, the complete environment includes FA2, Quack 0.5.0 and
 CUTLASS DSL 4.5.2. On this cluster:
 
 ```bash
-mkdir -p validation/logs
+mkdir -p validation/reports/logs
 sbatch scripts/setup_env.sbatch
 # After installation succeeds, before running Python directly:
 source scripts/activate_env.sh
@@ -88,7 +107,7 @@ scripts/                 Slurm wrappers and measurement drivers
 configs/  tests/  docs/
 ```
 
-`model_checkpoints/`, `benchmark/` and `validation/` are gitignored: weights are
+`model_checkpoints/`, `benchmark/`, `runs/` and `validation/` are gitignored: weights are
 ~44 GB, and measurements describe a machine and a checkpoint rather than the
 source.
 
@@ -138,10 +157,10 @@ On an allocated GPU node:
 source scripts/activate_env.sh
 foldforge models
 foldforge fold esmfold2 --target 1ubq --lm-source compute \
-  --out validation/results/esmfold2-live
+  --out runs/esmfold2-live
 ```
 
-Targets use prepared `validation/data/<target>/target.json` and MSA files.
+Targets use prepared `validation/inputs/data/<target>/target.json` and MSA files.
 `--lm-source compute` runs the ESMC checkpoint; `cache` explicitly reuses an existing
 embedding file. The command writes CIF and JSON with actual precision, sampling,
 compile and CUDA-graph settings. See [the integration record](docs/MODEL-INTEGRATION.md)
@@ -150,11 +169,32 @@ All four predictors use the MiniWorld BioMol LMDB at
 `data/ccd/preprocessed_CCD.lmdb`. Use the same MiniWorld YAML with each model:
 
 ```bash
-foldforge fold af3 --spec configs/inference/1ubq.yaml --out predictions/af3
-foldforge fold protenix --spec configs/inference/1ubq.yaml --out predictions/protenix
-foldforge fold opendde --spec configs/inference/1ubq.yaml --out predictions/opendde
-foldforge fold esmfold2 --spec configs/inference/1ubq.yaml --out predictions/esmfold2
+foldforge fold af3 --spec configs/inference/1ubq.yaml --out runs/af3
+foldforge fold protenix --spec configs/inference/1ubq.yaml --out runs/protenix
+foldforge fold opendde --spec configs/inference/1ubq.yaml --out runs/opendde
+foldforge fold esmfold2 --spec configs/inference/1ubq.yaml --out runs/esmfold2
 ```
 
 See [MiniWorld formats](docs/MINIWORLD-FORMAT.md) for database migration,
 nested model settings, data conventions and checkpoint-specific capabilities.
+
+## Tests, validation and prediction outputs
+
+- `tests/`: maintained regression tests by responsibility; run `pytest tests`.
+- `validation/inputs/`: prepared evaluation targets and model input specs.
+- `validation/reports/`: validation logs and artifact relocation manifests.
+- `validation/archive/`: historical scripts, temporary source copies and checks.
+- `runs/`: all structure-prediction outputs, including benchmark predictions.
+
+Both CLI forms enforce the same destination. `--out experiment` and
+`--out runs/experiment` write to `<repo>/runs/experiment`, independent of the
+working directory. Without `--out`, a unique `runs/<model>/<timestamp-id>/` is
+used. Absolute paths must be within this runs tree; outside destinations fail
+before input preparation or prediction writing. Prepared inputs, coordinates,
+confidence files and the run report are kept together. Historical predictions
+are preserved under `runs/archive/validation/`; relocation manifests map old
+paths to their new locations.
+
+Development checks: run `bash scripts/check_quality.sh` for Ruff lint/format and
+Pyright. See [code quality](docs/CODE-QUALITY.md) for scope, retained numerical-code
+exceptions, and compute-node regression checks.

@@ -3,7 +3,7 @@
 On an allocated GPU node, activate the environment, then run::
 
     python scripts/qualify_execution.py af3 --spec target.yaml \
-        --config configs/inference/graph-bf16.yaml --out validation/af3
+        --config configs/inference/graph-bf16.yaml --out runs/af3
 
 The first two denoiser calls also evaluate the uncaptured callable. With compile
 on, that reference is compiled too: compiler-vs-eager differences need a separate
@@ -19,6 +19,8 @@ import torch
 from team_gm.modules.execution import ExecutedCallable, _flatten, _map
 
 from foldforge.models.inference import run
+
+MIN_COMPARE_ARGUMENTS = 2
 
 
 class ReplayCheck:
@@ -37,7 +39,7 @@ class ReplayCheck:
             message = "Replay qualification requires execution.cuda_graph=true"
             raise ValueError(message)
         count = self.counts.get(id(wrapper), 0)
-        if count < 2:
+        if count < MIN_COMPARE_ARGUMENTS:
             ref_args, ref_kwargs = _map((args, kwargs), lambda tensor: tensor.clone())
             reference = wrapper.fn(*ref_args, **ref_kwargs)
             _, actual = _flatten(result)
@@ -57,7 +59,7 @@ class ReplayCheck:
 
 def main() -> int:
     """Run the ordinary CLI with a temporary diagnostic wrapper."""
-    if len(sys.argv) < 2:
+    if len(sys.argv) < MIN_COMPARE_ARGUMENTS:
         message = "usage: qualify_execution.py MODEL [ordinary fold arguments]"
         raise SystemExit(message)
     check = ReplayCheck()

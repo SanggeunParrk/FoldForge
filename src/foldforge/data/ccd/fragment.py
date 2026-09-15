@@ -8,12 +8,14 @@ import numpy as np
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from numpy.typing import NDArray
+
+    from foldforge.data.ccd.mol import CCDMol
 from biomol.core.container import FeatureContainer
 from biomol.core.index import IndexTable
-from numpy.typing import NDArray
 
-from .mol import CCDMol
-from .fragmented_mol import FragmentedCCDMol
+from foldforge.data.ccd.fragmented_mol import FragmentedCCDMol
 
 
 def _find_rotatable_bonds(
@@ -219,7 +221,9 @@ def _handle_remaining_components(
     merge: int,
     frag_id: int,
 ) -> int:
-    """Assign fragment IDs to components not yet covered (isolated or high-degree nodes).
+    """Compute handle remaining components.
+
+    Assign fragment IDs to components not yet covered (isolated or high-degree nodes).
 
     Returns the next available frag_id.
     """
@@ -281,7 +285,7 @@ def _merge_components_from_graph(
     # Anchors: multi-atom components (rings, conjugated groups) — never merged.
     is_anchor = lambda c: bool(comp_size[c] > 1)
     # Chain nodes: single-atom components with at most 2 rotatable-bond neighbours.
-    is_chain_node = lambda c: bool(comp_size[c] == 1) and comp_degree.get(c, 0) <= 2
+    is_chain_node = lambda c: bool(comp_size[c] == 1) and comp_degree.get(c, 0) <= 2  # noqa: PLR2004 - tensor rank or format cardinality
 
     visited_comps = [False] * num_components
     comp_to_fragment: dict[int, int] = {}
@@ -376,7 +380,7 @@ def _max_effective_merge_from_graph(
     """Return the v1 saturation point using precomputed component graph data."""
     num_components = len(comp_size)
     is_anchor = lambda c: bool(comp_size[c] > 1)
-    is_chain_node = lambda c: bool(comp_size[c] == 1) and comp_degree.get(c, 0) <= 2
+    is_chain_node = lambda c: bool(comp_size[c] == 1) and comp_degree.get(c, 0) <= 2  # noqa: PLR2004 - tensor rank or format cardinality
 
     visited = [False] * num_components
     anchors = [c for c in range(num_components) if is_anchor(c)]
@@ -401,8 +405,8 @@ def _max_effective_merge_from_graph(
         if visited[start]:
             continue
         chain = _walk_chain(start, anchor, comp_adj, visited, is_chain_node)
-        L = len(chain)
-        if L == 0:
+        chain_length = len(chain)
+        if chain_length == 0:
             continue
 
         # Check if the far end of the chain terminates at another anchor.
@@ -412,7 +416,11 @@ def _max_effective_merge_from_graph(
                 end_anchor = nb
                 break
 
-        sat = (L + 1) // 2 if anchor is not None and end_anchor is not None else L - 1
+        sat = (
+            (chain_length + 1) // 2
+            if anchor is not None and end_anchor is not None
+            else chain_length - 1
+        )
 
         max_merge = max(max_merge, sat)
 

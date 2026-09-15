@@ -54,9 +54,9 @@ from pickle transport. Caches belong to the selected lookup/database instance.
 
 ```bash
 foldforge fold af3 --spec configs/inference/1ubq.yaml \
-  --config configs/inference/native-bf16.yaml --out predictions/af3
+  --config configs/inference/native-bf16.yaml --out runs/af3
 foldforge fold protenix --spec configs/inference/1ubq.yaml \
-  --config configs/inference/protenix-v2.yaml --out predictions/protenix-v2
+  --config configs/inference/protenix-v2.yaml --out runs/protenix-v2
 ```
 
 The same `--spec` works with `af3`, `protenix`, `opendde` and `esmfold2`. Paths in
@@ -177,7 +177,7 @@ The present qualification covers single-GPU inference, not distributed training.
 
 Source file identities and hashes for the MiniWorld formats are recorded in
 `src/foldforge/data/MINIWORLD-SOURCE.json`. Frozen pre-migration forward/attention
-oracles in `tests/reference_af_family` support regression comparisons after promotion.
+oracles in `tests/references` support regression comparisons after promotion.
 
 ## Validation (2026-09-14)
 

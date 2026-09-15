@@ -1,0 +1,575 @@
+{
+  "branches": {
+    "/home/psk6950/practice/team-gm": {
+      "branch": "exp/miniworld",
+      "head": "dbc204f3cf76cf4a8bff049ce6a7dd2ce9354c93"
+    },
+    "/home/psk6950/practice/FoldForge": {
+      "branch": "main",
+      "head": "ebfb85a4201580fcb234b14b539fdb5783b9fdd9"
+    },
+    "/home/psk6950/practice/FoldForge/libs/team-gm": {
+      "branch": "exp/miniworld",
+      "head": "dbc204f3cf76cf4a8bff049ce6a7dd2ce9354c93"
+    }
+  },
+  "files": [
+    {
+      "path": "/home/psk6950/practice/FoldForge/docs/MODEL-CORE-UNIFICATION-20260914.md",
+      "sha256": "1d468f99d06418a49f889231ccfb09d1bee7b890f5306e12cded626dad9eb4b9"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/docs/SHARED-CORE-20260914.md",
+      "sha256": "890e7e09f692dddd1931b3cc8c832fc682b9c49b86f1bc5a9af1e1b4b183b9e8"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/docs/model-core-live-equivalence-20260914.json",
+      "sha256": "1e0c081ee976d3e877bceefe7f5a8e849f384e7f36cabd2cad871303a75daf18"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/diffusion/edm/sampling.py",
+      "sha256": "d89fa01394a87a451f1c1a491e259493ddbd4e99bd0ebbb31dbdd5970402bc79"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/diffusion/guidance/compat.py",
+      "sha256": "c5b794bb718277db66b2f9163277a10832b3191d3a4eaa8c47a1e37fd393564a"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/diffusion/guidance/engine.py",
+      "sha256": "79adbcaced8085796d5990f02728d177a5d372bff2767693c3f1c9ad6f09200d"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/modules/checkpoints/confidence.py",
+      "sha256": "2a4376317eb755e6f6977e15f1a9926a9149a8275c6abea8487e8e16549d2edb"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/modules/checkpoints/denoiser.py",
+      "sha256": "469822eab232c4f14c94e4a9227df0437e1eb0f4384123ed69496eb773b2a9b5"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/modules/checkpoints/dense.py",
+      "sha256": "465121ebfc8b1b446a9ebeb235744a0e8c36331b6a8293989ec4a8a02f2d4d7f"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/modules/checkpoints/device.py",
+      "sha256": "0f7f6d8866f1d1d699c048ce32d7d5cecdf348723d9963a2fa7b993069cdfdf7"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/modules/checkpoints/embedders.py",
+      "sha256": "7cdf8393a1d36b795bfecd29e4d12152be72af7dd3b72c9860b4a90e3be1545b"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/modules/checkpoints/heads.py",
+      "sha256": "87429aa0ea6238b2a11f2922aaa4d61fa6b013a31524ff697b94fd365d6d4bea"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/modules/checkpoints/layers.py",
+      "sha256": "8ac0385308b1b3627c7275ac9c330213936509524fcd9f820412f9b160f72f65"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/modules/checkpoints/pairformer.py",
+      "sha256": "dee11bc895f224dd7e1187477b1b837e587d6099df4b1859ad484698c5ea5d28"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/modules/checkpoints/policy.py",
+      "sha256": "b56a1637758fea7cb7d1a64e9fd9e8d789db171d188ca98dc7b3356b6cac0293"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/modules/checkpoints/stacks.py",
+      "sha256": "f5cf67af1b964a8589c687a25c4db69f8b7827a83efd9362d44f8bc57c4eb5b9"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/modules/checkpoints/structural.py",
+      "sha256": "24e1ffda9eb64f971c6e216db0f50c98984fa9caee0e17657cb3218acd180f5c"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/modules/checkpoints/structural_roles.py",
+      "sha256": "ef1b814e6d7a100c9590bfaac3e6d762d478bba6bd9c4a8af231e50bf4015144"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/modules/checkpoints/tensor_utils.py",
+      "sha256": "2b8d48648035cd9ae8f1de1555033c1bf548e8e6e58e0f3dff9c09a814b6f695"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/modules/checkpoints/transformer.py",
+      "sha256": "a0e12ac83c7e07a91d83a88013e691f642941cedd61df060fecdd912150acab1"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/modules/checkpoints/triangle.py",
+      "sha256": "a808f3eacd085fed37a07a95bb426dfb6c7035b10441ea741dea59563ced3344"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/src/team_gm/modules/checkpoints/trunk.py",
+      "sha256": "8cb097f63a3903dfcc12be5827443da5b8a37e5e9baee49caa26f817d9ca5f6a"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/tests/diffusion/test_shared_attention.py",
+      "sha256": "474d75c7015ceee483dc20bb4f57fe4469a8d730f6080f290d17278f6282280d"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/tests/diffusion/test_shared_checkpoint_layers.py",
+      "sha256": "b0bc08c8e214627aade02cc9962eec37e4684c49b1a845443fb5769d051a195f"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/tests/diffusion/test_shared_checkpointing.py",
+      "sha256": "dc7abc45db1971cf5f874062680cf7a422f4e61c79a4b9e523fe6b9de1b23c73"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/tests/diffusion/test_shared_compile.py",
+      "sha256": "0a3fbbfedf9c53fd26813b17cd4fbad06a58c956f4c70ab39057083cdfa8cd03"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/tests/diffusion/test_shared_confidence.py",
+      "sha256": "e00e453ca44a4568de633f00c617bf5d9941b7d42812ace994ba12869a672078"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/tests/diffusion/test_shared_fourier.py",
+      "sha256": "b8aee6e59c3c119dde066677e648e46205ad60926f55cd54471df1ec11d1700c"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/tests/diffusion/test_shared_guidance.py",
+      "sha256": "57e67ed9a95954ed45a50aee88bc46f3a10a42b9ff6b6184ebe4bc0b2dadc294"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/tests/diffusion/test_shared_preconditioning.py",
+      "sha256": "f2d31d4f6c1488901aaac095d97e1cef911cd998dbcb0ef360049a712e0131d3"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/tests/diffusion/test_shared_sampling.py",
+      "sha256": "8fb36a9a21ddbc71d223bdbe77dc300da3209e956ddc7280591d0eaa39adf76f"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/tests/diffusion/test_shared_transitions.py",
+      "sha256": "ddf8533f1b0b4252ad40a691d1cfc7dba9758586395f5f0ccca31a909358fbef"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/libs/team-gm/tests/diffusion/test_shared_triangles.py",
+      "sha256": "8d520dda784364c9a585d32a0afbd7b03ebf3fd7967c6f215d4fdf9c15f23500"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/model.py",
+      "sha256": "8825b19171151d77e93f1e13f728d247848f2e1af3c3845b45aeee3e9233e93a"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/config/inference.py",
+      "sha256": "de7ab39ba402af573d8f4b6066ffc2e798ee951c0bc4864650f97377fbf8c50c"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/config/inference_defaults.py",
+      "sha256": "4285fe71651519d1d5958cef1a7fd63f53dcb7bef00e2baed6729de933d7e26e"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/config/schema.py",
+      "sha256": "326f1d5d7ec0f46993366a02704e3b421a3154cdf516d3bf19dc12ce23587816"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/data/inference/infer_dataloader.py",
+      "sha256": "b9e9536283d5dd2af1c9ba5d638d51a85f01e51fa01eff1fe79d93eba95e82c2"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/data/tokenizer.py",
+      "sha256": "f5f84ebb17af3b4fc66eb7b0a4211a988fa08ce71adcd02ff98cb4f631495c28"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/__init__.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/__init__.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/atom_window.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/comm.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/confidence.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/config.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/distogram.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/launch.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/layout.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/mesh.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/metrics.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/msa_pair_weighted.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/online_softmax.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/opm.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/pair_sharding.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/real_pairformer.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/structural_pair.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/triangle_attention.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/triangular_mult.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/triton_attention_bias.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/distributed/foldcp/trunk_init.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/model/generator.py",
+      "sha256": "a96c86421dfbf0df1346f4f8dc53812f9206fe8d8d944ab232016667474b761c"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/model/modules/confidence.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/model/modules/diffusion.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/model/modules/embedders.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/model/modules/head.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/model/modules/pairformer.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/model/modules/primitives.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/model/modules/structural_tokens.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/model/modules/transformer.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/model/msa_sampling.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/model/opendde.py",
+      "sha256": "795f1e4abec49a201925729b94d9e8a754207a9e6fa22b4201faaaaf15e6e230"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/model/sample_confidence.py",
+      "sha256": "dffc6fec49951a4a2bdcfee1eb7122d8c137b9a79d11bb1a6b38c9ada5b1573b"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/model/shape_complementarity.py",
+      "sha256": "54226fb688518169ef5326ff57cc697fbfc2731eceda62529ceb863c170db3da"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/model/triangular/layers.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/model/triangular/triangular.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/opendde/ported/model/utils.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/model.py",
+      "sha256": "0cf151958f3c357c8f401c6a100d268632522e10e9ad5405b9eef68af08230bf"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/configs/configs_base.py",
+      "sha256": "b936af8ab80b46950c7d5f00b06201dd670a052907aee13ea8166459dd87380b"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/loss.py",
+      "sha256": "7c33198ca4fd3071e6642475d704bd2314f116585756a89d5ee095f150792e4d"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/modules/confidence.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/modules/diffusion.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/modules/embedders.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/modules/frames.py",
+      "sha256": "f44727608f4e70ce3661aa7afa894f9255e1a2e794a27ad50721a8986ca1d302"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/modules/fused_ops.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/modules/head.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/modules/pairformer.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/modules/primitives.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/modules/transformer.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/protenix.py",
+      "sha256": "cad870580d514f39e529096f165c774dbab60698ed968c114653544f6db9e129"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/tri_attention/__init__.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/tri_attention/autotune.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/tri_attention/autotune_helpers.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/tri_attention/backward.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/tri_attention/forward.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/tri_attention/op.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/triangular/layers.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/triangular/triangular.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/model/utils.py",
+      "sha256": null
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/utils/permutation/atom_permutation.py",
+      "sha256": "6db6ea37bbd89b8d9041fa4b46f4ac21b4d13d258552236c6ed3b764ddb8e91d"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/protenix/ported/utils/permutation/chain_permutation/pocket_based_permutation.py",
+      "sha256": "d62a52078cc8b70252761d86406141a7b360f74498339db67957dd043ca12e37"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/src/foldforge/models/sampling.py",
+      "sha256": "53eeec8b11d7d0cd5a048f906210b622c15424aed0dcd917c3dc160174ad3b76"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/tests/test_af_family_ports.py",
+      "sha256": "de8a1b5057f7d4762f3a800381bec9e61523d7e0c02eefcc20f9489b43de9a4c"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/tests/test_inference_backends.py",
+      "sha256": "16376e67fe5e13439fe316b96fae47e6575c94ccd018b9452407b5e1bb33228d"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/tests/test_miniworld_format.py",
+      "sha256": "060ae4b578271064c59056ba54dd96b6d91e77f6f23032708f6558eb4b96cec6"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/tests/test_residual_contract.py",
+      "sha256": "a3ccdfc7997702a2489a658fba87aae0f0df764028f5680ee6cb820267be15d0"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/tests/test_shared_core_ownership.py",
+      "sha256": "8c1c8fb7ac26c1cb646ec7bc7fa88114a7d45253cb8931344b8463f8716c17e1"
+    },
+    {
+      "path": "/home/psk6950/practice/FoldForge/tests/test_unify2.py",
+      "sha256": "6febcbe24f32e6e74dd27180e2faf2a7b9ba7f3fded724d6a17e9011faa7930b"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/diffusion/edm/sampling.py",
+      "sha256": "d89fa01394a87a451f1c1a491e259493ddbd4e99bd0ebbb31dbdd5970402bc79"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/diffusion/guidance/compat.py",
+      "sha256": "c5b794bb718277db66b2f9163277a10832b3191d3a4eaa8c47a1e37fd393564a"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/diffusion/guidance/engine.py",
+      "sha256": "79adbcaced8085796d5990f02728d177a5d372bff2767693c3f1c9ad6f09200d"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/modules/checkpoints/confidence.py",
+      "sha256": "2a4376317eb755e6f6977e15f1a9926a9149a8275c6abea8487e8e16549d2edb"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/modules/checkpoints/denoiser.py",
+      "sha256": "469822eab232c4f14c94e4a9227df0437e1eb0f4384123ed69496eb773b2a9b5"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/modules/checkpoints/dense.py",
+      "sha256": "465121ebfc8b1b446a9ebeb235744a0e8c36331b6a8293989ec4a8a02f2d4d7f"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/modules/checkpoints/device.py",
+      "sha256": "0f7f6d8866f1d1d699c048ce32d7d5cecdf348723d9963a2fa7b993069cdfdf7"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/modules/checkpoints/embedders.py",
+      "sha256": "7cdf8393a1d36b795bfecd29e4d12152be72af7dd3b72c9860b4a90e3be1545b"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/modules/checkpoints/heads.py",
+      "sha256": "87429aa0ea6238b2a11f2922aaa4d61fa6b013a31524ff697b94fd365d6d4bea"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/modules/checkpoints/layers.py",
+      "sha256": "8ac0385308b1b3627c7275ac9c330213936509524fcd9f820412f9b160f72f65"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/modules/checkpoints/pairformer.py",
+      "sha256": "dee11bc895f224dd7e1187477b1b837e587d6099df4b1859ad484698c5ea5d28"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/modules/checkpoints/policy.py",
+      "sha256": "b56a1637758fea7cb7d1a64e9fd9e8d789db171d188ca98dc7b3356b6cac0293"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/modules/checkpoints/stacks.py",
+      "sha256": "f5cf67af1b964a8589c687a25c4db69f8b7827a83efd9362d44f8bc57c4eb5b9"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/modules/checkpoints/structural.py",
+      "sha256": "24e1ffda9eb64f971c6e216db0f50c98984fa9caee0e17657cb3218acd180f5c"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/modules/checkpoints/structural_roles.py",
+      "sha256": "ef1b814e6d7a100c9590bfaac3e6d762d478bba6bd9c4a8af231e50bf4015144"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/modules/checkpoints/tensor_utils.py",
+      "sha256": "2b8d48648035cd9ae8f1de1555033c1bf548e8e6e58e0f3dff9c09a814b6f695"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/modules/checkpoints/transformer.py",
+      "sha256": "a0e12ac83c7e07a91d83a88013e691f642941cedd61df060fecdd912150acab1"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/modules/checkpoints/triangle.py",
+      "sha256": "a808f3eacd085fed37a07a95bb426dfb6c7035b10441ea741dea59563ced3344"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/src/team_gm/modules/checkpoints/trunk.py",
+      "sha256": "8cb097f63a3903dfcc12be5827443da5b8a37e5e9baee49caa26f817d9ca5f6a"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/tests/diffusion/test_shared_attention.py",
+      "sha256": "474d75c7015ceee483dc20bb4f57fe4469a8d730f6080f290d17278f6282280d"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/tests/diffusion/test_shared_checkpoint_layers.py",
+      "sha256": "b0bc08c8e214627aade02cc9962eec37e4684c49b1a845443fb5769d051a195f"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/tests/diffusion/test_shared_checkpointing.py",
+      "sha256": "dc7abc45db1971cf5f874062680cf7a422f4e61c79a4b9e523fe6b9de1b23c73"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/tests/diffusion/test_shared_compile.py",
+      "sha256": "0a3fbbfedf9c53fd26813b17cd4fbad06a58c956f4c70ab39057083cdfa8cd03"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/tests/diffusion/test_shared_confidence.py",
+      "sha256": "e00e453ca44a4568de633f00c617bf5d9941b7d42812ace994ba12869a672078"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/tests/diffusion/test_shared_fourier.py",
+      "sha256": "b8aee6e59c3c119dde066677e648e46205ad60926f55cd54471df1ec11d1700c"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/tests/diffusion/test_shared_guidance.py",
+      "sha256": "57e67ed9a95954ed45a50aee88bc46f3a10a42b9ff6b6184ebe4bc0b2dadc294"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/tests/diffusion/test_shared_preconditioning.py",
+      "sha256": "f2d31d4f6c1488901aaac095d97e1cef911cd998dbcb0ef360049a712e0131d3"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/tests/diffusion/test_shared_sampling.py",
+      "sha256": "8fb36a9a21ddbc71d223bdbe77dc300da3209e956ddc7280591d0eaa39adf76f"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/tests/diffusion/test_shared_transitions.py",
+      "sha256": "ddf8533f1b0b4252ad40a691d1cfc7dba9758586395f5f0ccca31a909358fbef"
+    },
+    {
+      "path": "/home/psk6950/practice/team-gm/tests/diffusion/test_shared_triangles.py",
+      "sha256": "8d520dda784364c9a585d32a0afbd7b03ebf3fd7967c6f215d4fdf9c15f23500"
+    }
+  ],
+  "verification": {
+    "core_job": 43716,
+    "core_tests_passed": 417,
+    "candidate_gpu_job": 43711,
+    "candidate_comparison_job": 43714,
+    "live_gpu_job": 43715,
+    "live_tests_passed": 36,
+    "final_hook_job": 43717
+  }
+}

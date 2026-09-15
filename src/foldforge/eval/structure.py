@@ -45,6 +45,9 @@ def deposit_ca(path: Path) -> dict[tuple[str, int], tuple[str, tuple[float, ...]
     atoms = data["_atom_site.label_atom_id"]
     count = len(atoms)
     chains = data.get("_atom_site.auth_asym_id", data.get("_atom_site.label_asym_id"))
+    if chains is None:
+        message = "The atom_site category is missing chain identifiers"
+        raise ValueError(message)
     labels = data.get("_atom_site.label_seq_id", ["?"] * count)
     numbers = data.get("_atom_site.auth_seq_id", labels)
     names = data["_atom_site.label_comp_id"]
@@ -104,6 +107,7 @@ def tm_score(mobile: torch.Tensor, target: torch.Tensor) -> float | None:
     d0 = max(1.24 * (length - 15) ** (1 / 3) - 1.8, _D0_FLOOR)
 
     def distances(rotation: torch.Tensor, offset: torch.Tensor) -> torch.Tensor:
+        """Compute distances."""
         return ((mobile @ rotation.T + offset) - target).norm(dim=-1)
 
     best = 0.0

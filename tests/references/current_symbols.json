@@ -1,0 +1,262 @@
+{
+  "foldforge.models.opendde.ported.data.tokenizer": {
+    "AtomArrayTokenizer": "StructuralAtomArrayTokenizer"
+  },
+  "foldforge.models.opendde.ported.data.utils": {
+    "get_atom_mask_by_name": "structural_get_atom_mask_by_name",
+    "get_inter_residue_bonds": "structural_get_inter_residue_bonds",
+    "map_annotations_to_atom_indices": "structural_map_annotations_to_atom_indices",
+    "save_atoms_to_cif": "structural_save_atoms_to_cif",
+    "save_structure_cif": "structural_save_structure_cif",
+    "CIFWriter": "StructuralCIFWriter",
+    "make_dummy_feature": "structural_make_dummy_feature",
+    "data_type_transform": "structural_data_type_transform",
+    "IntDataList": "StructuralIntDataList",
+    "get_data_shape_dict": "structural_get_data_shape_dict",
+    "pdb_to_cif": "structural_pdb_to_cif"
+  },
+  "foldforge.models.opendde.ported.model.sample_confidence": {
+    "merge_per_sample_confidence_scores": "compact_merge_per_sample_confidence_scores",
+    "_compute_full_data_and_summary": "_compact_compute_full_data_and_summary",
+    "get_bin_params": "get_bin_params",
+    "compute_contact_prob": "compact_compute_contact_prob",
+    "calculate_vdw_clash": "compact_calculate_vdw_clash",
+    "calculate_clash": "compact_calculate_clash",
+    "calculate_chain_based_plddt": "compact_calculate_chain_based_plddt",
+    "compute_full_data_and_summary": "compact_compute_full_data_and_summary"
+  },
+  "foldforge.models.opendde.ported.data.core.featurizer": {
+    "Featurizer": "StructuralFeaturizer"
+  },
+  "foldforge.models.opendde.ported.data.core.filter": {
+    "Filter": "StructuralFilter",
+    "get_inter_residue_bonds": "structural_get_inter_residue_bonds"
+  },
+  "foldforge.models.opendde.ported.data.core.parser": {
+    "MMCIFParser": "StructuralMMCIFParser",
+    "AddAtomArrayAnnot": "StructuralAddAtomArrayAnnot",
+    "Filter": "StructuralFilter",
+    "get_inter_residue_bonds": "structural_get_inter_residue_bonds",
+    "map_annotations_to_atom_indices": "structural_map_annotations_to_atom_indices"
+  },
+  "foldforge.models.opendde.ported.data.inference.infer_dataloader": {
+    "get_inference_dataloader": "structural_get_inference_dataloader",
+    "InferenceDataset": "StructuralInferenceDataset",
+    "SampleDictToFeatures": "StructuralSampleDictToFeatures",
+    "InferenceMSAFeaturizer": "StructuralInferenceMSAFeaturizer",
+    "InferenceTemplateFeaturizer": "StructuralInferenceTemplateFeaturizer",
+    "TemplateHitFeaturizer": "StructuralTemplateHitFeaturizer",
+    "data_type_transform": "structural_data_type_transform",
+    "make_dummy_feature": "structural_make_dummy_feature"
+  },
+  "foldforge.models.opendde.ported.data.inference.json_maker": {
+    "atom_array_to_input_json": "structural_atom_array_to_input_json",
+    "cif_to_input_json": "structural_cif_to_input_json",
+    "Filter": "StructuralFilter",
+    "AddAtomArrayAnnot": "StructuralAddAtomArrayAnnot",
+    "MMCIFParser": "StructuralMMCIFParser"
+  },
+  "foldforge.models.opendde.ported.data.inference.json_parser": {
+    "_remove_non_std_ccd_leaving_atoms": "_structural_remove_non_std_ccd_leaving_atoms",
+    "_build_polymer_atom_array": "_structural_build_polymer_atom_array",
+    "build_polymer": "structural_build_polymer",
+    "rdkit_mol_to_atom_array": "structural_rdkit_mol_to_atom_array",
+    "rdkit_mol_to_atom_info": "structural_rdkit_mol_to_atom_info",
+    "lig_file_to_atom_info": "structural_lig_file_to_atom_info",
+    "smiles_to_atom_info": "structural_smiles_to_atom_info",
+    "build_ligand": "structural_build_ligand",
+    "add_entity_atom_array": "structural_add_entity_atom_array"
+  },
+  "foldforge.models.opendde.ported.data.inference.json_to_feature": {
+    "SampleDictToFeatures": "StructuralSampleDictToFeatures",
+    "Featurizer": "StructuralFeaturizer",
+    "AddAtomArrayAnnot": "StructuralAddAtomArrayAnnot",
+    "add_entity_atom_array": "structural_add_entity_atom_array",
+    "AtomArrayTokenizer": "StructuralAtomArrayTokenizer"
+  },
+  "foldforge.models.opendde.ported.data.msa.msa_featurizer": {
+    "FeatureAssemblyLine": "StructuralFeatureAssemblyLine",
+    "MSAFeat": "StructuralMSAFeat",
+    "InferenceMSAFeaturizer": "StructuralInferenceMSAFeaturizer",
+    "MSA_GAP_IDX": "STRUCTURAL_MSA_GAP_IDX",
+    "MSAPairingEngine": "StructuralMSAPairingEngine",
+    "RawMsa": "StructuralRawMsa",
+    "map_to_standard": "structural_map_to_standard"
+  },
+  "foldforge.models.opendde.ported.data.msa.msa_utils": {
+    "FeatureDict": "FeatureDict",
+    "MutableFeatureDict": "MutableFeatureDict",
+    "MSA_GAP_IDX": "MSA_GAP_IDX",
+    "MSA_PAD_VALUES": "MSA_PAD_VALUES",
+    "RawMsa": "RawMsa",
+    "MSAPairingEngine": "MSAPairingEngine",
+    "map_to_standard": "structural_map_to_standard"
+  },
+  "foldforge.models.opendde.ported.data.template.template_featurizer": {
+    "BatchDict": "StructuralBatchDict",
+    "FeatureDict": "StructuralFeatureDict",
+    "TemplateFeatureAssemblyLine": "StructuralTemplateFeatureAssemblyLine",
+    "Templates": "StructuralTemplates",
+    "_reduce_template_features": "_structural_reduce_template_features",
+    "InferenceTemplateFeaturizer": "StructuralInferenceTemplateFeaturizer",
+    "Self": "StructuralSelf",
+    "TypeAlias": "StructuralTypeAlias",
+    "map_to_standard": "structural_map_to_standard",
+    "HmmsearchA3MParser": "StructuralHmmsearchA3MParser",
+    "TEMPLATE_FEATURES": "STRUCTURAL_TEMPLATE_FEATURES",
+    "TemplateFeatures": "StructuralTemplateFeatures",
+    "TemplateHitFeaturizer": "StructuralTemplateHitFeaturizer"
+  },
+  "foldforge.models.opendde.ported.data.template.template_parser": {
+    "TemplateParser": "StructuralTemplateParser",
+    "HmmsearchA3MParser": "StructuralHmmsearchA3MParser"
+  },
+  "foldforge.models.opendde.ported.data.template.template_utils": {
+    "FeatureDict": "FeatureDict",
+    "DAYS_BEFORE_QUERY_DATE": "DAYS_BEFORE_QUERY_DATE",
+    "TEMPLATE_FEATURES": "TEMPLATE_FEATURES",
+    "_POLYMER_FEATURES": "STRUCTURAL__POLYMER_FEATURES",
+    "TemplateFeatures": "StructuralTemplateFeatures",
+    "TemplateHitProcessor": "StructuralTemplateHitProcessor",
+    "TemplateHitFeaturizer": "StructuralTemplateHitFeaturizer",
+    "Final": "Final",
+    "TemplateParser": "StructuralTemplateParser"
+  },
+  "foldforge.models.opendde.ported.data.tools.search": {
+    "Hmmsearch": "StructuralHmmsearch",
+    "MsaTool": "StructuralMsaTool",
+    "Nhmmer": "StructuralNhmmer",
+    "RunConfig": "StructuralRunConfig",
+    "run_hmmsearch_with_a3m": "structural_run_hmmsearch_with_a3m"
+  },
+  "foldforge.models.protenix.ported.data.tokenizer": {
+    "AtomArrayTokenizer": "ResidueAtomArrayTokenizer"
+  },
+  "foldforge.models.protenix.ported.data.utils": {
+    "get_atom_mask_by_name": "residue_get_atom_mask_by_name",
+    "get_inter_residue_bonds": "residue_get_inter_residue_bonds",
+    "save_atoms_to_cif": "residue_save_atoms_to_cif",
+    "save_structure_cif": "residue_save_structure_cif",
+    "CIFWriter": "ResidueCIFWriter",
+    "make_dummy_feature": "residue_make_dummy_feature",
+    "data_type_transform": "residue_data_type_transform",
+    "IntDataList": "ResidueIntDataList",
+    "get_data_shape_dict": "residue_get_data_shape_dict",
+    "pdb_to_cif": "residue_pdb_to_cif",
+    "map_annotations_to_atom_indices": "residue_map_annotations_to_atom_indices"
+  },
+  "foldforge.models.protenix.ported.model.sample_confidence": {
+    "merge_per_sample_confidence_scores": "detailed_merge_per_sample_confidence_scores",
+    "_compute_full_data_and_summary": "_detailed_compute_full_data_and_summary",
+    "get_bin_params": "get_bin_params",
+    "compute_contact_prob": "detailed_compute_contact_prob",
+    "calculate_vdw_clash": "detailed_calculate_vdw_clash",
+    "calculate_clash": "detailed_calculate_clash",
+    "calculate_chain_based_plddt": "detailed_calculate_chain_based_plddt",
+    "compute_full_data_and_summary": "detailed_compute_full_data_and_summary"
+  },
+  "foldforge.models.protenix.ported.data.core.featurizer": {
+    "Featurizer": "ResidueFeaturizer"
+  },
+  "foldforge.models.protenix.ported.data.core.filter": {
+    "Filter": "ResidueFilter",
+    "get_inter_residue_bonds": "residue_get_inter_residue_bonds"
+  },
+  "foldforge.models.protenix.ported.data.core.parser": {
+    "MMCIFParser": "ResidueMMCIFParser",
+    "AddAtomArrayAnnot": "ResidueAddAtomArrayAnnot",
+    "Filter": "ResidueFilter",
+    "get_inter_residue_bonds": "residue_get_inter_residue_bonds",
+    "map_annotations_to_atom_indices": "residue_map_annotations_to_atom_indices"
+  },
+  "foldforge.models.protenix.ported.data.inference.infer_dataloader": {
+    "get_inference_dataloader": "residue_get_inference_dataloader",
+    "InferenceDataset": "ResidueInferenceDataset",
+    "SampleDictToFeatures": "ResidueSampleDictToFeatures",
+    "InferenceMSAFeaturizer": "ResidueInferenceMSAFeaturizer",
+    "InferenceTemplateFeaturizer": "ResidueInferenceTemplateFeaturizer",
+    "TemplateHitFeaturizer": "ResidueTemplateHitFeaturizer",
+    "data_type_transform": "residue_data_type_transform",
+    "make_dummy_feature": "residue_make_dummy_feature"
+  },
+  "foldforge.models.protenix.ported.data.inference.json_maker": {
+    "atom_array_to_input_json": "residue_atom_array_to_input_json",
+    "cif_to_input_json": "residue_cif_to_input_json",
+    "Filter": "ResidueFilter",
+    "AddAtomArrayAnnot": "ResidueAddAtomArrayAnnot",
+    "MMCIFParser": "ResidueMMCIFParser"
+  },
+  "foldforge.models.protenix.ported.data.inference.json_parser": {
+    "_remove_non_std_ccd_leaving_atoms": "_residue_remove_non_std_ccd_leaving_atoms",
+    "_build_polymer_atom_array": "_residue_build_polymer_atom_array",
+    "build_polymer": "residue_build_polymer",
+    "rdkit_mol_to_atom_array": "residue_rdkit_mol_to_atom_array",
+    "rdkit_mol_to_atom_info": "residue_rdkit_mol_to_atom_info",
+    "lig_file_to_atom_info": "residue_lig_file_to_atom_info",
+    "smiles_to_atom_info": "residue_smiles_to_atom_info",
+    "build_ligand": "residue_build_ligand",
+    "add_entity_atom_array": "residue_add_entity_atom_array"
+  },
+  "foldforge.models.protenix.ported.data.inference.json_to_feature": {
+    "SampleDictToFeatures": "ResidueSampleDictToFeatures",
+    "Featurizer": "ResidueFeaturizer",
+    "AddAtomArrayAnnot": "ResidueAddAtomArrayAnnot",
+    "add_entity_atom_array": "residue_add_entity_atom_array",
+    "AtomArrayTokenizer": "ResidueAtomArrayTokenizer"
+  },
+  "foldforge.models.protenix.ported.data.msa.msa_featurizer": {
+    "FeatureAssemblyLine": "ResidueFeatureAssemblyLine",
+    "MSAFeat": "ResidueMSAFeat",
+    "InferenceMSAFeaturizer": "ResidueInferenceMSAFeaturizer",
+    "map_to_standard": "residue_map_to_standard",
+    "MSA_GAP_IDX": "RESIDUE_MSA_GAP_IDX",
+    "MSAPairingEngine": "ResidueMSAPairingEngine",
+    "RawMsa": "ResidueRawMsa"
+  },
+  "foldforge.models.protenix.ported.data.msa.msa_utils": {
+    "FeatureDict": "FeatureDict",
+    "MutableFeatureDict": "MutableFeatureDict",
+    "MSA_GAP_IDX": "MSA_GAP_IDX",
+    "MSA_PAD_VALUES": "MSA_PAD_VALUES",
+    "RawMsa": "RawMsa",
+    "MSAPairingEngine": "MSAPairingEngine",
+    "map_to_standard": "residue_map_to_standard"
+  },
+  "foldforge.models.protenix.ported.data.template.template_featurizer": {
+    "BatchDict": "ResidueBatchDict",
+    "FeatureDict": "ResidueFeatureDict",
+    "TemplateFeatureAssemblyLine": "ResidueTemplateFeatureAssemblyLine",
+    "Templates": "ResidueTemplates",
+    "_reduce_template_features": "_residue_reduce_template_features",
+    "InferenceTemplateFeaturizer": "ResidueInferenceTemplateFeaturizer",
+    "Self": "ResidueSelf",
+    "TypeAlias": "ResidueTypeAlias",
+    "map_to_standard": "residue_map_to_standard",
+    "HmmsearchA3MParser": "ResidueHmmsearchA3MParser",
+    "TEMPLATE_FEATURES": "RESIDUE_TEMPLATE_FEATURES",
+    "TemplateFeatures": "ResidueTemplateFeatures",
+    "TemplateHitFeaturizer": "ResidueTemplateHitFeaturizer"
+  },
+  "foldforge.models.protenix.ported.data.template.template_parser": {
+    "TemplateParser": "ResidueTemplateParser",
+    "HmmsearchA3MParser": "ResidueHmmsearchA3MParser"
+  },
+  "foldforge.models.protenix.ported.data.template.template_utils": {
+    "FeatureDict": "FeatureDict",
+    "DAYS_BEFORE_QUERY_DATE": "DAYS_BEFORE_QUERY_DATE",
+    "TEMPLATE_FEATURES": "TEMPLATE_FEATURES",
+    "_POLYMER_FEATURES": "RESIDUE__POLYMER_FEATURES",
+    "TemplateFeatures": "ResidueTemplateFeatures",
+    "TemplateHitProcessor": "ResidueTemplateHitProcessor",
+    "TemplateHitFeaturizer": "ResidueTemplateHitFeaturizer",
+    "Final": "Final",
+    "TemplateParser": "ResidueTemplateParser"
+  },
+  "foldforge.models.protenix.ported.data.tools.search": {
+    "Hmmsearch": "ResidueHmmsearch",
+    "MsaTool": "ResidueMsaTool",
+    "Nhmmer": "ResidueNhmmer",
+    "RunConfig": "ResidueRunConfig",
+    "run_hmmsearch_with_a3m": "residue_run_hmmsearch_with_a3m"
+  }
+}

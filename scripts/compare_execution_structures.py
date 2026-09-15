@@ -15,6 +15,8 @@ import numpy as np
 import torch
 from Bio.PDB.MMCIF2Dict import MMCIF2Dict
 
+MAX_RMSD_ANGSTROM = 0.25
+
 
 def ca_atoms(path: Path) -> dict:
     data = MMCIF2Dict(str(path))
@@ -44,7 +46,7 @@ def mean_plddt(root: Path) -> float:
         one_file(root, "*.prediction.pt"), map_location="cpu", weights_only=True
     )
     scores = payload["plddt"]
-    if scores is None or scores.ndim != 2 or scores.shape[0] != 1:
+    if scores is None or scores.ndim != 2 or scores.shape[0] != 1:  # noqa: PLR2004 - tensor rank or format cardinality
         message = "Comparison requires one sample with token pLDDT"
         raise ValueError(message)
     if not torch.isfinite(scores).all():
@@ -80,7 +82,7 @@ def compare(root: Path) -> list[dict]:
                 "token_plddt_graph": pa,
                 "token_plddt_compile": pb,
                 "token_plddt_delta": abs(pa - pb),
-                "pass": bool(rmsd <= 0.25 and abs(pa - pb) <= 1.0),
+                "pass": bool(rmsd <= MAX_RMSD_ANGSTROM and abs(pa - pb) <= 1.0),
             }
         )
     return rows

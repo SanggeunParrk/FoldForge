@@ -1,4 +1,4 @@
-Current contract: [MiniWorld formats](MINIWORLD-FORMAT.md). Current execution qualification: [2026-09-14](QUALIFICATION-20260914.md). Dated results below are historical and do not override these documents.
+Current contract: [MiniWorld formats](../guides/MINIWORLD-FORMAT.md). Current execution qualification: [2026-09-14](QUALIFICATION-20260914.md). Dated results below are historical and do not override these documents.
 
 # Code unification audit — 2026-09-13
 

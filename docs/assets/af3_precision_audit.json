@@ -1,0 +1,67 @@
+{
+  "completed": true,
+  "checks": {
+    "autocast_off": true,
+    "native_parameters": true,
+    "no_compute_override": true,
+    "diffusion_gemms_bf16": true,
+    "dit_residual_bf16": true
+  },
+  "gpu": "NVIDIA A100 80GB PCIe",
+  "job": "46380",
+  "reference_precision": false,
+  "load_report": {
+    "checkpoint": "/home/psk6950/practice/FoldForge/.bench/af3-precision-20260916/source-reference/model_checkpoints/af3/af3.bin.zst",
+    "strict": true,
+    "source_records": 405,
+    "mapped_records": 404,
+    "team_gm_pairformer_blocks": 54,
+    "engine_adaln": 75,
+    "engine_conditioned_transition": 33,
+    "backend": "pytorch",
+    "parameter_dtype": "torch.bfloat16",
+    "device": "cuda"
+  },
+  "autocast_observed": false,
+  "linear_operands": [
+    {
+      "group": "confidence_head",
+      "dtype": "torch.bfloat16",
+      "calls": 7
+    },
+    {
+      "group": "confidence_pairformer",
+      "dtype": "torch.bfloat16",
+      "calls": 112
+    },
+    {
+      "group": "diffusion_head",
+      "dtype": "torch.bfloat16",
+      "calls": 471
+    },
+    {
+      "group": "distogram_head",
+      "dtype": "torch.bfloat16",
+      "calls": 1
+    },
+    {
+      "group": "evoformer",
+      "dtype": "torch.bfloat16",
+      "calls": 3340
+    },
+    {
+      "group": "evoformer_conditioning",
+      "dtype": "torch.bfloat16",
+      "calls": 67
+    }
+  ],
+  "parameter_tensors": {
+    "torch.bfloat16": 2527,
+    "torch.float32": 1268
+  },
+  "parameter_elements": {
+    "torch.bfloat16": 368155936,
+    "torch.float32": 228730
+  },
+  "source_report": "runs/af3-default-20260916/native-dtypes.json"
+}

@@ -1,0 +1,938 @@
+[
+  {
+    "model": "af3",
+    "mode": "cuequiv_compile",
+    "target": "4yx2",
+    "backend": "cuequivariance",
+    "process_seconds": 284.0637559320312,
+    "status": 0,
+    "error": null,
+    "config": {
+      "backend": "cuequivariance",
+      "precision": "bf16",
+      "seed": 0,
+      "trunk": {
+        "recycles": 10,
+        "msa_depth": 2048
+      },
+      "diffusion": {
+        "steps": 200
+      },
+      "execution": {
+        "compile": true,
+        "cuda_graph": false,
+        "bucketing": true,
+        "scope": "denoiser",
+        "max_graphs": 4,
+        "benchmark_repeats": 5
+      }
+    },
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "slurm_job": "46438",
+    "host": "gpu03",
+    "torch": "2.10.0+cu128",
+    "cuda": "12.8",
+    "input_spec": {
+      "a3m": {},
+      "ccd_db": "/home/psk6950/practice/FoldForge/data/ccd/preprocessed_CCD.lmdb",
+      "chain_letters": {
+        "0": "A",
+        "1": "B",
+        "2": "C"
+      },
+      "fasta": {
+        "A": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/A.fasta",
+        "B": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/B.fasta",
+        "C": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/C.fasta"
+      },
+      "msa": {
+        "A": "4yx2_A",
+        "B": "4yx2_B",
+        "C": "4yx2_C"
+      },
+      "msa_db": {
+        "A": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "B": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "C": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb"
+      },
+      "name": "4yx2",
+      "save_trajectory": false,
+      "template": {},
+      "template_db": "/home/psk6950/practice/FoldForge/validation/qualification-inputs/4yx2/template.lmdb",
+      "n_diffusion_samples": 5,
+      "diffusion_batch_size": 5
+    },
+    "gpu_memory_bytes": 85095874560,
+    "scope": "complete CLI process with 6 model forwards, including weights/compile/capture/input/output; cached ESMC embeddings",
+    "output": "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/cuequiv_compile/e2e/af3-4yx2-cuequiv_compile",
+    "report": {
+      "ccd": {
+        "root": "/home/psk6950/practice/FoldForge/data/ccd/preprocessed_CCD.lmdb",
+        "schema": "miniworld.ccd.biomol.v1",
+        "lmdb_sha256": "3636431697cf0875171b5e93350b95d77a6e02443d305b7bb49240308e9cd26b",
+        "components_sha256": "bb31ae5cf6c8bc669924313077cb4231ee5ffefd3a20118cd14f3ec89f8bb6a5",
+        "rdkit_sha256": "d1cfb71f5993a3ebea7c47877022d7f597bbfbaf86e28a4770e957da6c50cd35"
+      },
+      "buckets": {
+        "tokens": 594,
+        "atoms": 4591,
+        "msa": 2157,
+        "token_bucket": 640,
+        "atom_bucket": 8192,
+        "msa_bucket": 4096
+      },
+      "seed": 0,
+      "recycles": 10,
+      "trunk_passes": 11,
+      "samples_per_denoiser_call": 5,
+      "steps": 200,
+      "samples": 5,
+      "checkpoint": {
+        "checkpoint": "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/model_checkpoints/af3/af3.bin.zst",
+        "strict": true,
+        "source_records": 405,
+        "mapped_records": 404,
+        "team_gm_pairformer_blocks": 54,
+        "engine_adaln": 75,
+        "engine_conditioned_transition": 33,
+        "backend": "cuequivariance",
+        "parameter_dtype": "torch.bfloat16",
+        "device": "cuda"
+      },
+      "elapsed_seconds": 234.1566490989644,
+      "mean_plddt": 86.1521224975586,
+      "confidence_fields": [
+        "predicted_lddt",
+        "predicted_experimentally_resolved",
+        "full_pde",
+        "average_pde",
+        "full_pae",
+        "tmscore_adjusted_pae_global",
+        "tmscore_adjusted_pae_interface"
+      ],
+      "model": "af3",
+      "backend": "cuequivariance",
+      "precision": "bf16",
+      "autocast": false,
+      "autocast_scopes": [],
+      "float32_matmul_precision": "highest",
+      "compile_requested": true,
+      "cuda_graph_requested": false,
+      "compile": true,
+      "cuda_graph": false,
+      "execution_scope": "denoiser",
+      "compiled_graphs": 1,
+      "cuda_graph_captures": 0,
+      "cuda_graph_evictions": 0,
+      "cuda_graph_replays": 0,
+      "wrapped_calls": 1200,
+      "model_seconds_cold": 107.56122046499513,
+      "model_seconds_warm": [
+        25.14140855311416,
+        25.238374997861683,
+        25.328953243093565,
+        25.376070236088708,
+        25.401968529913574
+      ],
+      "model_seconds_warm_median": 25.328953243093565,
+      "model_peak_allocated_bytes": 4589391872,
+      "model_peak_reserved_bytes": 6228541440,
+      "benchmark_scope": "model_forward; excludes input featurization and output decoding",
+      "prediction_cif": "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/cuequiv_compile/e2e/af3-4yx2-cuequiv_compile/4yx2-seed0-0.cif",
+      "prediction_cifs": [
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/cuequiv_compile/e2e/af3-4yx2-cuequiv_compile/4yx2-seed0-0.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/cuequiv_compile/e2e/af3-4yx2-cuequiv_compile/4yx2-seed0-1.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/cuequiv_compile/e2e/af3-4yx2-cuequiv_compile/4yx2-seed0-2.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/cuequiv_compile/e2e/af3-4yx2-cuequiv_compile/4yx2-seed0-3.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/cuequiv_compile/e2e/af3-4yx2-cuequiv_compile/4yx2-seed0-4.cif"
+      ],
+      "prediction_schema": 1,
+      "confidence_units": {
+        "plddt": "0..1",
+        "cif_b_factor": "0..100",
+        "pae": "angstrom"
+      }
+    },
+    "output_atoms": 4591,
+    "output_chains": 3,
+    "resources": [
+      {
+        "chain_index": 0,
+        "msa_db": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "msa_key": "4yx2_A",
+        "msa_rows": 429,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      },
+      {
+        "chain_index": 1,
+        "msa_db": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "msa_key": "4yx2_B",
+        "msa_rows": 2048,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      },
+      {
+        "chain_index": 2,
+        "msa_db": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "msa_key": "4yx2_C",
+        "msa_rows": 2048,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      }
+    ]
+  },
+  {
+    "model": "af3",
+    "mode": "miniworld_graph",
+    "target": "4yx2",
+    "backend": "miniworld",
+    "process_seconds": 824.5994495698251,
+    "status": 0,
+    "error": null,
+    "config": {
+      "backend": "miniworld",
+      "precision": "bf16",
+      "seed": 0,
+      "trunk": {
+        "recycles": 10,
+        "msa_depth": 2048
+      },
+      "diffusion": {
+        "steps": 200
+      },
+      "execution": {
+        "compile": true,
+        "cuda_graph": true,
+        "bucketing": true,
+        "scope": "denoiser",
+        "max_graphs": 4,
+        "benchmark_repeats": 5
+      }
+    },
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "slurm_job": "46439",
+    "host": "gpu03",
+    "torch": "2.10.0+cu128",
+    "cuda": "12.8",
+    "input_spec": {
+      "a3m": {},
+      "ccd_db": "/home/psk6950/practice/FoldForge/data/ccd/preprocessed_CCD.lmdb",
+      "chain_letters": {
+        "0": "A",
+        "1": "B",
+        "2": "C"
+      },
+      "fasta": {
+        "A": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/A.fasta",
+        "B": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/B.fasta",
+        "C": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/C.fasta"
+      },
+      "msa": {
+        "A": "4yx2_A",
+        "B": "4yx2_B",
+        "C": "4yx2_C"
+      },
+      "msa_db": {
+        "A": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "B": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "C": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb"
+      },
+      "name": "4yx2",
+      "save_trajectory": false,
+      "template": {},
+      "template_db": "/home/psk6950/practice/FoldForge/validation/qualification-inputs/4yx2/template.lmdb",
+      "n_diffusion_samples": 5,
+      "diffusion_batch_size": 5
+    },
+    "gpu_memory_bytes": 85095874560,
+    "scope": "complete CLI process with 6 model forwards, including weights/compile/capture/input/output; cached ESMC embeddings",
+    "output": "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/miniworld_graph/e2e/af3-4yx2-miniworld_graph",
+    "report": {
+      "ccd": {
+        "root": "/home/psk6950/practice/FoldForge/data/ccd/preprocessed_CCD.lmdb",
+        "schema": "miniworld.ccd.biomol.v1",
+        "lmdb_sha256": "3636431697cf0875171b5e93350b95d77a6e02443d305b7bb49240308e9cd26b",
+        "components_sha256": "bb31ae5cf6c8bc669924313077cb4231ee5ffefd3a20118cd14f3ec89f8bb6a5",
+        "rdkit_sha256": "d1cfb71f5993a3ebea7c47877022d7f597bbfbaf86e28a4770e957da6c50cd35"
+      },
+      "buckets": {
+        "tokens": 594,
+        "atoms": 4591,
+        "msa": 2157,
+        "token_bucket": 640,
+        "atom_bucket": 8192,
+        "msa_bucket": 4096
+      },
+      "seed": 0,
+      "recycles": 10,
+      "trunk_passes": 11,
+      "samples_per_denoiser_call": 5,
+      "steps": 200,
+      "samples": 5,
+      "checkpoint": {
+        "checkpoint": "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/model_checkpoints/af3/af3.bin.zst",
+        "strict": true,
+        "source_records": 405,
+        "mapped_records": 404,
+        "team_gm_pairformer_blocks": 54,
+        "engine_adaln": 75,
+        "engine_conditioned_transition": 33,
+        "backend": "miniworld",
+        "parameter_dtype": "torch.bfloat16",
+        "device": "cuda"
+      },
+      "elapsed_seconds": 777.478788580047,
+      "mean_plddt": 86.27791595458984,
+      "confidence_fields": [
+        "predicted_lddt",
+        "predicted_experimentally_resolved",
+        "full_pde",
+        "average_pde",
+        "full_pae",
+        "tmscore_adjusted_pae_global",
+        "tmscore_adjusted_pae_interface"
+      ],
+      "model": "af3",
+      "backend": "miniworld",
+      "precision": "bf16",
+      "autocast": false,
+      "autocast_scopes": [],
+      "float32_matmul_precision": "highest",
+      "compile_requested": true,
+      "cuda_graph_requested": true,
+      "compile": true,
+      "cuda_graph": true,
+      "execution_scope": "denoiser",
+      "compiled_graphs": 1,
+      "cuda_graph_captures": 1,
+      "cuda_graph_evictions": 0,
+      "cuda_graph_replays": 1200,
+      "wrapped_calls": 1200,
+      "model_seconds_cold": 700.0782153359614,
+      "model_seconds_warm": [
+        15.360823140013963,
+        15.428484186995775,
+        15.486970303114504,
+        15.489647913957015,
+        15.521556976018474
+      ],
+      "model_seconds_warm_median": 15.486970303114504,
+      "model_peak_allocated_bytes": 4132212736,
+      "model_peak_reserved_bytes": 6226444288,
+      "benchmark_scope": "model_forward; excludes input featurization and output decoding",
+      "prediction_cif": "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/miniworld_graph/e2e/af3-4yx2-miniworld_graph/4yx2-seed0-0.cif",
+      "prediction_cifs": [
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/miniworld_graph/e2e/af3-4yx2-miniworld_graph/4yx2-seed0-0.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/miniworld_graph/e2e/af3-4yx2-miniworld_graph/4yx2-seed0-1.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/miniworld_graph/e2e/af3-4yx2-miniworld_graph/4yx2-seed0-2.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/miniworld_graph/e2e/af3-4yx2-miniworld_graph/4yx2-seed0-3.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/miniworld_graph/e2e/af3-4yx2-miniworld_graph/4yx2-seed0-4.cif"
+      ],
+      "prediction_schema": 1,
+      "confidence_units": {
+        "plddt": "0..1",
+        "cif_b_factor": "0..100",
+        "pae": "angstrom"
+      }
+    },
+    "output_atoms": 4591,
+    "output_chains": 3,
+    "resources": [
+      {
+        "chain_index": 0,
+        "msa_db": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "msa_key": "4yx2_A",
+        "msa_rows": 429,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      },
+      {
+        "chain_index": 1,
+        "msa_db": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "msa_key": "4yx2_B",
+        "msa_rows": 2048,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      },
+      {
+        "chain_index": 2,
+        "msa_db": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "msa_key": "4yx2_C",
+        "msa_rows": 2048,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      }
+    ]
+  },
+  {
+    "model": "af3",
+    "mode": "pytorch_compile_bf16",
+    "target": "4yx2",
+    "backend": "pytorch",
+    "process_seconds": 506.6136438320391,
+    "status": 0,
+    "error": null,
+    "config": {
+      "backend": "pytorch",
+      "precision": "bf16",
+      "seed": 0,
+      "trunk": {
+        "recycles": 10,
+        "msa_depth": 2048
+      },
+      "diffusion": {
+        "steps": 200
+      },
+      "execution": {
+        "compile": true,
+        "cuda_graph": false,
+        "bucketing": true,
+        "scope": "denoiser",
+        "max_graphs": 4,
+        "benchmark_repeats": 5
+      }
+    },
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "slurm_job": "46437",
+    "host": "gpu03",
+    "torch": "2.10.0+cu128",
+    "cuda": "12.8",
+    "input_spec": {
+      "a3m": {},
+      "ccd_db": "/home/psk6950/practice/FoldForge/data/ccd/preprocessed_CCD.lmdb",
+      "chain_letters": {
+        "0": "A",
+        "1": "B",
+        "2": "C"
+      },
+      "fasta": {
+        "A": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/A.fasta",
+        "B": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/B.fasta",
+        "C": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/C.fasta"
+      },
+      "msa": {
+        "A": "4yx2_A",
+        "B": "4yx2_B",
+        "C": "4yx2_C"
+      },
+      "msa_db": {
+        "A": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "B": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "C": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb"
+      },
+      "name": "4yx2",
+      "save_trajectory": false,
+      "template": {},
+      "template_db": "/home/psk6950/practice/FoldForge/validation/qualification-inputs/4yx2/template.lmdb",
+      "n_diffusion_samples": 5,
+      "diffusion_batch_size": 5
+    },
+    "gpu_memory_bytes": 85095874560,
+    "scope": "complete CLI process with 6 model forwards, including weights/compile/capture/input/output; cached ESMC embeddings",
+    "output": "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_compile_bf16/e2e/af3-4yx2-pytorch_compile_bf16",
+    "report": {
+      "ccd": {
+        "root": "/home/psk6950/practice/FoldForge/data/ccd/preprocessed_CCD.lmdb",
+        "schema": "miniworld.ccd.biomol.v1",
+        "lmdb_sha256": "3636431697cf0875171b5e93350b95d77a6e02443d305b7bb49240308e9cd26b",
+        "components_sha256": "bb31ae5cf6c8bc669924313077cb4231ee5ffefd3a20118cd14f3ec89f8bb6a5",
+        "rdkit_sha256": "d1cfb71f5993a3ebea7c47877022d7f597bbfbaf86e28a4770e957da6c50cd35"
+      },
+      "buckets": {
+        "tokens": 594,
+        "atoms": 4591,
+        "msa": 2157,
+        "token_bucket": 640,
+        "atom_bucket": 8192,
+        "msa_bucket": 4096
+      },
+      "seed": 0,
+      "recycles": 10,
+      "trunk_passes": 11,
+      "samples_per_denoiser_call": 5,
+      "steps": 200,
+      "samples": 5,
+      "checkpoint": {
+        "checkpoint": "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/model_checkpoints/af3/af3.bin.zst",
+        "strict": true,
+        "source_records": 405,
+        "mapped_records": 404,
+        "team_gm_pairformer_blocks": 54,
+        "engine_adaln": 75,
+        "engine_conditioned_transition": 33,
+        "backend": "pytorch",
+        "parameter_dtype": "torch.bfloat16",
+        "device": "cuda"
+      },
+      "elapsed_seconds": 461.94227957190014,
+      "mean_plddt": 86.12034606933594,
+      "confidence_fields": [
+        "predicted_lddt",
+        "predicted_experimentally_resolved",
+        "full_pde",
+        "average_pde",
+        "full_pae",
+        "tmscore_adjusted_pae_global",
+        "tmscore_adjusted_pae_interface"
+      ],
+      "model": "af3",
+      "backend": "pytorch",
+      "precision": "bf16",
+      "autocast": false,
+      "autocast_scopes": [],
+      "float32_matmul_precision": "highest",
+      "compile_requested": true,
+      "cuda_graph_requested": false,
+      "compile": true,
+      "cuda_graph": false,
+      "execution_scope": "denoiser",
+      "compiled_graphs": 1,
+      "cuda_graph_captures": 0,
+      "cuda_graph_evictions": 0,
+      "cuda_graph_replays": 0,
+      "wrapped_calls": 1200,
+      "model_seconds_cold": 145.861530282069,
+      "model_seconds_warm": [
+        62.907581751002,
+        63.13457618304528,
+        63.26427163090557,
+        63.335072110872716,
+        63.33162207505666
+      ],
+      "model_seconds_warm_median": 63.26427163090557,
+      "model_peak_allocated_bytes": 6668849152,
+      "model_peak_reserved_bytes": 7172259840,
+      "benchmark_scope": "model_forward; excludes input featurization and output decoding",
+      "prediction_cif": "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_compile_bf16/e2e/af3-4yx2-pytorch_compile_bf16/4yx2-seed0-0.cif",
+      "prediction_cifs": [
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_compile_bf16/e2e/af3-4yx2-pytorch_compile_bf16/4yx2-seed0-0.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_compile_bf16/e2e/af3-4yx2-pytorch_compile_bf16/4yx2-seed0-1.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_compile_bf16/e2e/af3-4yx2-pytorch_compile_bf16/4yx2-seed0-2.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_compile_bf16/e2e/af3-4yx2-pytorch_compile_bf16/4yx2-seed0-3.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_compile_bf16/e2e/af3-4yx2-pytorch_compile_bf16/4yx2-seed0-4.cif"
+      ],
+      "prediction_schema": 1,
+      "confidence_units": {
+        "plddt": "0..1",
+        "cif_b_factor": "0..100",
+        "pae": "angstrom"
+      }
+    },
+    "output_atoms": 4591,
+    "output_chains": 3,
+    "resources": [
+      {
+        "chain_index": 0,
+        "msa_db": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "msa_key": "4yx2_A",
+        "msa_rows": 429,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      },
+      {
+        "chain_index": 1,
+        "msa_db": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "msa_key": "4yx2_B",
+        "msa_rows": 2048,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      },
+      {
+        "chain_index": 2,
+        "msa_db": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "msa_key": "4yx2_C",
+        "msa_rows": 2048,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      }
+    ]
+  },
+  {
+    "model": "af3",
+    "mode": "pytorch_compile_reference",
+    "target": "4yx2",
+    "backend": "pytorch",
+    "process_seconds": 652.2675464488566,
+    "status": 0,
+    "error": null,
+    "config": {
+      "backend": "pytorch",
+      "precision": "af3_default",
+      "seed": 0,
+      "trunk": {
+        "recycles": 10,
+        "msa_depth": 2048
+      },
+      "diffusion": {
+        "steps": 200
+      },
+      "execution": {
+        "compile": true,
+        "cuda_graph": false,
+        "bucketing": true,
+        "scope": "denoiser",
+        "max_graphs": 4,
+        "benchmark_repeats": 5
+      }
+    },
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "slurm_job": "46436",
+    "host": "gpu03",
+    "torch": "2.10.0+cu128",
+    "cuda": "12.8",
+    "input_spec": {
+      "a3m": {},
+      "ccd_db": "/home/psk6950/practice/FoldForge/data/ccd/preprocessed_CCD.lmdb",
+      "chain_letters": {
+        "0": "A",
+        "1": "B",
+        "2": "C"
+      },
+      "fasta": {
+        "A": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/A.fasta",
+        "B": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/B.fasta",
+        "C": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/C.fasta"
+      },
+      "msa": {
+        "A": "4yx2_A",
+        "B": "4yx2_B",
+        "C": "4yx2_C"
+      },
+      "msa_db": {
+        "A": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "B": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "C": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb"
+      },
+      "name": "4yx2",
+      "save_trajectory": false,
+      "template": {},
+      "template_db": "/home/psk6950/practice/FoldForge/validation/qualification-inputs/4yx2/template.lmdb",
+      "n_diffusion_samples": 5,
+      "diffusion_batch_size": 5
+    },
+    "gpu_memory_bytes": 85095874560,
+    "scope": "complete CLI process with 6 model forwards, including weights/compile/capture/input/output; cached ESMC embeddings",
+    "output": "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_compile_reference/e2e/af3-4yx2-pytorch_compile_reference",
+    "report": {
+      "ccd": {
+        "root": "/home/psk6950/practice/FoldForge/data/ccd/preprocessed_CCD.lmdb",
+        "schema": "miniworld.ccd.biomol.v1",
+        "lmdb_sha256": "3636431697cf0875171b5e93350b95d77a6e02443d305b7bb49240308e9cd26b",
+        "components_sha256": "bb31ae5cf6c8bc669924313077cb4231ee5ffefd3a20118cd14f3ec89f8bb6a5",
+        "rdkit_sha256": "d1cfb71f5993a3ebea7c47877022d7f597bbfbaf86e28a4770e957da6c50cd35"
+      },
+      "buckets": {
+        "tokens": 594,
+        "atoms": 4591,
+        "msa": 2157,
+        "token_bucket": 640,
+        "atom_bucket": 8192,
+        "msa_bucket": 4096
+      },
+      "seed": 0,
+      "recycles": 10,
+      "trunk_passes": 11,
+      "samples_per_denoiser_call": 5,
+      "steps": 200,
+      "samples": 5,
+      "checkpoint": {
+        "checkpoint": "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/model_checkpoints/af3/af3.bin.zst",
+        "strict": true,
+        "source_records": 405,
+        "mapped_records": 404,
+        "team_gm_pairformer_blocks": 54,
+        "engine_adaln": 75,
+        "engine_conditioned_transition": 33,
+        "backend": "pytorch",
+        "parameter_dtype": "mixed (released checkpoint dtypes)",
+        "device": "cuda",
+        "precision_policy": "af3_default",
+        "trunk_parameter_dtype": "torch.bfloat16",
+        "diffusion_parameter_dtype": "torch.float32"
+      },
+      "elapsed_seconds": 604.5750646658707,
+      "mean_plddt": 86.26119232177734,
+      "confidence_fields": [
+        "predicted_lddt",
+        "predicted_experimentally_resolved",
+        "full_pde",
+        "average_pde",
+        "full_pae",
+        "tmscore_adjusted_pae_global",
+        "tmscore_adjusted_pae_interface"
+      ],
+      "model": "af3",
+      "backend": "pytorch",
+      "precision": "af3_default",
+      "autocast": false,
+      "autocast_scopes": [],
+      "float32_matmul_precision": "highest",
+      "compile_requested": true,
+      "cuda_graph_requested": false,
+      "compile": true,
+      "cuda_graph": false,
+      "execution_scope": "denoiser",
+      "compiled_graphs": 1,
+      "cuda_graph_captures": 0,
+      "cuda_graph_evictions": 0,
+      "cuda_graph_replays": 0,
+      "wrapped_calls": 1200,
+      "model_seconds_cold": 167.93293111608364,
+      "model_seconds_warm": [
+        86.76873088115826,
+        87.14831585111097,
+        87.4121439550072,
+        87.60440695122816,
+        87.61652551195584
+      ],
+      "model_seconds_warm_median": 87.4121439550072,
+      "model_peak_allocated_bytes": 7113119232,
+      "model_peak_reserved_bytes": 7931428864,
+      "benchmark_scope": "model_forward; excludes input featurization and output decoding",
+      "prediction_cif": "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_compile_reference/e2e/af3-4yx2-pytorch_compile_reference/4yx2-seed0-0.cif",
+      "prediction_cifs": [
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_compile_reference/e2e/af3-4yx2-pytorch_compile_reference/4yx2-seed0-0.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_compile_reference/e2e/af3-4yx2-pytorch_compile_reference/4yx2-seed0-1.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_compile_reference/e2e/af3-4yx2-pytorch_compile_reference/4yx2-seed0-2.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_compile_reference/e2e/af3-4yx2-pytorch_compile_reference/4yx2-seed0-3.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_compile_reference/e2e/af3-4yx2-pytorch_compile_reference/4yx2-seed0-4.cif"
+      ],
+      "prediction_schema": 1,
+      "confidence_units": {
+        "plddt": "0..1",
+        "cif_b_factor": "0..100",
+        "pae": "angstrom"
+      }
+    },
+    "output_atoms": 4591,
+    "output_chains": 3,
+    "resources": [
+      {
+        "chain_index": 0,
+        "msa_db": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "msa_key": "4yx2_A",
+        "msa_rows": 429,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      },
+      {
+        "chain_index": 1,
+        "msa_db": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "msa_key": "4yx2_B",
+        "msa_rows": 2048,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      },
+      {
+        "chain_index": 2,
+        "msa_db": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "msa_key": "4yx2_C",
+        "msa_rows": 2048,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      }
+    ]
+  },
+  {
+    "model": "af3",
+    "mode": "pytorch_eager_reference",
+    "target": "4yx2",
+    "backend": "pytorch",
+    "process_seconds": 661.3236719970591,
+    "status": 0,
+    "error": null,
+    "config": {
+      "backend": "pytorch",
+      "precision": "af3_default",
+      "seed": 0,
+      "trunk": {
+        "recycles": 10,
+        "msa_depth": 2048
+      },
+      "diffusion": {
+        "steps": 200
+      },
+      "execution": {
+        "compile": false,
+        "cuda_graph": false,
+        "bucketing": true,
+        "scope": "denoiser",
+        "max_graphs": 4,
+        "benchmark_repeats": 5
+      }
+    },
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "slurm_job": "46435",
+    "host": "gpu03",
+    "torch": "2.10.0+cu128",
+    "cuda": "12.8",
+    "input_spec": {
+      "a3m": {},
+      "ccd_db": "/home/psk6950/practice/FoldForge/data/ccd/preprocessed_CCD.lmdb",
+      "chain_letters": {
+        "0": "A",
+        "1": "B",
+        "2": "C"
+      },
+      "fasta": {
+        "A": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/A.fasta",
+        "B": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/B.fasta",
+        "C": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/C.fasta"
+      },
+      "msa": {
+        "A": "4yx2_A",
+        "B": "4yx2_B",
+        "C": "4yx2_C"
+      },
+      "msa_db": {
+        "A": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "B": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "C": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb"
+      },
+      "name": "4yx2",
+      "save_trajectory": false,
+      "template": {},
+      "template_db": "/home/psk6950/practice/FoldForge/validation/qualification-inputs/4yx2/template.lmdb",
+      "n_diffusion_samples": 5,
+      "diffusion_batch_size": 5
+    },
+    "gpu_memory_bytes": 85095874560,
+    "scope": "complete CLI process with 6 model forwards, including weights/compile/capture/input/output; cached ESMC embeddings",
+    "output": "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_eager_reference/e2e/af3-4yx2-pytorch_eager_reference",
+    "report": {
+      "ccd": {
+        "root": "/home/psk6950/practice/FoldForge/data/ccd/preprocessed_CCD.lmdb",
+        "schema": "miniworld.ccd.biomol.v1",
+        "lmdb_sha256": "3636431697cf0875171b5e93350b95d77a6e02443d305b7bb49240308e9cd26b",
+        "components_sha256": "bb31ae5cf6c8bc669924313077cb4231ee5ffefd3a20118cd14f3ec89f8bb6a5",
+        "rdkit_sha256": "d1cfb71f5993a3ebea7c47877022d7f597bbfbaf86e28a4770e957da6c50cd35"
+      },
+      "buckets": {
+        "tokens": 594,
+        "atoms": 4591,
+        "msa": 2157,
+        "token_bucket": 640,
+        "atom_bucket": 8192,
+        "msa_bucket": 4096
+      },
+      "seed": 0,
+      "recycles": 10,
+      "trunk_passes": 11,
+      "samples_per_denoiser_call": 5,
+      "steps": 200,
+      "samples": 5,
+      "checkpoint": {
+        "checkpoint": "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/model_checkpoints/af3/af3.bin.zst",
+        "strict": true,
+        "source_records": 405,
+        "mapped_records": 404,
+        "team_gm_pairformer_blocks": 54,
+        "engine_adaln": 75,
+        "engine_conditioned_transition": 33,
+        "backend": "pytorch",
+        "parameter_dtype": "mixed (released checkpoint dtypes)",
+        "device": "cuda",
+        "precision_policy": "af3_default",
+        "trunk_parameter_dtype": "torch.bfloat16",
+        "diffusion_parameter_dtype": "torch.float32"
+      },
+      "elapsed_seconds": 616.5021454270463,
+      "mean_plddt": 86.26220703125,
+      "confidence_fields": [
+        "predicted_lddt",
+        "predicted_experimentally_resolved",
+        "full_pde",
+        "average_pde",
+        "full_pae",
+        "tmscore_adjusted_pae_global",
+        "tmscore_adjusted_pae_interface"
+      ],
+      "model": "af3",
+      "backend": "pytorch",
+      "precision": "af3_default",
+      "autocast": false,
+      "autocast_scopes": [],
+      "float32_matmul_precision": "highest",
+      "compile_requested": false,
+      "cuda_graph_requested": false,
+      "compile": false,
+      "cuda_graph": false,
+      "execution_scope": "denoiser",
+      "compiled_graphs": 0,
+      "cuda_graph_captures": 0,
+      "cuda_graph_evictions": 0,
+      "cuda_graph_replays": 0,
+      "wrapped_calls": 0,
+      "model_seconds_cold": 102.36006049090065,
+      "model_seconds_warm": [
+        102.5433601969853,
+        102.80438480293378,
+        102.898237477988,
+        102.88949199905619,
+        102.9203631139826
+      ],
+      "model_seconds_warm_median": 102.88949199905619,
+      "model_peak_allocated_bytes": 7113119232,
+      "model_peak_reserved_bytes": 7931428864,
+      "benchmark_scope": "model_forward; excludes input featurization and output decoding",
+      "prediction_cif": "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_eager_reference/e2e/af3-4yx2-pytorch_eager_reference/4yx2-seed0-0.cif",
+      "prediction_cifs": [
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_eager_reference/e2e/af3-4yx2-pytorch_eager_reference/4yx2-seed0-0.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_eager_reference/e2e/af3-4yx2-pytorch_eager_reference/4yx2-seed0-1.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_eager_reference/e2e/af3-4yx2-pytorch_eager_reference/4yx2-seed0-2.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_eager_reference/e2e/af3-4yx2-pytorch_eager_reference/4yx2-seed0-3.cif",
+        "/home/psk6950/practice/FoldForge/.bench/af3-batched-20260916/source/runs/af3-batched-20260916/pytorch_eager_reference/e2e/af3-4yx2-pytorch_eager_reference/4yx2-seed0-4.cif"
+      ],
+      "prediction_schema": 1,
+      "confidence_units": {
+        "plddt": "0..1",
+        "cif_b_factor": "0..100",
+        "pae": "angstrom"
+      }
+    },
+    "output_atoms": 4591,
+    "output_chains": 3,
+    "resources": [
+      {
+        "chain_index": 0,
+        "msa_db": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "msa_key": "4yx2_A",
+        "msa_rows": 429,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      },
+      {
+        "chain_index": 1,
+        "msa_db": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "msa_key": "4yx2_B",
+        "msa_rows": 2048,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      },
+      {
+        "chain_index": 2,
+        "msa_db": "/home/psk6950/practice/FoldForge/validation/inputs/qualification/4yx2/msa.lmdb",
+        "msa_key": "4yx2_C",
+        "msa_rows": 2048,
+        "template_db": null,
+        "template_key": null,
+        "templates": []
+      }
+    ]
+  }
+]

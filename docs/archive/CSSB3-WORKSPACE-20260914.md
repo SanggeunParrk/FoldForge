@@ -45,7 +45,7 @@ steps and denoiser compile+CUDA graph capture. It is not full-model production
 qualification or a three-backend benchmark.
 
 Protenix/OpenDDE whole-input bucketing and complete model parity remain unfinished;
-see `docs/INFERENCE-BACKENDS-BUCKETS-20260914.md` in FoldForge.
+see `docs/archive/INFERENCE-BACKENDS-BUCKETS-20260914.md` in FoldForge.
 
 ## Verified migration results
 

@@ -7,14 +7,17 @@ one CCD LMDB, team-gm block compositions and miniworld-engine kernels.
 Released model equations, checkpoint layouts and confidence heads remain explicit
 in each adapter. Boltz-2 and Chai-1 are planned and are not implemented.
 
-See [current qualification](docs/QUALIFICATION-20260914.md) for complex inputs,
+Start with the [documentation index](docs/README.md) and
+[benchmark results](docs/benchmark_results.md).
+
+See the [qualification record](docs/archive/QUALIFICATION-20260914.md) for complex inputs,
 actual compilation/CUDA graph boundaries and remaining deployment requirements.
-[The follow-up](docs/CLOSEOUT-20260914.md) records operational DB reads, A5000
+[The follow-up](docs/archive/CLOSEOUT-20260914.md) records operational DB reads, A5000
 execution and the large-input AF3 compiler numerical regression that did not pass.
 
 ## Code and loading
 
-Start with [the directory guide](docs/CODE-STRUCTURE.md).
+Start with [the directory guide](docs/guides/CODE-STRUCTURE.md).
 `foldforge.load(model, checkpoint, backend=..., dtype=..., device=...)` is the
 single loading API. Model directories and `ported/` packages have been removed;
 architecture assembly, configuration, weight mapping and feature processing each
@@ -70,7 +73,7 @@ source scripts/activate_env.sh
 
 Use the setup script for updates too: it reuses the verified FA2 wheel when
 available, otherwise builds the pinned release. Model runners activate `.venv`
-with its required C++ runtime. See [the environment record](docs/ENVIRONMENT-20260913.md).
+with its required C++ runtime. See [the environment record](docs/archive/ENVIRONMENT-20260913.md).
 
 
 > [!NOTE]
@@ -87,7 +90,7 @@ with its required C++ runtime. See [the environment record](docs/ENVIRONMENT-202
 the root source declaration governs the workspace. Keep the member's pin aligned
 so its standalone environment uses the same engine revision.
 
-See [the integration handoff](docs/ENGINE-INTEGRATION-20260913.md) for the pinned
+See [the integration handoff](docs/archive/ENGINE-INTEGRATION-20260913.md) for the pinned
 revision, validation results, and FlashAttention setup required for GPU SWA.
 
 ## Layout
@@ -143,7 +146,7 @@ decisions get made, and they belong next to the model rather than in an issue.
 
 | predictor | state |
 |---|---|
-| ESMFold2 | ported; live ESMC → folding → CIF runs through the public CLI; see [integration verification](docs/MODEL-INTEGRATION.md) |
+| ESMFold2 | ported; live ESMC → folding → CIF runs through the public CLI; see [integration verification](docs/guides/MODEL-INTEGRATION.md) |
 | AF3 | ported; strict released weights, full 1UBQ inference and PyTorch comparison verified |
 | Protenix v1/v2 | ported; both variants passed full 1UBQ inference and PyTorch comparison |
 | OpenDDE | ported; strict released weights, full 1UBQ inference and PyTorch comparison verified |
@@ -163,7 +166,7 @@ foldforge fold esmfold2 --target 1ubq --lm-source compute \
 Targets use prepared `validation/inputs/data/<target>/target.json` and MSA files.
 `--lm-source compute` runs the ESMC checkpoint; `cache` explicitly reuses an existing
 embedding file. The command writes CIF and JSON with actual precision, sampling,
-compile and CUDA-graph settings. See [the integration record](docs/MODEL-INTEGRATION.md)
+compile and CUDA-graph settings. See [the integration record](docs/guides/MODEL-INTEGRATION.md)
 for the additional models' source/checkpoint status and validation scope.
 All four predictors use the MiniWorld BioMol LMDB at
 `data/ccd/preprocessed_CCD.lmdb`. Use the same MiniWorld YAML with each model:
@@ -175,7 +178,7 @@ foldforge fold opendde --spec configs/inference/1ubq.yaml --out runs/opendde
 foldforge fold esmfold2 --spec configs/inference/1ubq.yaml --out runs/esmfold2
 ```
 
-See [MiniWorld formats](docs/MINIWORLD-FORMAT.md) for database migration,
+See [MiniWorld formats](docs/guides/MINIWORLD-FORMAT.md) for database migration,
 nested model settings, data conventions and checkpoint-specific capabilities.
 
 ## Tests, validation and prediction outputs
@@ -196,5 +199,5 @@ are preserved under `runs/archive/validation/`; relocation manifests map old
 paths to their new locations.
 
 Development checks: run `bash scripts/check_quality.sh` for Ruff lint/format and
-Pyright. See [code quality](docs/CODE-QUALITY.md) for scope, retained numerical-code
+Pyright. See [code quality](docs/guides/CODE-QUALITY.md) for scope, retained numerical-code
 exceptions, and compute-node regression checks.

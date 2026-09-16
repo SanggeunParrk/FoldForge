@@ -1,4 +1,4 @@
-Current contract: [MiniWorld formats](MINIWORLD-FORMAT.md). Current execution qualification: [2026-09-14](QUALIFICATION-20260914.md). Dated results below are historical and do not override these documents.
+Current contract: [MiniWorld formats](MINIWORLD-FORMAT.md). Current execution qualification: [2026-09-14](../archive/QUALIFICATION-20260914.md). Dated results below are historical and do not override these documents.
 
 Current format and shared-composition reference: [MiniWorld formats](MINIWORLD-FORMAT.md).
 The dated validation sections below describe the state when those checks ran.
@@ -38,7 +38,7 @@ web-service, search and optional ESM utilities are not qualified FoldForge APIs.
 Only the packaged loaders and inference commands described here are supported.
 
 Current CCD and module-boundary status is recorded in
-[code unification](CODE-UNIFICATION-20260913.md). The original port validation
+[code unification](../archive/CODE-UNIFICATION-20260913.md). The original port validation
 below establishes execution, not complete migration to team-gm blocks.
 
 ## ESMFold2 command

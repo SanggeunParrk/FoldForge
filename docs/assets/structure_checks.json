@@ -1,0 +1,2738 @@
+{
+  "esmfold2": {
+    "pytorch_compile_bf16": [
+      {
+        "sample": 0,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.622172243266,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.8833857557199436,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3912971300931218,
+          "heavy_atom_pairs_below_1_A": 1
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.17828732762327,
+          "ca_lddt": 0.9454544601478175,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 2.134415250728492
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.2500398781568883
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.1462384043065042
+            }
+          },
+          "interface_contact_precision": 0.9207920792079208,
+          "interface_contact_recall": 0.8378378378378378
+        }
+      },
+      {
+        "sample": 1,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.83885732323232,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.8864146187294497,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3950552351651218,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.3078600683619965,
+          "ca_lddt": 0.9519342490022562,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.5880687133638056
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.9942743538830324
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.7288160385311724
+            }
+          },
+          "interface_contact_precision": 0.907563025210084,
+          "interface_contact_recall": 0.8780487804878049
+        }
+      },
+      {
+        "sample": 2,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.30372080176768,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.89874902385804,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.4127305571275819,
+          "heavy_atom_pairs_below_1_A": 7
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 2.44723762138835,
+          "ca_lddt": 0.9332587510205443,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 4.404312306264403
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.8437836034782776
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.6492829888480122
+            }
+          },
+          "interface_contact_precision": 0.9363636363636364,
+          "interface_contact_recall": 0.944954128440367
+        }
+      },
+      {
+        "sample": 3,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.47815393518519,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.925612554709518,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.4207796132922947,
+          "heavy_atom_pairs_below_1_A": 1
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.0152734063757036,
+          "ca_lddt": 0.954527716678118,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.6971433143931853
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.4542228691924031
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.26452647338174
+            }
+          },
+          "interface_contact_precision": 0.9051724137931034,
+          "interface_contact_recall": 0.8333333333333334
+        }
+      },
+      {
+        "sample": 4,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.84839278198653,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.927222553010242,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.416201964579202,
+          "heavy_atom_pairs_below_1_A": 2
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.9553252039199691,
+          "ca_lddt": 0.9638236593600527,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.7259416819669782
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.32468328088703413
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.21350451640290072
+            }
+          },
+          "interface_contact_precision": 0.9022556390977443,
+          "interface_contact_recall": 0.8823529411764706
+        }
+      }
+    ],
+    "miniworld_graph": [
+      {
+        "sample": 0,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.70273042929293,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.9070664196394755,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.4340809900591398,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.9756178280555969,
+          "ca_lddt": 0.9625113815498921,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.764835999812678
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.18779518236025197
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.1881410306240931
+            }
+          },
+          "interface_contact_precision": 0.9519230769230769,
+          "interface_contact_recall": 0.8918918918918919
+        }
+      },
+      {
+        "sample": 1,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.87305345117845,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.8788560061121147,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.4105626177557617,
+          "heavy_atom_pairs_below_1_A": 1
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 3.5779876737399308,
+          "ca_lddt": 0.9190134611695004,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 5.940597192803603
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.9486869867164053
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.7685269880871943
+            }
+          },
+          "interface_contact_precision": 0.9423076923076923,
+          "interface_contact_recall": 0.7967479674796748
+        }
+      },
+      {
+        "sample": 2,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.71473195496633,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.930766653021804,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.4047916514568983,
+          "heavy_atom_pairs_below_1_A": 1
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.9556875140056884,
+          "ca_lddt": 0.9439540992876846,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 3.6485833263656833
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.31097611544234266
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.29051829316517824
+            }
+          },
+          "interface_contact_precision": 0.9629629629629629,
+          "interface_contact_recall": 0.9541284403669725
+        }
+      },
+      {
+        "sample": 3,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.68168665824916,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.9528408617724557,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.4107496890735054,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.9096353018221196,
+          "ca_lddt": 0.9742513201438873,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.4971251562115937
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.4044303470336797
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.3571537853840189
+            }
+          },
+          "interface_contact_precision": 0.968503937007874,
+          "interface_contact_recall": 0.9761904761904762
+        }
+      },
+      {
+        "sample": 4,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.98090277777777,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.8744473182855392,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.4024819971436375,
+          "heavy_atom_pairs_below_1_A": 3
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.7625550337412096,
+          "ca_lddt": 0.9715007769182228,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.268653444342609
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.27305808463705233
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.23684960612051514
+            }
+          },
+          "interface_contact_precision": 0.8723404255319149,
+          "interface_contact_recall": 0.9044117647058824
+        }
+      }
+    ],
+    "cuequiv_compile": [
+      {
+        "sample": 0,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.6277619949495,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.919495000220821,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.400963180744235,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.2306289428832708,
+          "ca_lddt": 0.9470807239096284,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 2.0632882443324188
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.40122674587897034
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.23317962586250715
+            }
+          },
+          "interface_contact_precision": 0.9326923076923077,
+          "interface_contact_recall": 0.8738738738738738
+        }
+      },
+      {
+        "sample": 1,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.80499000420875,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.8860247633662865,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.4525710946448167,
+          "heavy_atom_pairs_below_1_A": 1
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.445161028179825,
+          "ca_lddt": 0.9476645435391101,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.5888320308342054
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 1.1659050275399243
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.8538701968969594
+            }
+          },
+          "interface_contact_precision": 0.859504132231405,
+          "interface_contact_recall": 0.8455284552845529
+        }
+      },
+      {
+        "sample": 2,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.23006760311448,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.890099334069958,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.4027811651351743,
+          "heavy_atom_pairs_below_1_A": 6
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 2.5294853894881517,
+          "ca_lddt": 0.9288204293536775,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 4.419046876993246
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 1.0778503520307203
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.7955721829479334
+            }
+          },
+          "interface_contact_precision": 0.8728813559322034,
+          "interface_contact_recall": 0.944954128440367
+        }
+      },
+      {
+        "sample": 3,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.40943287037037,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.896657544434078,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3991202079824385,
+          "heavy_atom_pairs_below_1_A": 1
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.1283253574460477,
+          "ca_lddt": 0.9509419768973948,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.9116011007935134
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.47565268192496235
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.2981249470018931
+            }
+          },
+          "interface_contact_precision": 0.8879310344827587,
+          "interface_contact_recall": 0.8174603174603174
+        }
+      },
+      {
+        "sample": 4,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.72443181818181,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.889601608426257,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.41636552869033,
+          "heavy_atom_pairs_below_1_A": 1
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.9361927501084581,
+          "ca_lddt": 0.959345734332801,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.4649557039723964
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.597723398696096
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.3481586844693431
+            }
+          },
+          "interface_contact_precision": 0.9083969465648855,
+          "interface_contact_recall": 0.875
+        }
+      }
+    ],
+    "pytorch_eager_reference": [
+      {
+        "sample": 0,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.55014579464691,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.8661581218974135,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3700798295484689,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.1304516274360007,
+          "ca_lddt": 0.99920671333396,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.17383136734486243
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.06339738191610406
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.047246150710455875
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 0.9819819819819819
+        }
+      },
+      {
+        "sample": 1,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.88786907709809,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.857708653038389,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.376606026169582,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.05120536358243269,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.06577509197349843
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.03230176449519458
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.02898105923496691
+            }
+          },
+          "interface_contact_precision": 0.984,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 2,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.4736699094676,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.8952693208828664,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.369278633719596,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.5568501553734224,
+          "ca_lddt": 0.976540921958934,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.0500059776760435
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.04203673401222321
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.03277003492307674
+            }
+          },
+          "interface_contact_precision": 0.963302752293578,
+          "interface_contact_recall": 0.963302752293578
+        }
+      },
+      {
+        "sample": 3,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.52124026969626,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.8523000945874437,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.372838763404137,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.30761694815233137,
+          "ca_lddt": 0.9920379486889805,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.5715155724238344
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.06637219006581993
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.062134698076936966
+            }
+          },
+          "interface_contact_precision": 0.9541984732824428,
+          "interface_contact_recall": 0.9920634920634921
+        }
+      },
+      {
+        "sample": 4,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.82233317853625,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.84995223884427,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3796704466088956,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.22164145751002046,
+          "ca_lddt": 0.9925909171493007,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.40376855789255334
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.051423906774947674
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.043276363579126606
+            }
+          },
+          "interface_contact_precision": 0.9485294117647058,
+          "interface_contact_recall": 0.9485294117647058
+        }
+      }
+    ],
+    "pytorch_compile_reference": [
+      {
+        "sample": 0,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.51451128179377,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.863527161675879,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3761971207348505,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.9630108964390424e-14,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 2.9577458060852533e-15
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 1.522079310449975e-14
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 1.3418380147439747e-14
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 1,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.8792274134729,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.8640070514116647,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3808571333382982,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.3340534019773595e-14,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 3.523826729149461e-15
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 6.8754990337057506e-15
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 1.5021136364945857e-14
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 2,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.45899359706274,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.8833578272126386,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.382981307087281,
+          "heavy_atom_pairs_below_1_A": 5
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.3247114121392064e-14,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 6.909837847932984e-15
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 5.311956389686883e-15
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 1.0043963233067107e-14
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 3,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.55779289797901,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.8509036378676433,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3893225271998593,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.2420755475633408e-14,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 8.447618250557055e-15
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 2.8268656820087e-15
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 1.2452125490340669e-14
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 4,
+        "geometry": {
+          "atoms": 4588,
+          "finite": true,
+          "ca_mean_plddt": 85.81130029697611,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.8559908249541053,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3702949045830375,
+          "heavy_atom_pairs_below_1_A": 2
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 8.957646454798562e-15,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 4.562559387104194e-15
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 1.0418981547342538e-14
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 5.8329035216611036e-15
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      }
+    ]
+  },
+  "protenix": {
+    "pytorch_eager_reference": [
+      {
+        "sample": 0,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 92.44193023737374,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 4.01555181418494,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.4752134468167732,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.009009144855689953,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.015035573853086468
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.0012491766551655122
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.001262913398929499
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 1,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 91.88177188552189,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.937816182283017,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.4467240660049843,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.011306135734728903,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.016583142185416237
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.0014356863673484883
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.0013752409083261838
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 2,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 92.28216065656565,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.9597570660284522,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.4360064985455308,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.0034975743422990565,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.0050171024692544945
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.0016253853202945056
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.0012611830888896614
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 3,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 92.51666618518519,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 4.046123271637353,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3908296102615323,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.005983030485262296,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.008936970559599947
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.0021045160227353152
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.0020688287202671797
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 4,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 91.83392171885522,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 4.086137727324131,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.4618509161080677,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.005307237855171306,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.005377598519682956
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.001269994962469672
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.0012212749605314721
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      }
+    ],
+    "pytorch_compile_reference": [
+      {
+        "sample": 0,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 92.44428451851851,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 4.014355977202945,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.4762542427783234,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 9.138049447701222e-15,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 2.39976520068388e-14
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 9.335684520370287e-15
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 1.9478081055878455e-14
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 1,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 91.88021415151516,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.93702819822312,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.4464289072229757,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.7109609181913944e-14,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.5898414013586853e-14
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 1.0878897750228904e-14
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 8.907367811584229e-15
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 2,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 92.2849456969697,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.960212024973437,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.4374537425409575,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 2.22447127346589e-14,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 6.567966150288249e-15
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 5.400982140553426e-15
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 2.448089926963129e-15
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 3,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 92.51896776767677,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 4.046955112692898,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3914514321724494,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.4541391342613215e-14,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.742755124615769e-14
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 1.515804478513578e-14
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 7.148309796221277e-15
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 4,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 91.83495932828282,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 4.086269085311686,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.4619241251145667,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.4518855462468054e-14,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.7612443735533475e-14
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 1.0797237463367993e-14
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 1.1744114298691571e-14
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      }
+    ],
+    "pytorch_compile_bf16": [
+      {
+        "sample": 0,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 92.47112491919191,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 12,
+          "adjacent_ca_max_A": 4.828337221649816,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 6,
+          "peptide_max_A": 2.12701862777011,
+          "heavy_atom_pairs_below_1_A": 14
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.550022377040478,
+          "ca_lddt": 0.9982101103628882,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.5044486493655855
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.10505686583387717
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.1094182947784404
+            }
+          },
+          "interface_contact_precision": 0.9895833333333334,
+          "interface_contact_recall": 0.9693877551020408
+        }
+      },
+      {
+        "sample": 1,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 91.93165123569024,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 8,
+          "adjacent_ca_max_A": 4.20975230795649,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 2,
+          "peptide_max_A": 1.8386399612131776,
+          "heavy_atom_pairs_below_1_A": 9
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.8605271934210275,
+          "ca_lddt": 0.9865259385315617,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 3.187176769007445
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.0867453729459938
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.11414130416583207
+            }
+          },
+          "interface_contact_precision": 0.98989898989899,
+          "interface_contact_recall": 0.98989898989899
+        }
+      },
+      {
+        "sample": 2,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 92.31493572222222,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 11,
+          "adjacent_ca_max_A": 4.43563053540136,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 5,
+          "peptide_max_A": 1.880898638333815,
+          "heavy_atom_pairs_below_1_A": 14
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.6752079526589363,
+          "ca_lddt": 0.9983307847615643,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.6563621762921698
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.0992878791547557
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.10784061906489263
+            }
+          },
+          "interface_contact_precision": 0.9893617021276596,
+          "interface_contact_recall": 0.9587628865979382
+        }
+      },
+      {
+        "sample": 3,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 92.54073814814815,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 15,
+          "adjacent_ca_max_A": 4.8108937557014535,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 5,
+          "peptide_max_A": 1.8320745776053995,
+          "heavy_atom_pairs_below_1_A": 10
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.19750335829813015,
+          "ca_lddt": 0.9949342814873119,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.24248136917429947
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.09529532156447718
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.11969828164436244
+            }
+          },
+          "interface_contact_precision": 0.9897959183673469,
+          "interface_contact_recall": 0.9897959183673469
+        }
+      },
+      {
+        "sample": 4,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 91.89417413299664,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 4.194655494016553,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 2,
+          "peptide_max_A": 1.7198751526578764,
+          "heavy_atom_pairs_below_1_A": 9
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.1883316087530955,
+          "ca_lddt": 0.9993130002577258,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.8276629890555004
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.09850294406159639
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.11596293649798889
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      }
+    ],
+    "miniworld_graph": [
+      {
+        "sample": 0,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 92.45530075084176,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 11,
+          "adjacent_ca_max_A": 4.3024870999672995,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 8,
+          "peptide_max_A": 2.0090383311146613,
+          "heavy_atom_pairs_below_1_A": 14
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.32248581208775184,
+          "ca_lddt": 0.9991840528298862,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.30894826738708925
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.09785639349324467
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.11674667179825793
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 0.9693877551020408
+        }
+      },
+      {
+        "sample": 1,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 91.91881413468015,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 9,
+          "adjacent_ca_max_A": 4.604285178470698,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 1,
+          "peptide_max_A": 1.69034190253776,
+          "heavy_atom_pairs_below_1_A": 10
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.903308606277153,
+          "ca_lddt": 0.9869732033588585,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 3.2875057979523823
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.08378003124477566
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.11114891803067634
+            }
+          },
+          "interface_contact_precision": 0.9801980198019802,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 2,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 92.30917272053873,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 10,
+          "adjacent_ca_max_A": 4.492284455161873,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 2,
+          "peptide_max_A": 1.7019285186282112,
+          "heavy_atom_pairs_below_1_A": 6
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.6864095759704872,
+          "ca_lddt": 0.9985749758663489,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.6022862350908703
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.10754524311092836
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.11373406282151352
+            }
+          },
+          "interface_contact_precision": 0.9895833333333334,
+          "interface_contact_recall": 0.979381443298969
+        }
+      },
+      {
+        "sample": 3,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 92.52519743097642,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 14,
+          "adjacent_ca_max_A": 4.672608475093644,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 5,
+          "peptide_max_A": 1.8330764211880808,
+          "heavy_atom_pairs_below_1_A": 16
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.326912093087832,
+          "ca_lddt": 0.9957588450644007,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.3900538533619885
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.08901225216633499
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.12265095274175121
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 0.9693877551020408
+        }
+      },
+      {
+        "sample": 4,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 91.88106097474747,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 7,
+          "adjacent_ca_max_A": 4.812999955894652,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 3,
+          "peptide_max_A": 1.7346469580192796,
+          "heavy_atom_pairs_below_1_A": 10
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.0199252824866887,
+          "ca_lddt": 0.9996150743546577,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.64723384582563
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.09910621743831562
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.101758486966816
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 0.968421052631579
+        }
+      }
+    ],
+    "cuequiv_compile": [
+      {
+        "sample": 0,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 92.45922896801348,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 14,
+          "adjacent_ca_max_A": 4.709644544934617,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 7,
+          "peptide_max_A": 1.8220628806823735,
+          "heavy_atom_pairs_below_1_A": 19
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.5679914354037698,
+          "ca_lddt": 0.9979249186793379,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.6884991827460805
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.09466257670367947
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.11126579207312261
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 0.9795918367346939
+        }
+      },
+      {
+        "sample": 1,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 91.90416453535354,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 13,
+          "adjacent_ca_max_A": 4.64150306852306,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 3,
+          "peptide_max_A": 1.8495866357143196,
+          "heavy_atom_pairs_below_1_A": 7
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.8048289916897705,
+          "ca_lddt": 0.9986259030977651,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.2403496347582044
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.08816801120601324
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.099839901944011
+            }
+          },
+          "interface_contact_precision": 0.9897959183673469,
+          "interface_contact_recall": 0.9797979797979798
+        }
+      },
+      {
+        "sample": 2,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 92.31077776599328,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 7,
+          "adjacent_ca_max_A": 4.304581533514618,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 7,
+          "peptide_max_A": 1.9037672635842982,
+          "heavy_atom_pairs_below_1_A": 16
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.651162632579125,
+          "ca_lddt": 0.9989108987019325,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.6150824500123794
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.10051807957145664
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.1016163446572955
+            }
+          },
+          "interface_contact_precision": 0.9894736842105263,
+          "interface_contact_recall": 0.9690721649484536
+        }
+      },
+      {
+        "sample": 3,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 92.53345197979797,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 13,
+          "adjacent_ca_max_A": 4.483840697563964,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 8,
+          "peptide_max_A": 1.9988178123921787,
+          "heavy_atom_pairs_below_1_A": 14
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.22389922521336675,
+          "ca_lddt": 0.995544733044733,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.31505417669126257
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.09772623173150197
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.12013177977667841
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 0.9795918367346939
+        }
+      },
+      {
+        "sample": 4,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 91.87874214478114,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 11,
+          "adjacent_ca_max_A": 4.386517957994002,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 3,
+          "peptide_max_A": 1.7714370044746874,
+          "heavy_atom_pairs_below_1_A": 6
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.9325093770659583,
+          "ca_lddt": 0.99890826970458,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.6132374534119706
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.10385897526390628
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.10817127552760658
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 0.9789473684210527
+        }
+      }
+    ]
+  },
+  "opendde": {
+    "pytorch_eager_reference": [
+      {
+        "sample": 0,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.85680767508418,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.849862067076301,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3539320534245576,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.009579934044643077,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.005405607897417036
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.01379330336106577
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.0025186214504374213
+            }
+          },
+          "interface_contact_precision": 0.9915254237288136,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 1,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.54843265824915,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.8312758939605236,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3432054286404775,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.0032512845764350474,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.0042661126097738415
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.0014311470718890013
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.001341838664524012
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 2,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.63460812962963,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.8774030766131258,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3455805064971942,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.004161804624716248,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.005020512149361442
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.001348136832212721
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.0014121740474710342
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 3,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.62661696969695,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.861371334403105,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.337554014852858,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.008657890684760946,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.008717990916554548
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.0014259215399959628
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.001409879382671849
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 4,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.64176627609427,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.869386194712865,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.335027393275134,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.002670800896628089,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.0036892241202552507
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.0013842239391707433
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.001388816611463001
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      }
+    ],
+    "pytorch_compile_reference": [
+      {
+        "sample": 0,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.85688922390572,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.849445435939437,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3552655362054684,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 2.857164686864926e-14,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 6.3949168178459356e-15
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 4.136838199350783e-15
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 1.4569320107170986e-14
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 1,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.54819316835017,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.8304357730860037,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3440214106799968,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.892635320693448e-14,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 9.697612326105073e-15
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 1.0051081556286921e-14
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 9.355741053985777e-15
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 2,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.63444251683501,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.8775188280973123,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3446456834841936,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.4943393363150646e-14,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.6213731385989996e-14
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 3.4839341207039292e-15
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 9.522016435901082e-15
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 3,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.62666385858586,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.8608915551703835,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.3369183638350877,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.9290827533640363e-14,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.4423462414538319e-13
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 1.6548997669805778e-14
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 8.400424326399227e-15
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      },
+      {
+        "sample": 4,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.64197827946127,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 3.868560300174795,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.336482027693602,
+          "heavy_atom_pairs_below_1_A": 0
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 2.651121113149994e-14,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 8.973040168788876e-15
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 3.3945457192407984e-14
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 1.3396737336067187e-14
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 1.0
+        }
+      }
+    ],
+    "pytorch_compile_bf16": [
+      {
+        "sample": 0,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.91645576262627,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 7,
+          "adjacent_ca_max_A": 4.207251503687651,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.654886349670748,
+          "heavy_atom_pairs_below_1_A": 1
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.2482879767159264,
+          "ca_lddt": 0.9993609718403781,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.37746693681962484
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.09758131245310278
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.09370611081764711
+            }
+          },
+          "interface_contact_precision": 0.9913793103448276,
+          "interface_contact_recall": 0.9829059829059829
+        }
+      },
+      {
+        "sample": 1,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.6166737912458,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 4.05154781874286,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 2,
+          "peptide_max_A": 1.6397742888440445,
+          "heavy_atom_pairs_below_1_A": 6
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.3247181476891589,
+          "ca_lddt": 0.9998669992020618,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.4962325329712815
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.08958882257980803
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.09304209221605883
+            }
+          },
+          "interface_contact_precision": 0.9787234042553191,
+          "interface_contact_recall": 0.968421052631579
+        }
+      },
+      {
+        "sample": 2,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.68708451683501,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 4.158963004642861,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.6458573777443433,
+          "heavy_atom_pairs_below_1_A": 5
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.0036998172535432,
+          "ca_lddt": 0.998179876620966,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.1350189046571364
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.08278884513134693
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.09608248154415475
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 0.9896907216494846
+        }
+      },
+      {
+        "sample": 3,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.68607376262625,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 8,
+          "adjacent_ca_max_A": 4.336952651068957,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 4,
+          "peptide_max_A": 1.7865177688744116,
+          "heavy_atom_pairs_below_1_A": 8
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.232748802555197,
+          "ca_lddt": 0.9992059491536819,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.1712394675501625
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.09282371921820447
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.09652478950192703
+            }
+          },
+          "interface_contact_precision": 0.9895833333333334,
+          "interface_contact_recall": 0.979381443298969
+        }
+      },
+      {
+        "sample": 4,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.69906310437712,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 4.162131495544198,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 3,
+          "peptide_max_A": 1.6411016219858672,
+          "heavy_atom_pairs_below_1_A": 11
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.9328330268090498,
+          "ca_lddt": 0.9998329538260093,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.9220741516572865
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.08243838335521436
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.10547884353901575
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 0.99
+        }
+      }
+    ],
+    "miniworld_graph": [
+      {
+        "sample": 0,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.8856412962963,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 4.164052837633189,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.647708673980323,
+          "heavy_atom_pairs_below_1_A": 2
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.5343634304618201,
+          "ca_lddt": 0.9863210155243601,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.9709505353394879
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.08915670272405998
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.08478033475838573
+            }
+          },
+          "interface_contact_precision": 0.9661016949152542,
+          "interface_contact_recall": 0.9743589743589743
+        }
+      },
+      {
+        "sample": 1,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.6150064006734,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 7,
+          "adjacent_ca_max_A": 4.263268407720066,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 4,
+          "peptide_max_A": 1.6563137244415331,
+          "heavy_atom_pairs_below_1_A": 13
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.2282644235517869,
+          "ca_lddt": 1.0,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.34743845745529933
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.0986456671090692
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.09924809700010725
+            }
+          },
+          "interface_contact_precision": 0.9791666666666666,
+          "interface_contact_recall": 0.9894736842105263
+        }
+      },
+      {
+        "sample": 2,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.68457811447811,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 7,
+          "adjacent_ca_max_A": 4.214111805769394,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 1,
+          "peptide_max_A": 1.6621936599891156,
+          "heavy_atom_pairs_below_1_A": 8
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.0349057657520537,
+          "ca_lddt": 0.997295974666306,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.1749259504875635
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.0876503823413189
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.09447490351169224
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 0.979381443298969
+        }
+      },
+      {
+        "sample": 3,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.6845505892256,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 8,
+          "adjacent_ca_max_A": 4.181953760532274,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 3,
+          "peptide_max_A": 1.6194041705593936,
+          "heavy_atom_pairs_below_1_A": 8
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.8870205810607158,
+          "ca_lddt": 0.9997701640676766,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.8282383264295756
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.08689448007159357
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.09748666481642275
+            }
+          },
+          "interface_contact_precision": 0.9693877551020408,
+          "interface_contact_recall": 0.979381443298969
+        }
+      },
+      {
+        "sample": 4,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.70000814478114,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 4.1297197503533125,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 5,
+          "peptide_max_A": 1.809175286148807,
+          "heavy_atom_pairs_below_1_A": 11
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.9064923330030892,
+          "ca_lddt": 0.9997916922259027,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.9190246355901243
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.09762376765417546
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.10405464755691408
+            }
+          },
+          "interface_contact_precision": 0.98989898989899,
+          "interface_contact_recall": 0.98
+        }
+      }
+    ],
+    "cuequiv_compile": [
+      {
+        "sample": 0,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.90784274074073,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 7,
+          "adjacent_ca_max_A": 4.255443433847406,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 1,
+          "peptide_max_A": 1.6124597777994354,
+          "heavy_atom_pairs_below_1_A": 7
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.3134271465933808,
+          "ca_lddt": 0.9989433356138528,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.47668401298317364
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.09073101229418302
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.10442908671349932
+            }
+          },
+          "interface_contact_precision": 0.9829059829059829,
+          "interface_contact_recall": 0.9829059829059829
+        }
+      },
+      {
+        "sample": 1,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.60419687037037,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 4.154202560452639,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 1,
+          "peptide_max_A": 1.632291482794055,
+          "heavy_atom_pairs_below_1_A": 10
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.4394104875348477,
+          "ca_lddt": 0.9997305345308769,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.633313240612007
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.088916643694444
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.09486316486304383
+            }
+          },
+          "interface_contact_precision": 0.96875,
+          "interface_contact_recall": 0.9789473684210527
+        }
+      },
+      {
+        "sample": 2,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.67750514814814,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 7,
+          "adjacent_ca_max_A": 4.21923329586613,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 2,
+          "peptide_max_A": 1.6685491103257946,
+          "heavy_atom_pairs_below_1_A": 10
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 1.068238085979221,
+          "ca_lddt": 0.9970268380933694,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 1.2649439050313582
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.08536927211324108
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.1049994180808572
+            }
+          },
+          "interface_contact_precision": 1.0,
+          "interface_contact_recall": 0.9690721649484536
+        }
+      },
+      {
+        "sample": 3,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.67488448484849,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 7,
+          "adjacent_ca_max_A": 4.083521241495503,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 0,
+          "peptide_max_A": 1.6860180307831794,
+          "heavy_atom_pairs_below_1_A": 11
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.7019985531531907,
+          "ca_lddt": 0.9999731117743541,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.6227993184847439
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.09179981964676696
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.0912777052778848
+            }
+          },
+          "interface_contact_precision": 0.979381443298969,
+          "interface_contact_recall": 0.979381443298969
+        }
+      },
+      {
+        "sample": 4,
+        "geometry": {
+          "atoms": 4591,
+          "finite": true,
+          "ca_mean_plddt": 94.68865787710438,
+          "adjacent_ca_count": 591,
+          "adjacent_ca_outside_3_4_to_4_2_A": 6,
+          "adjacent_ca_max_A": 4.148158639946528,
+          "peptide_bonds": 591,
+          "peptide_outside_1_0_to_1_7_A": 2,
+          "peptide_max_A": 1.6443462937672235,
+          "heavy_atom_pairs_below_1_A": 4
+        },
+        "vs_reference": {
+          "ca_count": 594,
+          "ca_rmsd_A": 0.7207558295975133,
+          "ca_lddt": 0.9996911894831032,
+          "per_chain": {
+            "A": {
+              "ca_count": 163,
+              "rmsd_A": 0.7536588643823313
+            },
+            "B": {
+              "ca_count": 218,
+              "rmsd_A": 0.08076448656476543
+            },
+            "C": {
+              "ca_count": 213,
+              "rmsd_A": 0.10269713075932689
+            }
+          },
+          "interface_contact_precision": 0.9895833333333334,
+          "interface_contact_recall": 0.95
+        }
+      }
+    ]
+  }
+}

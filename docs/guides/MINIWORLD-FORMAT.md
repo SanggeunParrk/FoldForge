@@ -274,4 +274,4 @@ Use `configs/inference/graph-bf16.yaml` for native BF16 and explicit denoiser
 CUDA graphs. Set `execution.compile: true` to also compile that callable.
 The trunk, host sampling and confidence remain outside capture; full-model graph
 capture is rejected. Reports record actual graph/replay counts. The complete
-numerical and complex-input qualification is in [the current execution record](QUALIFICATION-20260914.md).
+numerical and complex-input qualification is in [the current execution record](../archive/QUALIFICATION-20260914.md).

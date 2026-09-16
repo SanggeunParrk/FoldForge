@@ -33,6 +33,6 @@ Changes are left for review in this working tree, including the engine-pin
 change inside `libs/team-gm`; the original team-gm submodule revision is retained.
 When publishing this consumer later, commit its member change before the parent.
 
-Full-checkpoint follow-up: [MODEL-INTEGRATION.md](MODEL-INTEGRATION.md) records
+Full-checkpoint follow-up: [MODEL-INTEGRATION.md](../guides/MODEL-INTEGRATION.md) records
 the public CLI, live ESMC, normalization fix and corrected CA scoring. Its
 validation supersedes the initial import/module-only scope above.

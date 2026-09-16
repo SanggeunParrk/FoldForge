@@ -54,8 +54,11 @@ class Request:
         if self.backend not in {"miniworld", "pytorch", "cuequivariance"}:
             msg = f"Unsupported backend: {self.backend}"
             raise ValueError(msg)
-        if self.precision not in {"bf16", "fp32"}:
+        if self.precision not in {"bf16", "fp32", "af3_default", "model_default"}:
             msg = f"Unsupported precision: {self.precision}"
+            raise ValueError(msg)
+        if self.precision == "af3_default" and self.model != "af3":
+            msg = "af3_default precision applies only to AF3"
             raise ValueError(msg)
         if any(
             v is not None and v < 1
@@ -79,7 +82,7 @@ class Request:
     @property
     def dtype(self) -> str:
         """Compute dtype."""
-        return "bfloat16" if self.precision == "bf16" else "float32"
+        return "float32" if self.precision in {"fp32", "model_default"} else "bfloat16"
 
     @property
     def implementation(self) -> str:

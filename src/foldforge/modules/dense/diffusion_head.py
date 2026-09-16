@@ -129,6 +129,10 @@ class DiffusionHead(nn.Module):
         noise_level: torch.Tensor,
         use_conditioning: bool,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        # Official AF3 hands FP32 trunk embeddings to its FP32 denoiser.
+        # Keep this boundary explicit when the trunk itself uses BF16.
+        if self.single_cond_initial_projection.weight.dtype == torch.float32:
+            embeddings = {name: value.float() for name, value in embeddings.items()}
         single_embedding = use_conditioning * embeddings["single"]
         pair_embedding = use_conditioning * embeddings["pair"]
 

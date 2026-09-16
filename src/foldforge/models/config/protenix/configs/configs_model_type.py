@@ -19,7 +19,7 @@
 # features: default, constraint, esm, etc, if multiple split by "-"
 # version: v{x}.{y}.{z}
 
-"""Checkpoint variant defaults. See docs/CHECKPOINT-VARIANTS.md for the catalog."""
+"""Checkpoint defaults; catalog: docs/guides/CHECKPOINT-VARIANTS.md."""
 
 model_configs = {
     "protenix-v2": {

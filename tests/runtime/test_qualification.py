@@ -196,7 +196,7 @@ def test_shared_layout_imports_are_live(family):
     import importlib
 
     records = json.loads(
-        (REPOSITORY_ROOT / "docs/shared-layout-migration.json").read_text()
+        (REPOSITORY_ROOT / "docs/archive/shared-layout-migration.json").read_text()
     )
     for relative, name in records:
         relative.removesuffix(".py").replace("/", ".")

@@ -242,7 +242,7 @@ class ConfidenceHead(nn.Module):
         token_atoms_to_pseudo_beta (atom_layout.GatherInfo): Pseudo beta info for
             atom tokens.
         """
-        dtype = dense_atom_positions.dtype
+        dtype = self.left_target_feat_project.weight.dtype
 
         seq_mask_cast = seq_mask.to(dtype=dtype)
         pair_mask = seq_mask_cast[:, None] * seq_mask_cast[None, :]
@@ -259,6 +259,9 @@ class ConfidenceHead(nn.Module):
         # pairformer stack
         for layer in self.confidence_pairformer:
             pair_act, single_act = layer(pair_act, pair_mask, single_act, seq_mask)
+
+        pair_act = pair_act.to(self.left_half_distance_logits.weight.dtype)
+        single_act = single_act.to(self.plddt_logits.weight.dtype)
 
         # Produce logits to predict a distogram of pairwise distance errors
         # between the input prediction and the ground truth.

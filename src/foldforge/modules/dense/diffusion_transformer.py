@@ -217,19 +217,24 @@ class SelfAttention(nn.Module):
         v = self.v_projection(x)
 
         q, k, v = (
-            einops.rearrange(t, "n (h c) -> h n c", h=self.num_head).unsqueeze(0)
+            einops.rearrange(t, "... n (h c) -> ... h n c", h=self.num_head)
+            if x.ndim > 2
+            else einops.rearrange(t, "n (h c) -> h n c", h=self.num_head).unsqueeze(0)
             for t in [q, k, v]
         )
 
         if engine_attention_supported(self, q, self.qkv_dim):
-            weighted_avg = engine_dense_attention(q, k, v, pair_logits, mask)
+            weighted_avg = engine_dense_attention(
+                q, k, v, pair_logits, mask, num_aug=x.shape[0] if x.ndim == 3 else 1
+            )
         else:
             weighted_avg = fastnn.dot_product_attention(
                 q, k, v, mask=mask, bias=pair_logits
             )
 
-        weighted_avg = weighted_avg.squeeze(0)
-        weighted_avg = einops.rearrange(weighted_avg, "h q c -> q (h c)")
+        if x.ndim == 2:
+            weighted_avg = weighted_avg.squeeze(0)
+        weighted_avg = einops.rearrange(weighted_avg, "... h q c -> ... q (h c)")
 
         gate_logits = self.gating_query(x)
         return self.adaptive_zero_init(
@@ -366,10 +371,10 @@ class CrossAttention(nn.Module):
         single_cond_k: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Compute the module output."""
-        if len(mask_q.shape) != len(x_q.shape) - 1:
+        if tuple(mask_q.shape) != tuple(x_q.shape[-mask_q.ndim - 1 : -1]):
             message = f"{mask_q.shape}, {x_q.shape}"
             raise ValueError(message)
-        if len(mask_k.shape) != len(x_k.shape) - 1:
+        if tuple(mask_k.shape) != tuple(x_k.shape[-mask_k.ndim - 1 : -1]):
             message = f"{mask_k.shape}, {x_k.shape}"
             raise ValueError(message)
 
@@ -388,8 +393,9 @@ class CrossAttention(nn.Module):
         k = torch.reshape(k, (*k.shape[:-1], self.num_head, self.key_dim_per_head))
 
         logits = (
-            torch.einsum("...qhc,...khc->...hqk", q.float() * self.q_scale, k.float())
-            + bias
+            # GEMM operands follow native projection precision. Keep masking and
+            # softmax in FP32, then restore V's dtype for the weighted sum.
+            torch.einsum("...qhc,...khc->...hqk", q * self.q_scale, k).float() + bias
         )
         if pair_logits is not None:
             logits += pair_logits

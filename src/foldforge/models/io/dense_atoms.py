@@ -58,12 +58,13 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         buckets=TOKEN_SHAPES if args.execution.bucketing else None,
         verbose=True,
     )
-    dtype = torch.bfloat16 if args.precision == "bf16" else torch.float32
+    dtype = torch.float32 if args.precision == "fp32" else torch.bfloat16
     model = load(
         "af3",
         args.checkpoint,
         backend=args.backend,
         dtype=dtype,
+        precision_policy=args.precision,
         recycles=args.recycles,
         samples=args.samples,
         steps=args.steps,
@@ -154,6 +155,8 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
                 "buckets": None if bucket_shape is None else vars(bucket_shape),
                 "seed": seed,
                 "recycles": args.recycles,
+                "trunk_passes": model.num_recycles + 1,
+                "samples_per_denoiser_call": model.num_samples,
                 "steps": args.steps,
                 "samples": args.samples,
                 "checkpoint": model.foldforge_load_report,

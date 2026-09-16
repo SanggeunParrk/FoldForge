@@ -20,6 +20,31 @@ import yaml
 
 from foldforge.models.io.paths import run_directory
 
+MODES = {
+    "pytorch_eager_fp32": ("pytorch", False, False, "fp32"),
+    "pytorch_compile_fp32": ("pytorch", True, False, "fp32"),
+    "pytorch_compile_bf16": ("pytorch", True, False, "bf16"),
+    "cuequiv_compile": ("cuequivariance", True, False, "bf16"),
+    "miniworld_graph": ("miniworld", True, True, "bf16"),
+}
+
+
+REFERENCE_MODES = {
+    "pytorch_eager_reference": ("pytorch", False, False, "model_default"),
+    "pytorch_compile_reference": ("pytorch", True, False, "model_default"),
+}
+
+AF3_REFERENCE_MODES = {
+    "pytorch_eager_reference": ("pytorch", False, False, "af3_default"),
+    "pytorch_compile_reference": ("pytorch", True, False, "af3_default"),
+}
+
+# Historical BF16 names remain explicit-only for reproducing recorded runs.
+LEGACY_MODES = {
+    "pytorch_eager": ("pytorch", False, False, "bf16"),
+    "pytorch_compile": ("pytorch", True, False, "bf16"),
+}
+
 
 def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
     parser = argparse.ArgumentParser(description=__doc__)
@@ -27,9 +52,24 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
         "--model", required=True, choices=["af3", "esmfold2", "protenix", "opendde"]
     )
     parser.add_argument("--root", type=Path, default=Path("benchmark/e2e"))
-    parser.add_argument("--backends", nargs="+", default=["pytorch", "miniworld"])
+    execution = parser.add_mutually_exclusive_group()
+    execution.add_argument(
+        "--backends",
+        nargs="+",
+        choices=["pytorch", "miniworld", "cuequivariance"],
+        help="Legacy comparison: compile and CUDA graph enabled for every backend",
+    )
     parser.add_argument("--targets", nargs="+", default=["3ptb", "4yx2"])
     parser.add_argument("--resume", action="store_true")
+    execution.add_argument(
+        "--modes",
+        nargs="+",
+        choices=list(MODES) + list(AF3_REFERENCE_MODES) + list(LEGACY_MODES),
+        help="Explicit execution modes; defaults to all five modes",
+    )
+    parser.add_argument("--variant", choices=["protenix-v2"])
+    parser.add_argument("--no-templates", action="store_true")
+    parser.add_argument("--lm-cache", type=Path)
     parser.add_argument("--benchmark-repeats", type=int, default=0)
     parser.add_argument("--no-bucketing", action="store_true")
     parser.add_argument("--steps", type=int, default=200)
@@ -41,6 +81,27 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
     if not os.environ.get("SLURM_JOB_ID"):
         msg = "Run inside an allocated Slurm compute job"
         raise RuntimeError(msg)
+    if not torch.cuda.is_available():
+        msg = "Allocated job has no usable CUDA device"
+        raise RuntimeError(msg)
+    if args.variant and args.model != "protenix":
+        parser.error("--variant applies only to Protenix")
+    default_modes = [
+        *REFERENCE_MODES,
+        "pytorch_compile_bf16",
+        "cuequiv_compile",
+        "miniworld_graph",
+    ]
+    selected_modes = args.modes or default_modes
+    reference_modes = AF3_REFERENCE_MODES if args.model == "af3" else REFERENCE_MODES
+    scenarios = (
+        [(backend, backend, True, True, "bf16") for backend in args.backends]
+        if args.backends
+        else [
+            (mode, *{**MODES, **reference_modes, **LEGACY_MODES}[mode])
+            for mode in selected_modes
+        ]
+    )
     args.root = run_directory(args.root, model=args.model)
     args.root.mkdir(parents=True, exist_ok=True)
     result_path = args.root / f"e2e-{args.model}.json"
@@ -64,17 +125,20 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
         for key in ("ccd_db", "template_db", "cif_db"):
             if spec.get(key):
                 spec[key] = str((source.parent / Path(spec[key])).resolve())
+        if args.no_templates:
+            spec["template"] = {}
         spec.update(n_diffusion_samples=args.samples, diffusion_batch_size=args.samples)
         path = args.root / "inputs" / args.model / f"{target}.yaml"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(yaml.safe_dump(spec))
-        for backend in args.backends:
-            label = f"{args.model}-{target}-{backend}"
+        for mode, backend, compile_enabled, graph_enabled, precision in scenarios:
+            label = f"{args.model}-{target}-{mode}"
             previous = next(
                 (
                     row
                     for row in rows
-                    if row["target"] == target and row["backend"] == backend
+                    if row["target"] == target
+                    and row.get("mode", row["backend"]) == mode
                 ),
                 None,
             )
@@ -82,22 +146,24 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
             output.mkdir(parents=True, exist_ok=True)
             config = {
                 "backend": backend,
-                "precision": "bf16",
+                "precision": precision,
                 "seed": 0,
                 "trunk": {"recycles": args.recycles, "msa_depth": args.msa_depth},
                 "diffusion": {"steps": args.steps},
                 "execution": {
-                    "compile": True,
-                    "cuda_graph": True,
+                    "compile": compile_enabled,
+                    "cuda_graph": graph_enabled,
                     "bucketing": not args.no_bucketing,
                     "scope": "denoiser",
                     "max_graphs": 4,
                     "benchmark_repeats": args.benchmark_repeats,
                 },
             }
+            if args.variant:
+                config["variant"] = args.variant
             if previous is not None and previous["status"] == 0:
-                if previous["config"] != config:
-                    msg = f"Resume config changed for {label}; use another output root"
+                if previous["config"] != config or previous.get("input_spec") != spec:
+                    msg = f"Resume inputs/config changed for {label}; use another root"
                     raise ValueError(msg)
                 print("SKIP completed", label, flush=True)  # noqa: T201 - CLI output contract
                 continue
@@ -122,9 +188,12 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
                 command += [
                     "--lm-cache",
                     str(
-                        Path("validation/inputs/data")
-                        / target
-                        / "cache/esmc_hidden_states.pt"
+                        args.lm_cache
+                        or (
+                            Path("validation/inputs/data")
+                            / target
+                            / "cache/esmc_hidden_states.pt"
+                        )
                     ),
                 ]
             print("START", label, flush=True)  # noqa: T201 - CLI output contract
@@ -159,6 +228,7 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
             elapsed = time.perf_counter() - start
             row = {
                 "model": args.model,
+                "mode": mode,
                 "target": target,
                 "backend": backend,
                 "process_seconds": elapsed,
@@ -167,6 +237,11 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
                 "config": config,
                 "gpu": torch.cuda.get_device_name(),
                 "slurm_job": os.environ["SLURM_JOB_ID"],
+                "host": os.uname().nodename,
+                "torch": torch.__version__,
+                "cuda": torch.version.cuda,
+                "input_spec": spec,
+                "gpu_memory_bytes": torch.cuda.get_device_properties(0).total_memory,
                 "scope": (
                     f"complete CLI process with {args.benchmark_repeats + 1} "
                     "model forwards, including weights/compile/capture/input/output; "
@@ -177,10 +252,25 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
             reports = list(output.glob(f"{target}*.json"))
             if status == 0 and len(reports) == 1:
                 report = json.loads(reports[0].read_text())
-                assert report["compile"], report
-                assert report["cuda_graph"], report
-                assert report["precision"] == "bf16"
-                assert report["autocast"] is False
+                assert report["compile"] is compile_enabled, report
+                assert report["cuda_graph"] is graph_enabled, report
+                assert report["compile_requested"] is compile_enabled
+                assert report["cuda_graph_requested"] is graph_enabled
+                assert report["backend"] == backend
+                if not compile_enabled:
+                    assert report["compiled_graphs"] == 0, report
+                assert len(report["model_seconds_warm"]) == args.benchmark_repeats
+                assert report["precision"] == precision
+                assert report["autocast"] is (
+                    precision == "model_default"
+                    and args.model in {"esmfold2", "protenix"}
+                )
+                if args.model == "af3":
+                    assert report["samples_per_denoiser_call"] == args.samples
+                    if compile_enabled or graph_enabled:
+                        assert report["wrapped_calls"] == (
+                            args.steps * (args.benchmark_repeats + 1)
+                        )
                 assert len(report["prediction_cifs"]) == args.samples
                 row["report"] = report
                 from Bio.PDB.MMCIF2Dict import MMCIF2Dict

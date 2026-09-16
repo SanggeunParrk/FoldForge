@@ -211,7 +211,12 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
 
         init_triton_cache()
     model = load(
-        "esmfold2", checkpoint, backend=backend.value, dtype=dtype, device=device
+        "esmfold2",
+        checkpoint,
+        backend=backend.value,
+        dtype=dtype,
+        device=device,
+        precision_policy=args.precision,
     )
     runtime.bind(model)
 

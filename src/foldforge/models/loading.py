@@ -32,6 +32,7 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     samples: int = 5,
     steps: int = 200,
     implementation: str | None = None,
+    precision_policy: str | None = None,
 ) -> torch.nn.Module:
     """Strictly load weights, then apply the same declared inference contract."""
     if implementation is not None:
@@ -41,7 +42,20 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     if backend not in {"miniworld", "pytorch", "cuequivariance"}:
         message = f"Unknown backend: {backend}"
         raise ValueError(message)
+    if precision_policy == "model_default":
+        if name == "af3":
+            precision_policy = "af3_default"
+            dtype = torch.bfloat16
+        else:
+            dtype = torch.float32
     dtype = torch.bfloat16 if dtype is None else dtype
+    if precision_policy not in {None, "bf16", "fp32", "af3_default", "model_default"}:
+        message = f"Unsupported precision policy: {precision_policy}"
+        raise ValueError(message)
+    if precision_policy == "af3_default" and (name != "af3" or dtype != torch.bfloat16):
+        message = "af3_default requires AF3 with a BF16 trunk"
+        raise ValueError(message)
+
     spec = entry(name)
     if spec.architecture is None:
         raise NotImplementedError(name)
@@ -76,7 +90,11 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         model = architecture(
             num_recycles=recycles, num_samples=samples, diffusion_steps=steps
         )
-        report.update(import_jax_weights_(model, checkpoint))
+        report.update(
+            import_jax_weights_(model, checkpoint, preserve_dtype=True)
+            if precision_policy == "af3_default"
+            else import_jax_weights_(model, checkpoint)
+        )
     else:
         if spec.layout == "sequence_atoms":
             from safetensors.torch import load_file
@@ -88,7 +106,12 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
             configs = (
                 ESMFold2Config.from_json(checkpoint) if configs is None else configs
             )
-            model = architecture(configs, ImplementationType(backend))
+            implementation_type = (
+                ImplementationType.MINIWORLD_ENGINE
+                if backend == "miniworld"
+                else ImplementationType(backend)
+            )
+            model = architecture(configs, implementation_type)
             state = convert_model(load_file(checkpoint / "model.safetensors"), configs)
         else:
             configs = configuration(name, variant) if configs is None else configs
@@ -120,7 +143,17 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         from team_gm.modules.checkpoints.conditioning import install_conditioning
         from team_gm.modules.checkpoints.pairformer import install_pairformers
 
-        model = configure_model(model, backend, dtype, device)
+        if precision_policy == "af3_default":
+            model.reference_precision = True
+            # Configure shared wrappers in FP32, preserving every released FP32
+            # value. Restore only originally BF16 tensors; their round trip via
+            # FP32 is exact. This also preserves FP32 input/output projections.
+            released_dtypes = {id(p): p.dtype for p in model.parameters()}
+            model = configure_model(model, backend, torch.float32, device)
+            for parameter in model.parameters():
+                parameter.data = parameter.data.to(released_dtypes[id(parameter)])
+        else:
+            model = configure_model(model, backend, dtype, device)
         if spec.layout == "dense_atoms":
             from foldforge.models.config.fourier import _BIAS, _WEIGHT
 
@@ -128,6 +161,29 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
             fourier.weight = torch.tensor(_WEIGHT, device=device)
             fourier.bias = torch.tensor(_BIAS, device=device)
         model = install_conditioning(install_pairformers(model))
+    if dtype == torch.bfloat16 and precision_policy != "af3_default":
+        from team_gm.modules.precision import NativeLinear
+
+        # Native BF16 must apply to the GEMM, not only stored weights. Upstream
+        # geometry/conditioning projections may carry an FP32 compute override.
+        for layer in model.modules():
+            if isinstance(layer, NativeLinear):
+                layer.compute_dtype = None
+    if precision_policy == "model_default":
+        from foldforge.models.precision import reference_precision
+
+        model = reference_precision(model, name)
+        report.update(
+            precision_policy="model_default",
+            autocast_scopes=model.reference_autocast_scopes,
+        )
     report.update(backend=backend, parameter_dtype=str(dtype), device=str(device))
+    if precision_policy == "af3_default":
+        report.update(
+            precision_policy="af3_default",
+            parameter_dtype="mixed (released checkpoint dtypes)",
+            trunk_parameter_dtype="torch.bfloat16",
+            diffusion_parameter_dtype="torch.float32",
+        )
     setattr(model, "foldforge_load_report", report)  # noqa: B010 - runtime metadata
     return model

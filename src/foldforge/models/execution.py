@@ -31,7 +31,10 @@ class Execution:
     def __init__(
         self, model: torch.nn.Module, family: str, config: ExecutionConfig
     ) -> None:
-        torch.set_float32_matmul_precision("highest")
+        torch.set_float32_matmul_precision(
+            "high" if getattr(model, "reference_tf32", False) else "highest"
+        )
+        self.autocast_scopes = getattr(model, "reference_autocast_scopes", [])
         self.config = config
         self.wrappers = []
         self.bucket_adapter = None
@@ -100,6 +103,9 @@ class Execution:
             }
         return {
             **buckets,
+            "autocast": bool(self.autocast_scopes),
+            "autocast_scopes": self.autocast_scopes,
+            "float32_matmul_precision": torch.get_float32_matmul_precision(),
             "compile_requested": self.config.compile,
             "cuda_graph_requested": self.config.cuda_graph,
             "compile": self.config.compile and compiled > 0,

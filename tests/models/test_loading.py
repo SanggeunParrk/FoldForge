@@ -56,7 +56,16 @@ def test_flat_checkpoint_uses_strict_native_precision(
         load(name, checkpoint, configs=config, backend="pytorch", device="cpu")
 
 
-def test_sequence_checkpoint_uses_same_loader(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    ("backend", "expected"),
+    [
+        ("pytorch", "pytorch"),
+        ("miniworld", "miniworld_engine"),
+        ("miniworld_engine", "miniworld_engine"),
+        ("cuequivariance", "cuequivariance"),
+    ],
+)
+def test_sequence_checkpoint_uses_same_loader(tmp_path, monkeypatch, backend, expected):
     from safetensors.torch import save_file
 
     from foldforge.models.checkpoints import esmfold2
@@ -66,10 +75,23 @@ def test_sequence_checkpoint_uses_same_loader(tmp_path, monkeypatch):
     save_file(reference.state_dict(), tmp_path / "model.safetensors")
     monkeypatch.setattr(ESMFold2Config, "from_json", lambda _: object())
     monkeypatch.setattr(esmfold2, "convert_model", lambda state, _config: state)
+    selected = []
+
+    def construct(config, implementation) -> TinyModel:
+        from team_gm.modules.exceptions import ImplementationType
+
+        assert isinstance(implementation, ImplementationType)
+        selected.append(implementation.value)
+        return TinyModel(config, implementation)
+
     monkeypatch.setattr(
-        loading, "import_module", lambda _: SimpleNamespace(ESMFold2Model=TinyModel)
+        loading, "import_module", lambda _: SimpleNamespace(ESMFold2Model=construct)
     )
-    model = load("esmfold2", tmp_path, backend="pytorch", device="cpu")
+    model = load("esmfold2", tmp_path, backend=backend, device="cpu")
+    assert selected == [expected]
+    assert model.foldforge_load_report["backend"] == (
+        "miniworld" if expected == "miniworld_engine" else expected
+    )
     assert model.projection.weight.dtype == torch.bfloat16
     assert model.norm.weight.dtype == torch.float32
     assert model.foldforge_load_report["state_entries"] == len(reference.state_dict())
@@ -120,3 +142,135 @@ def test_haiku_checkpoint_is_imported_before_precision(tmp_path, monkeypatch):
     )
     assert model.foldforge_load_report["strict"] is True
     assert model.foldforge_load_report["team_gm_pairformer_blocks"] == 0
+
+
+def test_af3_default_keeps_released_mixed_parameters(tmp_path, monkeypatch):
+    from foldforge.models.checkpoints import haiku
+
+    class DenseModel(TinyModel):
+        def __init__(self, **kwargs: Any) -> None:
+            super().__init__(**kwargs)
+            self.diffusion_head = nn.Module()
+            self.diffusion_head.projection = nn.Linear(4, 4, bias=False)
+            self.diffusion_head.fourier_embeddings = nn.Module()
+
+    def import_weights(model, checkpoint, *, preserve_dtype=False) -> dict[str, int]:
+        assert preserve_dtype
+        assert checkpoint == tmp_path / "af3.bin.zst"
+        with torch.no_grad():
+            model.projection.weight.data = model.projection.weight.bfloat16()
+            model.diffusion_head.projection.weight.fill_(1.000123)
+            model.norm.weight.fill_(1.000123)
+        return {"state_entries": len(model.state_dict())}
+
+    monkeypatch.setattr(haiku, "import_jax_weights_", import_weights)
+    monkeypatch.setattr(
+        loading, "import_module", lambda _: SimpleNamespace(AlphaFold3=DenseModel)
+    )
+    model = load(
+        "af3",
+        tmp_path / "af3.bin.zst",
+        backend="pytorch",
+        device="cpu",
+        precision_policy="af3_default",
+    )
+    assert model.projection.weight.dtype == torch.bfloat16
+    assert model.diffusion_head.projection.weight.dtype == torch.float32
+    torch.testing.assert_close(
+        model.diffusion_head.projection.weight,
+        torch.full((4, 4), 1.000123),
+        atol=0,
+        rtol=0,
+    )
+    torch.testing.assert_close(
+        model.norm.weight, torch.full((4,), 1.000123), atol=0, rtol=0
+    )
+    assert model.reference_precision
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+def test_haiku_assign_preserves_source_dtype_and_exact_values(dtype):
+    from foldforge.models.checkpoints.haiku import Param, ParamType, assign
+
+    source = torch.full((3, 4), 1.000123, dtype=dtype)
+    target = nn.Parameter(torch.zeros((4, 3), dtype=torch.bfloat16))
+    assign(
+        {"weight": Param(target, ParamType.linear_weight)},
+        {"weight": source},
+        preserve_dtype=True,
+    )
+    assert target.dtype == dtype
+    torch.testing.assert_close(target, source.T, atol=0, rtol=0)
+
+
+@pytest.mark.parametrize("recycles", [0, 2])
+@pytest.mark.parametrize("reference_precision", [False, True])
+def test_af3_recycles_are_additional_trunk_passes(
+    monkeypatch, recycles, reference_precision
+):
+    from foldforge.models.architectures import af3
+
+    batch = SimpleNamespace(
+        num_res=2,
+        token_features=SimpleNamespace(mask=torch.ones(2), asym_id=torch.ones(2)),
+        pseudo_beta_info=SimpleNamespace(token_atoms_to_pseudo_beta=None),
+    )
+    monkeypatch.setattr(af3.feat_batch.Batch, "from_data_dict", lambda _: batch)
+    calls = []
+
+    class Trunk(nn.Module):
+        def forward(self, *, batch, prev, target_feat) -> dict[str, torch.Tensor]:
+            assert batch.num_res == 2
+            calls.append(prev["pair"].dtype)
+            return {
+                "pair": torch.ones(2, 2, 2, dtype=torch.bfloat16),
+                "single": torch.ones(2, 2, dtype=torch.bfloat16),
+                "target_feat": target_feat,
+            }
+
+    model = af3.AlphaFold3.__new__(af3.AlphaFold3)
+    nn.Module.__init__(model)
+    model.num_recycles = recycles
+    model.reference_precision = reference_precision
+    model.evoformer_pair_channel = model.evoformer_seq_channel = 2
+    model.evoformer = Trunk()
+    monkeypatch.setattr(
+        model, "create_target_feat_embedding", lambda _: torch.ones(2, 2)
+    )
+    monkeypatch.setattr(
+        model, "_sample_diffusion", lambda *_: {"atom_positions": torch.zeros(1, 2, 3)}
+    )
+    model.confidence_head = lambda **_: {"score": torch.ones(1)}
+    model.distogram_head = lambda *_: {}
+    model({})
+    assert len(calls) == recycles + 1
+    expected = torch.float32 if reference_precision else torch.bfloat16
+    assert calls == [torch.float32] + [expected] * recycles
+
+
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32])
+def test_projection_compute_override_follows_native_policy(
+    tmp_path, monkeypatch, dtype
+):
+    class GeometryModel(TinyModel):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            self.projection.compute_dtype = torch.float32
+
+    checkpoint = tmp_path / "geometry.pt"
+    torch.save(GeometryModel().state_dict(), checkpoint)
+    monkeypatch.setattr(
+        loading, "import_module", lambda _: SimpleNamespace(OpenDDE=GeometryModel)
+    )
+    model = load(
+        "opendde",
+        checkpoint,
+        configs=SimpleNamespace(model_name="opendde_v1"),
+        backend="pytorch",
+        device="cpu",
+        dtype=dtype,
+    )
+    expected = None if dtype == torch.bfloat16 else torch.float32
+    assert model.projection.compute_dtype == expected
+    assert model.projection.weight.dtype == dtype
+    assert model.norm.weight.dtype == torch.float32

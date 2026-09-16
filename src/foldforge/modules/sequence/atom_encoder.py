@@ -161,6 +161,7 @@ class AtomEncoder(nn.Module):
         ref_atom_name_chars: torch.Tensor,
         ref_space_uid: torch.Tensor,
         atom_mask: torch.Tensor,
+        num_aug: int = 1,
     ) -> AtomStatics:
         """Build the iterate-independent half of the atom track.
 
@@ -175,6 +176,9 @@ class AtomEncoder(nn.Module):
             Per-atom residue id, used by the UID half of the 3D RoPE.
         atom_mask : Tensor
             Atom validity. Valid atoms must be front-packed in each row.
+        num_aug : int
+            Diffusion samples per structure. Build reference features and RoPE
+            once for B structures, then expand in sample-major [num_aug, B] order.
 
         Returns
         -------
@@ -186,8 +190,12 @@ class AtomEncoder(nn.Module):
         )
         cos, sin = self.atom_transformer.build_rope(ref_pos, ref_space_uid)
         return AtomStatics(
-            conditioning=self.atom_norm(self.atom_linear(features)),
-            attention_params=build_attention_params(cos, sin, atom_mask, num_aug=1),
+            conditioning=self.atom_norm(self.atom_linear(features)).repeat(
+                num_aug, 1, 1
+            ),
+            attention_params=build_attention_params(
+                cos, sin, atom_mask.repeat(num_aug, 1), num_aug=num_aug
+            ),
         )
 
     def forward(
@@ -203,6 +211,7 @@ class AtomEncoder(nn.Module):
         coords: torch.Tensor | None = None,
         predicted_coords: torch.Tensor | None = None,
         statics: AtomStatics | None = None,
+        num_aug: int = 1,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, tuple]:
         """Forward pass.
 
@@ -224,6 +233,9 @@ class AtomEncoder(nn.Module):
         statics : AtomStatics or None
             Precomputed output of :meth:`static_features`. Pass it to skip
             rebuilding the conditioning and the RoPE; ``None`` builds them here.
+        num_aug : int
+            Samples per structure. Reference inputs retain B rows; coordinates
+            use flattened sample-major [num_aug, B] rows. Outputs use that order.
 
         Returns
         -------
@@ -239,6 +251,7 @@ class AtomEncoder(nn.Module):
                 ref_atom_name_chars,
                 ref_space_uid,
                 atom_mask,
+                num_aug=num_aug,
             )
         conditioning, attention_params = statics
 
@@ -259,9 +272,9 @@ class AtomEncoder(nn.Module):
         atoms = self.atom_transformer(atoms, conditioning, attention_params)
         pooled = scatter_mean_to_token(
             F.relu(self.atom_to_token_linear(atoms)),
-            atom_to_token,
+            atom_to_token.repeat(num_aug, 1),
             n_tokens,
-            atom_mask=atom_mask,
+            atom_mask=atom_mask.repeat(num_aug, 1),
         )
         return pooled, atoms, conditioning, attention_params
 

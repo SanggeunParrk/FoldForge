@@ -386,8 +386,9 @@ class DiffusionModule(nn.Module):
         atom_mask : Tensor
             Atom validity.
         num_diffusion_samples : int
-            Samples per structure; the atom track and the single track are
-            cached already expanded, matching what :meth:`denoise` expects.
+            Samples per structure. Single features retain the sampler's B-major
+            order; atom features use sample-major order. Atom reference features
+            and RoPE are computed once per structure before expansion.
 
         Returns
         -------
@@ -406,12 +407,13 @@ class DiffusionModule(nn.Module):
             ),
             projected_single=self.conditioning.project_single(expand(single_inputs)),
             atom_statics=self.atom_encoder.static_features(
-                ref_pos=expand(ref_pos),
-                ref_charge=expand(ref_charge),
-                ref_element=expand(ref_element),
-                ref_atom_name_chars=expand(ref_atom_name_chars),
-                ref_space_uid=expand(ref_space_uid),
-                atom_mask=expand(atom_mask),
+                ref_pos=ref_pos,
+                ref_charge=ref_charge,
+                ref_element=ref_element,
+                ref_atom_name_chars=ref_atom_name_chars,
+                ref_space_uid=ref_space_uid,
+                atom_mask=atom_mask,
+                num_aug=samples,
             ),
         )
 
@@ -479,54 +481,50 @@ class DiffusionModule(nn.Module):
             projected_single=None if cache is None else cache.projected_single,
         )
 
-        # The atom track is expanded up front rather than threading a sample axis
-        # through the encoder: the 3D RoPE is then rebuilt per sample instead of
-        # once, which costs a little compute but keeps AtomEncoder sample-blind.
-        atom_to_token_s = expand(atom_to_token)
-        atom_mask_s = expand(atom_mask)
-        token_features, atom_features, atom_conditioning, attention_params = (
-            self.atom_encoder(
-                ref_pos=expand(ref_pos),
-                ref_charge=expand(ref_charge),
-                ref_element=expand(ref_element),
-                ref_atom_name_chars=expand(ref_atom_name_chars),
-                ref_space_uid=expand(ref_space_uid),
-                atom_mask=atom_mask_s,
-                atom_to_token=atom_to_token_s,
-                n_tokens=n_tokens,
-                coords=scaled_coords,
-                statics=None if cache is None else cache.atom_statics,
-            )
-        )
-
-        token_features = token_features + self.single_to_token(
-            self.ln_single_step(single)
-        )
-
-        # team-gm's DiffusionTransformer keeps the sample axis explicit as [S, B, ...]
-        # while the reference folds it into the batch in B-major order.
+        # The sampler flattens [B, samples]; atom SWA and token attention use
+        # [samples, B]. Build shared reference features once per structure.
         batch = pair.shape[0]
 
         def to_sample_axis(x: torch.Tensor) -> torch.Tensor:
-            """Convert to sample axis."""
-            return x.view(batch, samples, *x.shape[1:]).transpose(0, 1)
+            return x.reshape(batch, samples, *x.shape[1:]).transpose(0, 1)
 
+        atom_to_token_s = atom_to_token.repeat(samples, 1)
+        token_features, atom_features, atom_conditioning, attention_params = (
+            self.atom_encoder(
+                ref_pos=ref_pos,
+                ref_charge=ref_charge,
+                ref_element=ref_element,
+                ref_atom_name_chars=ref_atom_name_chars,
+                ref_space_uid=ref_space_uid,
+                atom_mask=atom_mask,
+                atom_to_token=atom_to_token,
+                n_tokens=n_tokens,
+                coords=to_sample_axis(scaled_coords).flatten(0, 1),
+                statics=None if cache is None else cache.atom_statics,
+                num_aug=samples,
+            )
+        )
+        single_aug = to_sample_axis(single)
+        token_features = token_features.reshape(samples, batch, n_tokens, -1)
+        token_features = token_features + self.single_to_token(
+            self.ln_single_step(single_aug)
+        )
         denoised_tokens = self.token_transformer(
-            to_sample_axis(token_features),
-            to_sample_axis(single),
-            conditioned_pair,
-            mask,
+            token_features, single_aug, conditioned_pair, mask
         )
-        token_features = self.ln_token(
-            denoised_tokens.transpose(0, 1).reshape(batch * samples, n_tokens, -1)
-        )
-
-        return self.atom_decoder(
+        token_features = self.ln_token(denoised_tokens.flatten(0, 1))
+        update = self.atom_decoder(
             token_features,
             atom_features,
             atom_conditioning,
             attention_params,
             atom_to_token_s,
+        )
+        # Restore B-major order at the shared solver boundary.
+        return (
+            update.reshape(samples, batch, *update.shape[1:])
+            .transpose(0, 1)
+            .flatten(0, 1)
         )
 
     @typecheck

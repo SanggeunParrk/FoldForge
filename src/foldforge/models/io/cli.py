@@ -66,7 +66,13 @@ def parse(model: str, argv: list[str] | None = None) -> Request:
             choices=("miniworld", "pytorch", "cuequivariance"),
             default="miniworld",
         )
-        parser.add_argument("--precision", choices=("bf16", "fp32"), default="bf16")
+        parser.add_argument(
+            "--precision",
+            choices=("bf16", "fp32", "af3_default", "model_default")
+            if model == "af3"
+            else ("bf16", "fp32"),
+            default="bf16",
+        )
         if model in {"protenix", "opendde"}:
             parser.add_argument("--templates", action="store_true")
             parser.add_argument("--no-msa", action="store_true")

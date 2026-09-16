@@ -231,7 +231,7 @@ class Evoformer(nn.Module):
         )
 
         pair_activations += self.prev_embedding(
-            self.prev_embedding_layer_norm(prev["pair"])
+            self.prev_embedding_layer_norm(prev["pair"].to(pair_activations.dtype))
         )
 
         pair_activations = self._relative_encoding(batch, pair_activations)
@@ -255,7 +255,9 @@ class Evoformer(nn.Module):
 
         single_activations = self.single_activations(target_feat)
         single_activations += self.prev_single_embedding(
-            self.prev_single_embedding_layer_norm(prev["single"])
+            self.prev_single_embedding_layer_norm(
+                prev["single"].to(single_activations.dtype)
+            )
         )
 
         for pairformer_b in self.trunk_pairformer:
@@ -281,6 +283,7 @@ class AlphaFold3(nn.Module):
     ) -> None:
         super().__init__()
 
+        self.reference_precision = False
         self.num_recycles = num_recycles
         self.num_samples = num_samples
         self.diffusion_steps = diffusion_steps
@@ -316,7 +319,9 @@ class AlphaFold3(nn.Module):
             batch=batch,
         )
 
-        return torch.concatenate([target_feat, enc.token_act], dim=-1)
+        return torch.concatenate([target_feat, enc.token_act], dim=-1).to(
+            self.evoformer.left_single.weight.dtype
+        )
 
     def _sample_diffusion(
         self,
@@ -343,16 +348,16 @@ class AlphaFold3(nn.Module):
         def denoise(coords: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
             """Compute denoise."""
             return self.diffusion_head(
-                positions_noisy=coords[0],
+                positions_noisy=coords,
                 noise_level=sigma,
                 batch=batch,
                 embeddings=embeddings,
                 use_conditioning=True,
-            )[None]
+            )
 
         def augment(coords: torch.Tensor) -> torch.Tensor:
             """Compute augment."""
-            return masked_dense_rigid_motion(coords[0], mask)[None]
+            return masked_dense_rigid_motion(coords, mask)
 
         positions = sampler.sample(
             denoise,
@@ -360,7 +365,7 @@ class AlphaFold3(nn.Module):
             sigmas,
             device=mask.device,
             coordinate_dims=2,
-            chunk_size=1,
+            chunk_size=None,
             initialize_all=True,
             augment=augment,
         )
@@ -395,10 +400,14 @@ class AlphaFold3(nn.Module):
             "target_feat": target_feat,
         }
 
-        for _ in range(self.num_recycles):
+        # Recycles are additional trunk passes after the initial pass.
+        for _ in range(self.num_recycles + 1):
             embeddings = self.evoformer(
                 batch=batch_data, prev=embeddings, target_feat=target_feat
             )
+            if self.reference_precision:
+                embeddings["pair"] = embeddings["pair"].float()
+                embeddings["single"] = embeddings["single"].float()
 
         samples = self._sample_diffusion(batch_data, embeddings)
 

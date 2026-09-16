@@ -405,9 +405,16 @@ class AtomCrossAttEncoder(nn.Module):
             layout_axes=(-3, -2),
         )
 
+        # Masked pooling may promote BF16 features through its FP32 denominator.
+        # Restore the feature dtype before entering the token DiT residual stream.
         token_act = utils.mask_mean(
-            token_atoms_mask[..., None], torch.relu(token_atoms_act), dim=-2
-        )
+            token_atoms_mask.reshape(
+                (1,) * (token_atoms_act.ndim - token_atoms_mask.ndim - 1)
+                + (*token_atoms_mask.shape, 1)
+            ),
+            torch.relu(token_atoms_act),
+            dim=-2,
+        ).to(token_atoms_act.dtype)
 
         return AtomCrossAttEncoderOutput(
             token_act=token_act,
@@ -455,8 +462,13 @@ class AtomCrossAttDecoder(nn.Module):
             batch.atom_cross_att.queries_to_token_atoms.shape
         )
         token_atom_act = torch.broadcast_to(
-            token_act[:, None, :],
-            (num_token, max_atoms_per_token, self.per_atom_channels),
+            token_act[..., :, None, :],
+            (
+                *token_act.shape[:-2],
+                num_token,
+                max_atoms_per_token,
+                self.per_atom_channels,
+            ),
         )
         queries_act = atom_layout.convert(
             batch.atom_cross_att.token_atoms_to_queries,

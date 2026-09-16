@@ -1,8 +1,12 @@
 """Native inference precision with norm affine parameters retained in FP32."""
 
+from functools import wraps
+from typing import Any
+
 import torch
 from team_gm.modules.primitives import LayerNorm
 from torch import nn
+from torch.utils._pytree import tree_map
 
 
 def _explicit_fp32_norms(model: nn.Module) -> None:
@@ -40,3 +44,56 @@ def inference_precision(
             getattr(module, name).data = value.to(device=device)
     model.requires_grad_(requires_grad=False)
     return model.eval()
+
+
+def _amp_method(owner: nn.Module, name: str, *, float_output: bool = False) -> None:
+    original = getattr(owner, name)
+
+    @wraps(original)
+    def forward(*args: Any, **kwargs: Any) -> Any:
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            result = original(*args, **kwargs)
+        if float_output:
+            result = tree_map(
+                lambda x: (
+                    x.float()
+                    if isinstance(x, torch.Tensor) and x.is_floating_point()
+                    else x
+                ),
+                result,
+            )
+        return result
+
+    setattr(owner, name, forward)
+
+
+def reference_precision(model: Any, name: str) -> nn.Module:
+    """Apply released CUDA precision scopes to FP32 reference parameters.
+
+    Native BF16 modes never install these wrappers. Reference mode deliberately
+    preserves FP32 parameter storage and uses the original selective autocast.
+    """
+    scopes = []
+    if name == "protenix":
+        model.configs.skip_amp.sample_diffusion = True
+        model.configs.skip_amp.confidence_head = False
+        _amp_method(model, "forward")
+        scopes = ["forward (diffusion explicitly disables autocast)"]
+    elif name == "esmfold2":
+        for path in ("inputs_embedder", "pair_trunk", "confidence_head.folding_trunk"):
+            _amp_method(model.get_submodule(path), "forward", float_output=True)
+            scopes.append(path)
+        conditioning = model.get_submodule(
+            "structure_head.diffusion_module.conditioning"
+        )
+        for index, block in enumerate(conditioning.pair_transitions):
+            _amp_method(block, "forward", float_output=True)
+            scopes.append(
+                f"structure_head.diffusion_module.conditioning.pair_transitions.{index}"
+            )
+    elif name != "opendde":
+        message = f"No reference precision policy for {name}"
+        raise ValueError(message)
+    model.reference_autocast_scopes = scopes
+    model.reference_tf32 = True
+    return model

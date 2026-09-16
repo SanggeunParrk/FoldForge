@@ -362,8 +362,20 @@ def _process_translations_dict(
     return flat
 
 
+def _copy_parameter(
+    target: torch.Tensor, weight: torch.Tensor, *, preserve_dtype: bool
+) -> None:
+    if preserve_dtype:
+        target.data = weight.to(device=target.device).clone()
+    else:
+        target.copy_(weight)
+
+
 def assign(
-    translation_dict: dict[str, Param], param_to_load: dict[str, torch.Tensor]
+    translation_dict: dict[str, Param],
+    param_to_load: dict[str, torch.Tensor],
+    *,
+    preserve_dtype: bool = False,
 ) -> None:
     """Copy validated checkpoint arrays into matching single or stacked parameters."""
     with torch.no_grad():
@@ -403,7 +415,7 @@ def assign(
                 if target.shape != weight.shape:
                     message = f"{key}: {target.shape} != {weight.shape}"
                     raise ValueError(message)
-                target.copy_(weight)
+                _copy_parameter(target, weight, preserve_dtype=preserve_dtype)
 
 
 # With Param, a poor man's enum with attributes (Rust-style)
@@ -1118,7 +1130,7 @@ def get_translation_dict(model: ParameterModule) -> ParamTree:
 
 
 def import_jax_weights_(
-    model: ParameterModule, model_path: pathlib.Path
+    model: ParameterModule, model_path: pathlib.Path, *, preserve_dtype: bool = False
 ) -> dict[str, int]:
     """Compute import jax weights."""
     checkpoint = model_path / "af3.bin.zst" if model_path.is_dir() else model_path
@@ -1133,7 +1145,7 @@ def import_jax_weights_(
     if missing or extra:
         msg = f"AF3 checkpoint mapping mismatch: missing={missing}, extra={extra}"
         raise ValueError(msg)
-    assign(flat, params)
+    assign(flat, params, preserve_dtype=preserve_dtype)
     setattr(model, "__identifier__", params["__meta__/__identifier__"])  # noqa: B010 - dynamic checkpoint metadata
 
     fourier = model.diffusion_head.fourier_embeddings

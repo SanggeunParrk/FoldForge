@@ -75,7 +75,12 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
     args.out.mkdir(parents=True, exist_ok=True)
     dataset = dataset_type(config)
     model = load(
-        model_name, args.checkpoint, configs=config, backend=args.backend, dtype=dtype
+        model_name,
+        args.checkpoint,
+        configs=config,
+        backend=args.backend,
+        dtype=dtype,
+        precision_policy=args.precision,
     )
     runtime.bind(model)
 

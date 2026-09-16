@@ -50,7 +50,7 @@ class Config(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     backend: Literal["miniworld", "pytorch", "cuequivariance"] = "miniworld"
-    precision: Literal["bf16", "fp32"] = "bf16"
+    precision: Literal["bf16", "fp32", "af3_default", "model_default"] = "bf16"
     seed: int = 0
     trunk: TrunkConfig = Field(default_factory=TrunkConfig)
     diffusion: DiffusionConfig = Field(default_factory=DiffusionConfig)

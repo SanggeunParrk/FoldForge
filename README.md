@@ -57,8 +57,9 @@ uv sync --extra cu12    # CUDA 12.8   (or --extra cu13 for CUDA 13)
 
 For an existing checkout: `git submodule update --init --recursive`.
 The checked-in submodule revision is the validated dependency: team-gm
-`a823f69` with engine `d2266a03`. Keep that revision when reproducing the
-recorded results; newer `exp/miniworld` commits use a different engine/patch set.
+`92a50c9` on branch `foldforge/msa-bucket-1024` with engine `d2266a03`. Keep that
+revision when reproducing the recorded results; newer `exp/miniworld` commits use
+a different engine/patch set.
 
 The pinned Biohub ESMFold2 processor requires **Python 3.12**. For
 A5000/A6000/A100, the complete environment includes FA2, Quack 0.5.0 and
@@ -96,7 +97,7 @@ revision, validation results, and FlashAttention setup required for GPU SWA.
 ## Layout
 
 ```
-libs/team-gm/            submodule, tracks exp/miniworld
+libs/team-gm/            submodule, pinned; branch foldforge/msa-bucket-1024
 src/foldforge/
   cli.py                 foldforge models / ccd / fold <model>
   prediction.py          the one output type every predictor returns

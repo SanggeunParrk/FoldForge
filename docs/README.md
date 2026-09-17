@@ -12,8 +12,10 @@
 These are historical snapshots, not the current benchmark table. New benchmark
 figures and compact measurement data belong in `assets/`.
 
-The 2026-09-16 benchmark release pins `libs/team-gm` to `a823f69`, the
-validated shared runtime. That commit is also included in `exp/miniworld`.
+The current benchmark pins `libs/team-gm` to `92a50c9` on branch
+`foldforge/msa-bucket-1024`: the validated `a823f69` runtime plus a 1024-row MSA
+inference bucket. The 2026-09-16 release used `a823f69` itself, which is also
+included in `exp/miniworld`.
 Use `git submodule update --init --recursive` to reproduce this release;
 `git submodule update --remote` selects newer runtime and dependency changes
 that are not covered by these recorded measurements.

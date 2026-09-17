@@ -5,7 +5,8 @@ The dated validation sections below describe the state when those checks ran.
 
 # FoldForge model integration
 
-Working tree: `main`; shared team-gm member: `exp/miniworld`.
+Working tree: `main`; shared team-gm member: branch `foldforge/msa-bucket-1024`
+(the validated `exp/miniworld` runtime `a823f69` plus the 1024-row MSA bucket).
 All predictors must use FoldForge's environment, team-gm blocks, and
 miniworld-engine ops. A package name or a subprocess launching an untouched
 upstream model is not a completed shared-engine port.

@@ -54,7 +54,7 @@ def test_policy_keeps_atom_msa_edges_and_uses_128_step_tokens():
     from miniworld_engine.autotune.shape_key import token_key
 
     assert ENGINE_ATOMS == ATOM_SHAPES
-    assert MSA_SHAPES == (2048, 4096, 8192, 16384)
+    assert MSA_SHAPES == (1024, 2048, 4096, 8192, 16384)
     assert BucketShape.select(1140, 4591, 2049) == BucketShape(
         1140, 4591, 2049, 1152, 8192, 4096
     )
@@ -119,7 +119,7 @@ def test_axes_are_semantic_even_when_atom_and_token_counts_match():
     assert (shape.token_bucket, shape.atom_bucket, shape.msa_bucket) == (
         256,
         1024,
-        2048,
+        1024,
     )
     torch.testing.assert_close(padded["ref_pos"][:, :129], original["ref_pos"])
     torch.testing.assert_close(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+from datetime import date
 from pathlib import Path
 
 import matplotlib as mpl
@@ -126,6 +127,22 @@ def validate(rows: list[dict]) -> dict:
 
 def render(rows: list[dict], docs: Path) -> None:
     indexed = validate(rows)
+    gpus = sorted({row["gpu"] for row in rows})
+    if len(gpus) != 1:
+        message = f"Mixed GPUs across measurements: {gpus}"
+        raise ValueError(message)
+    hardware = gpus[0]
+    hosts = ", ".join(sorted({row["host"] for row in rows}))
+    torch_version = ", ".join(sorted({row["torch"] for row in rows}))
+    msa_extents = {
+        row["report"]["sampled_msa_buckets"]["msa_module"][1]
+        for row in rows
+        if row["report"].get("sampled_msa_buckets")
+    }
+    if len(msa_extents) != 1:
+        message = f"Mixed sampled MSA buckets across measurements: {msa_extents}"
+        raise ValueError(message)
+    msa_extent = msa_extents.pop()
     seed_description = (
         "trunk_seed=0 and diffusion_seed=0 (split-v1)"
         if rows[0]["report"].get("seed_policy") == "split-v1"
@@ -179,7 +196,8 @@ def render(rows: list[dict], docs: Path) -> None:
     lines = [
         "# Inference benchmark results",
         "",
-        "Updated 2026-09-16. **4YX2: 594 residues, three chains (163 + 218 + 213).**",
+        f"Updated {date.today().isoformat()}. **4YX2: 594 residues, three chains "
+        "(163 + 218 + 213).**",
         "All four models now have five measured configurations. Reference means each",
         "model's released **precision policy** in FoldForge's PyTorch "
         "backend; it is not",
@@ -262,7 +280,8 @@ def render(rows: list[dict], docs: Path) -> None:
         "and five samples. Token buckets use multiples of 128: 594 -> "
         "640. OpenDDE expands",
         "internally to 1140 structural tokens -> 1152. Atom buckets are "
-        "8192. Inputs and",
+        f"8192. Sampled MSA rows are padded to the {msa_extent}-row MSA bucket.",
+        "Inputs and",
         "ESMC cached embeddings are identical across modes within each model.",
         "",
         "Compile and manual CUDA graphs apply to the **denoiser**; trunk time remains",
@@ -277,11 +296,11 @@ def render(rows: list[dict], docs: Path) -> None:
         "ESMFold2 retains 134 actual steps after its sigma=256 cutoff; "
         "other models use 200.",
         "",
-        "Hardware is A100 80GB PCIe on cssb3/gpu02 and gpu03. Slurm job IDs",
+        f"Hardware is {hardware} on {hosts}. Slurm job IDs",
         "are retained in the raw results.",
         "Each mode owns one GPU, requests 16 CPUs and 96 GiB RAM, and "
         "uses OMP_NUM_THREADS=8.",
-        "PyTorch 2.10.0+cu128. Fresh processes may reuse disk caches. "
+        f"PyTorch {torch_version}. Fresh processes may reuse disk caches. "
         "Missing MiniWorld",
         "tuned entries can trigger initial heuristic autotuning; these "
         "are warm latencies,",

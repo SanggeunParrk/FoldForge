@@ -78,8 +78,11 @@ instead of each checkpoint's released consumption: OpenDDE sampled 1280 rows,
 Protenix drew a random-size subset (Uniform[1, n] rows) on every cycle in
 training and inference alike, and ESMFold2 embedded every prepared row on every
 recurrence loop. Profile and deletion statistics
-still come from the full prepared MSA. Templates are capped at four per chain
-by `template_n`, the AF3 `max_templates`. Run reports record `msa_policy`.
+still come from the full prepared MSA. The sampled rows are padded to the
+1024-row MSA inference bucket (team-gm `MSA_SHAPES`); before that bucket existed
+they were padded to 2048 and the MSA stack ran half on padding. Templates are
+capped at four per chain by `template_n`, the AF3 `max_templates`. Run reports
+record `msa_policy`, and flat adapters record `sampled_msa_buckets`.
 Unknown config/spec keys fail validation rather than silently doing nothing.
 
 Each output contains the resolved spec, model settings, chain mapping, actual run

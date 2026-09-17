@@ -1,4 +1,4 @@
 [submodule "libs/team-gm"]
 	path = libs/team-gm
 	url = git@github.com:CSSB-SNU/team-gm.git
-	branch = exp/miniworld
+	branch = foldforge/msa-bucket-1024

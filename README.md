@@ -119,6 +119,10 @@ source.
 - **bf16 is the default.** The released checkpoints are fp32 on disk. Model
   loading selects the runtime precision; engine attention preserves its caller's
   dtype. Use fp32 when a task explicitly calls for it.
+- **One MSA policy for every predictor.** Inputs keep up to 16384 alignment
+  rows and each trunk pass embeds a fresh random subset of 1024 valid rows,
+  the official AF3 pipeline rule, applied to all four checkpoints at load time.
+  Released defaults differed; see [MiniWorld formats](docs/guides/MINIWORLD-FORMAT.md).
 - **Never quote a speed number without its conditions** — device, dtype, MSA
   depth, warm or cold, and which backend *both* sides ran. Fold times on the
   same target and config have differed by 6% across processes purely from

@@ -17,6 +17,7 @@ from team_gm.modules.checkpoints.layers import skip_random_init
 from foldforge.models import entry
 from foldforge.models.checkpoints import resolve
 from foldforge.models.config import VARIANTS, configuration
+from foldforge.models.msa_policy import RECORD, apply_esmfold2, apply_flat
 
 
 def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint lifecycle
@@ -106,6 +107,7 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
             configs = (
                 ESMFold2Config.from_json(checkpoint) if configs is None else configs
             )
+            configs = apply_esmfold2(configs)
             implementation_type = (
                 ImplementationType.MINIWORLD_ENGINE
                 if backend == "miniworld"
@@ -115,6 +117,7 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
             state = convert_model(load_file(checkpoint / "model.safetensors"), configs)
         else:
             configs = configuration(name, variant) if configs is None else configs
+            configs = apply_flat(configs)
             if name == "opendde":
                 configs.triangle_multiplicative = "torch"
                 configs.triangle_attention = "torch"
@@ -177,7 +180,12 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
             precision_policy="model_default",
             autocast_scopes=model.reference_autocast_scopes,
         )
-    report.update(backend=backend, parameter_dtype=str(dtype), device=str(device))
+    report.update(
+        backend=backend,
+        parameter_dtype=str(dtype),
+        device=str(device),
+        msa_policy=RECORD,
+    )
     if precision_policy == "af3_default":
         report.update(
             precision_policy="af3_default",

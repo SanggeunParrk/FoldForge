@@ -61,7 +61,9 @@ def parse(model: str, argv: list[str] | None = None) -> Request:  # noqa: PLR091
         parser.add_argument(
             "--lm-source", choices=("compute", "cache"), default="compute"
         )
-        parser.add_argument("--msa-depth", type=int, default=512)
+        from foldforge.models.msa_policy import PREPARED_ROWS
+
+        parser.add_argument("--msa-depth", type=int, default=PREPARED_ROWS)
         parser.add_argument(
             "--dtype", choices=("bfloat16", "float32"), default="bfloat16"
         )

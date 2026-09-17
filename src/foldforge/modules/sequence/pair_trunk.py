@@ -265,13 +265,14 @@ class PairTrunk(nn.Module):
         msa_features: torch.Tensor | None,
         msa_mask: torch.Tensor | None,
     ) -> torch.Tensor:
-        """Build the part of the injection that is identical on every parcae pass.
+        """Build the MSA-conditioned injection for one parcae pass.
 
         The MSA encoder reads ``pair_init``, ``single_inputs``, ``msa_features``
-        and ``msa_mask`` — all loop-invariant — and contains nothing stochastic,
-        so it returns bit-identical output on all ``num_loops + 1`` passes. The
-        reference recomputes it every pass; hoisting it is exact, not an
-        approximation.
+        and ``msa_mask`` and contains nothing stochastic. With the released
+        whole-MSA input those are loop-invariant, so the term is bit-identical on
+        all ``num_loops + 1`` passes and :meth:`forward` computes it once. With
+        ``msa_rows_per_loop`` set, :func:`sample_msa_rows` draws a new subset per
+        pass and this runs every loop, as the reference did.
 
         This holds only because ``lm_encoder`` is mandatory here. With it
         disabled the reference adds the *dropped-out* LM pair into the MSA
@@ -378,13 +379,30 @@ class PairTrunk(nn.Module):
             if self.config.lm_encoder.per_loop_lm_dropout
             else 0.0
         )
-        # Hoisted: identical on every pass, so the reference's per-pass
-        # recomputation of the MSA encoder is pure waste.
-        base = self.injection_base(pair_init, single_inputs, msa_features, msa_mask)
+        rows = self.config.msa_rows_per_loop
+        resample = rows is not None and msa_features is not None
+        # Without per-loop sampling the MSA term is identical on every pass, so
+        # the reference's per-pass recomputation of the MSA encoder is pure waste.
+        base = (
+            None
+            if resample
+            else self.injection_base(pair_init, single_inputs, msa_features, msa_mask)
+        )
         for _ in range(steps):
-            # The draw stays out here so recurrence_step remains capturable.
+            # The draws stay out here so recurrence_step remains capturable.
             kept = self.drop_lm_pair(lm_pair, lm_dropout, generator)
-            pair = self.recurrence_step(pair, base, kept, mask, decay, input_matrix)
+            if base is None:
+                assert msa_features is not None  # noqa: S101 - narrowed above
+                assert rows is not None  # noqa: S101 - narrowed above
+                features, rows_mask = sample_msa_rows(
+                    msa_features, msa_mask, rows, generator
+                )
+                inject = self.injection_base(
+                    pair_init, single_inputs, features, rows_mask
+                )
+            else:
+                inject = base
+            pair = self.recurrence_step(pair, inject, kept, mask, decay, input_matrix)
 
         pair = self.coda(self.readout(pair), mask)
         distogram_logits = (
@@ -398,6 +416,44 @@ class PairTrunk(nn.Module):
             relative_position_encoding=relative_position_encoding,
             token_bonds_encoding=token_bonds_encoding,
         )
+
+
+def sample_msa_rows(
+    msa_features: torch.Tensor,
+    msa_mask: torch.Tensor | None,
+    rows: int,
+    generator: torch.Generator | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Draw ``rows`` MSA rows, valid rows first in uniformly random order.
+
+    Mirrors the AF3 MSA module: rows with at least one unmasked, non-gap token
+    are shuffled ahead of padded or all-gap rows, then the leading ``rows`` are
+    kept. Each call re-draws, so recurrence loops see different alignments. The
+    ``[B, M, L, 35]`` features carry the one-hot residue types first, so the gap
+    channel is ``MSA_GAP_TOKEN_ID``.
+    """
+    from esm.models.esmfold2.constants import (  # noqa: PLC0415 - optional input package
+        MSA_GAP_TOKEN_ID,
+    )
+
+    if msa_mask is None:
+        msa_mask = torch.ones(
+            msa_features.shape[:3], dtype=torch.bool, device=msa_features.device
+        )
+    not_gap = msa_features[..., MSA_GAP_TOKEN_ID] == 0
+    valid = (msa_mask & not_gap).any(dim=-1)  # [B, M]
+    scores = torch.rand(valid.shape, device=valid.device, generator=generator)
+    scores = torch.where(valid, scores, scores - 2.0)
+    order = torch.argsort(scores, dim=1, descending=True)[
+        :, : min(rows, valid.shape[1])
+    ]
+    features = torch.gather(
+        msa_features, 1, order[:, :, None, None].expand(-1, -1, *msa_features.shape[2:])
+    )
+    rows_mask = torch.gather(
+        msa_mask, 1, order[:, :, None].expand(-1, -1, msa_mask.shape[2])
+    )
+    return features, rows_mask
 
 
 def _inverse_softplus(value: float) -> float:

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from foldforge.data.inputs.validation import validate_inference_seed
 from foldforge.models.config import ExecutionConfig, OutputConfig
 from foldforge.models.io.paths import run_directory
+from foldforge.models.msa_policy import PREPARED_ROWS
 
 if TYPE_CHECKING:
     from foldforge.data.inputs.build import Input
@@ -31,7 +32,7 @@ class Request:
     recycles: int | None = None
     steps: int | None = None
     samples: int = 1
-    msa_depth: int = 512
+    msa_depth: int = PREPARED_ROWS
     guidance: bool | None = None
     templates: bool = False
     no_msa: bool = False

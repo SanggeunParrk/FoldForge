@@ -69,8 +69,16 @@ protein, RNA, DNA and CCD ligands. No model chooses another CCD release implicit
 The default is native BF16 learned parameters with FP32 normalization parameters,
 explicit checkpoint-specific FP32 calculations, and no autocast. A null recycle or
 step setting preserves the released default: AF-family 10/200, ESMFold2 3/14.
-An explicit `trunk.msa_depth` caps input alignment rows before AF-family adapters,
-and limits the ESM input MSA. Null preserves model defaults (ESM input limit 512).
+`trunk.msa_depth` caps prepared alignment rows for every adapter; null means the
+shared policy value of 16384 rows, the AF3 `msa_crop_size`. Inside the model,
+every trunk pass embeds a fresh uniformly random subset of 1024 valid rows and
+re-draws it on each recycle, as the AF3 MSA module does. FoldForge applies this
+one rule to all four predictors at load time (`foldforge.models.msa_policy`)
+instead of each checkpoint's released consumption: OpenDDE sampled 1280 rows,
+Protenix embedded every prepared row, and ESMFold2 embedded every row once and
+reused that term across its recurrence loops. Profile and deletion statistics
+still come from the full prepared MSA. Templates are capped at four per chain
+by `template_n`, the AF3 `max_templates`. Run reports record `msa_policy`.
 Unknown config/spec keys fail validation rather than silently doing nothing.
 
 Each output contains the resolved spec, model settings, chain mapping, actual run

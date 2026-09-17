@@ -16,6 +16,7 @@ from torch.utils._pytree import tree_map
 from foldforge.data.ccd import CCDDatabase
 from foldforge.models.execution import Execution, measured_forward
 from foldforge.models.io.output import Decoded, cpu_tree, json_value, write_output
+from foldforge.models.msa_policy import RECORD
 from foldforge.models.sampling import bind_sampling_seed
 from foldforge.utils.seed import seed_all, seed_context
 
@@ -108,6 +109,7 @@ def run(request: Request) -> int:
                     "trunk_seed": request.trunk_seed,
                     "diffusion_seed": request.diffusion_seed,
                     "seed_policy": "split-v1",
+                    "msa_policy": RECORD,
                     "model": request.model,
                     "backend": request.backend,
                     "precision": request.precision,

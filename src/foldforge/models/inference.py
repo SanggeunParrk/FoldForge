@@ -14,6 +14,7 @@ from foldforge.data.ccd import CCDDatabase
 from foldforge.data.inputs.build import Input, limit_msa, load, write_adapter_input
 from foldforge.models.config import Config
 from foldforge.models.io.paths import run_directory
+from foldforge.models.msa_policy import PREPARED_ROWS
 
 
 def _validate_input(
@@ -101,8 +102,9 @@ def run(model: str, argv: list[str]) -> int:
         for ccd in set(chain.ccds):
             db.lookup[ccd]  # Fail before loading weights if input chemistry is missing.
     args.out.mkdir(parents=True, exist_ok=True)
-    if config.trunk.msa_depth is not None:
-        target = limit_msa(target, config.trunk.msa_depth, args.out / "prepared-msa")
+    target = limit_msa(
+        target, config.trunk.msa_depth or PREPARED_ROWS, args.out / "prepared-msa"
+    )
     (args.out / "msa-species-aliases.json").write_text(
         json.dumps(target.msa_species, indent=2) + "\n"
     )
@@ -158,7 +160,7 @@ def run(model: str, argv: list[str]) -> int:
             steps=config.diffusion.steps
             if model == "esmfold2"
             else (config.diffusion.steps or 200),
-            msa_depth=config.trunk.msa_depth or 512,
+            msa_depth=config.trunk.msa_depth or PREPARED_ROWS,
             templates=bool(target.spec.template),
             variant=config.variant or "protenix_base_default_v1.0.0",
             execution=config.execution,

@@ -148,6 +148,9 @@ class ESMFold2Config(BaseModel):
     num_diffusion_samples: int = 32
     disable_msa_features: bool = False
     msa_encoder_overwrite: bool = True
+    # Rows re-drawn for the MSA encoder on every recurrence loop. None keeps the
+    # released behaviour: embed every input row once and reuse that term.
+    msa_rows_per_loop: int | None = None
 
     esmc_id: str = "biohub/ESMC-6B"
     lm_d_model: int = 2560

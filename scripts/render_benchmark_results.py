@@ -13,6 +13,8 @@ mpl.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from foldforge.models.msa_policy import RECORD as MSA_POLICY
+
 MODES = {
     "pytorch_eager_reference": "PyTorch eager · default",
     "pytorch_compile_reference": "PyTorch compile · default",
@@ -31,8 +33,9 @@ MODELS = {
 REPEATS = 5
 AF3_TRUNK_PASSES = 11
 # Input contract follows the official AF3 pipeline: msa_crop_size and max_templates.
-MSA_DEPTH = 16384
-TEMPLATE_N = 4
+# Every adapter then samples the same rows per recycle (foldforge.models.msa_policy).
+MSA_DEPTH = MSA_POLICY["prepared_rows"]
+TEMPLATE_N = MSA_POLICY["templates_per_chain"]
 
 
 def validate(rows: list[dict]) -> dict:
@@ -87,6 +90,7 @@ def validate(rows: list[dict]) -> dict:
             and config["diffusion"] == {"steps": 200}
             and row["input_spec"]["n_diffusion_samples"] == REPEATS
             and row["input_spec"].get("template_n") == TEMPLATE_N
+            and report.get("msa_policy") == MSA_POLICY
             and (
                 not row["input_spec"].get("template")
                 if model == "esmfold2"
@@ -244,11 +248,16 @@ def render(rows: list[dict], docs: Path) -> None:
         "architecture's permitted",
         "FlashAttention path and uses PyTorch for the other replaceable operations.",
         "",
-        f"All cases use {seed_description}, an input MSA cap of {MSA_DEPTH} rows "
-        f"(AF3's msa_crop_size) and up to {TEMPLATE_N} templates per chain",
-        "(AF3's max_templates) for AF3, Protenix v2 and OpenDDE. ESMFold2 has no",
-        "template conditioning path and runs the same MSA cap without templates.",
-        "Every case requests 200 steps",
+        f"All cases use {seed_description} and one MSA policy taken from the AF3",
+        f"pipeline: inputs keep up to {MSA_DEPTH} alignment rows (msa_crop_size) and",
+        "every trunk pass embeds a fresh random subset of "
+        f"{MSA_POLICY['sampled_rows_per_recycle']} valid rows",
+        "(num_msa), re-drawn on each recycle. This replaces each checkpoint's",
+        "released consumption: OpenDDE sampled 1280 rows, Protenix v2 embedded every",
+        "prepared row, and ESMFold2 embedded every row once and reused it across",
+        f"loops. AF3, Protenix v2 and OpenDDE receive up to {TEMPLATE_N} templates per",
+        "chain (max_templates); ESMFold2 has no template conditioning path and runs",
+        "the same MSA policy without templates. Every case requests 200 steps",
         "and five samples. Token buckets use multiples of 128: 594 -> "
         "640. OpenDDE expands",
         "internally to 1140 structural tokens -> 1152. Atom buckets are "

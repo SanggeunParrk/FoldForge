@@ -57,7 +57,7 @@ uv sync --extra cu12    # CUDA 12.8   (or --extra cu13 for CUDA 13)
 
 For an existing checkout: `git submodule update --init --recursive`.
 The checked-in submodule revision is the validated dependency: team-gm
-`b57e918` with engine `d2266a03`. Keep that revision when reproducing the
+`a823f69` with engine `d2266a03`. Keep that revision when reproducing the
 recorded results; newer `exp/miniworld` commits use a different engine/patch set.
 
 The pinned Biohub ESMFold2 processor requires **Python 3.12**. For
@@ -98,16 +98,16 @@ revision, validation results, and FlashAttention setup required for GPU SWA.
 ```
 libs/team-gm/            submodule, tracks exp/miniworld
 src/foldforge/
-  checkpoints.py         where the weights are — asked, never hardcoded
+  cli.py                 foldforge models / ccd / fold <model>
   prediction.py          the one output type every predictor returns
-  models/                one package per predictor + the name -> loader registry
-    af3/ boltz2/ chai1/ esmfold2/ opendde/ protenix/
-  modules/               blocks two+ predictors need that team-gm does not carry
-  data/                  shared input features (sequence, MSA, templates)
-  eval/                  RMSD / lDDT / TM against a deposit or another predictor
-  cli/                   foldforge models, foldforge fold <model>
+  models/                architectures, config, checkpoints, io adapters and the
+                         single loading / execution / sampling / precision lifecycle
+  modules/               dense, sequence and flat layout blocks, ops, ESMC backbone
+  data/                  CCD, features, MSA, templates and MiniWorld input preparation
+  eval/                  RMSD / lDDT / TM, confidence metrics, permutation matching
+  training/  utils/      losses; geometry, seeding, logging and tensor helpers
 scripts/                 Slurm wrappers and measurement drivers
-configs/  tests/  docs/
+configs/  tests/  docs/  typings/
 ```
 
 `model_checkpoints/`, `benchmark/`, `runs/` and `validation/` are gitignored: weights are
@@ -132,7 +132,7 @@ source.
 |---|---|
 | wraps a kernel, one PyTorch reference | miniworld-engine |
 | representative AF3 block (Pairformer, MSA module, template, diffusion transformer) | team-gm |
-| specific to one predictor | `models/<name>/` |
+| specific to one predictor | `models/architectures/<name>.py` |
 | needed by two or more predictors, no reason for team-gm to carry it | `modules/` |
 
 A single-consumer block in `modules/` is the common mistake: it reads as shared,

@@ -78,8 +78,6 @@ miniworld-engine = { git = "ssh://git@github.com/SanggeunParrk/miniworld-engine.
 
 [dependency-groups]
 dev = [
-  "matplotlib>=3.10,<4",
-  "pandas>=2.3,<3",
   "pytest>=8.3,<9",
   "pre-commit>=4.6,<5",
   "ruff>=0.15,<0.16",
@@ -129,39 +127,24 @@ known-third-party = ["wandb"]
   "PLR0915", # Too many statements
 ]
 
-# Same numerical-code exceptions as team-gm diffusion/SE(3), with every file still checked.
-"src/foldforge/modules/**" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-"src/foldforge/eval/**" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-"src/foldforge/training/loss.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-"src/foldforge/training/shape_complementarity.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-"src/foldforge/utils/geometry.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-"src/foldforge/utils/dense_geometry.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-"src/foldforge/data/features/featurizer.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-"src/foldforge/data/features/geometry.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-
-# Chemical graph permutations, geometric crop selection, and tensor transforms
-# follow the same paper-notation policy as team-gm diffusion and SE(3) code.
-"src/foldforge/data/ccd/substructure_perms.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-"src/foldforge/data/features/permutations.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-"src/foldforge/data/features/constraints.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
+# Paper-notation numerical code: the same exceptions as team-gm diffusion/SE(3),
+# with every file still checked. Chemical graph permutations, geometric crop
+# selection and tensor transforms follow the same policy.
+"src/foldforge/{modules,eval}/**" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
+"src/foldforge/training/{loss,shape_complementarity}.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
+"src/foldforge/utils/{geometry,dense_geometry,tensor}.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
 "src/foldforge/data/cropping.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-"src/foldforge/data/features/dense_protein.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-"src/foldforge/utils/tensor.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
+"src/foldforge/data/ccd/substructure_perms.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
+"src/foldforge/data/features/{featurizer,geometry,permutations,constraints,dense_protein}.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
 
 # Ordered chemistry/MSA algorithms follow team-gm's numerical complexity policy.
 # Keep their stages together for reference comparison; type, import, error,
 # security and correctness checks remain enabled throughout these files.
-"src/foldforge/data/parser.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
-"src/foldforge/data/filter.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
+"src/foldforge/data/{parser,filter}.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
 "src/foldforge/data/features/atoms.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
-"src/foldforge/data/inputs/entities.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
-"src/foldforge/data/inputs/features.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
-"src/foldforge/data/inputs/serialize.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
-"src/foldforge/data/inputs/prepare_sequence.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
 "src/foldforge/data/msa/featurizer.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
-"src/foldforge/data/template/features.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
-"src/foldforge/data/template/featurizer.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
-"src/foldforge/data/template/parser.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
+"src/foldforge/data/inputs/{entities,features,serialize,prepare_sequence}.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
+"src/foldforge/data/template/{features,featurizer,parser}.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
 
 [tool.pytest.ini_options]
 pythonpath = [".", "tests"]

@@ -1,36 +1,69 @@
 # scripts
 
-Run model and measurement jobs on allocated compute nodes.
+Run model and measurement jobs on allocated compute nodes. Every script assumes
+the repository environment: `source scripts/activate_env.sh` first, or submit
+the matching `.sbatch` wrapper.
+
+## Environment and checks
 
 - `setup_env.sbatch`: install the pinned environment, including FA2/Quack/CuTe.
 - `activate_env.sh`: activate `.venv` and the required C++ runtime.
-- `fold_esmfold2.py` / `.sbatch`: compatibility entry point for the same implementation
-  used by `foldforge fold esmfold2`. Live ESMC is the default; use `--lm-source cache`
-  explicitly for existing embeddings.
-- `esmfold2_profile.py` / `.sbatch`: stage timings with cached embeddings.
-- `op_dispatch_audit.py` / `.sbatch`: inspect which backend executes.
-- `build_autotune_cache.py` / `.sbatch`: bounded, resumable model-shape gap builder.
-  See [cache build commands](../docs/guides/CACHE-BUILD.md) for its private cache and replay options.
+- `check_quality.sh`: Ruff lint/format and Pyright, as used by pre-commit.
 
-The folding command now lives in the installed model package and writes both CIF
-and JSON. See [the model integration record](../docs/guides/MODEL-INTEGRATION.md).
+## Inference
 
-AF3, Protenix v1/v2 and OpenDDE now run through `foldforge fold <model>` in this
-environment. See [model integration](../docs/guides/MODEL-INTEGRATION.md) for input
-schemas, checkpoint/CCD paths and complete commands. Shared CCD assets live
-outside `.venv`, so environment reinstallation preserves them. All model
-execution belongs on allocated GPU nodes.
+The standard entry point is `foldforge fold <model> --spec <MiniWorld YAML>`,
+optionally with `--config <runtime YAML>`. All predictors read `ccd_db` from the
+input YAML and share `data/ccd/preprocessed_CCD.lmdb`; prepare it with
+`foldforge ccd prepare` and check it with `foldforge ccd verify`. See
+[the format contract](../docs/guides/MINIWORLD-FORMAT.md) and
+[model integration](../docs/guides/MODEL-INTEGRATION.md) for input schemas,
+checkpoint paths and complete commands.
 
-The common inference and cache-building paths read `ccd_db` from the MiniWorld
-input YAML. Compatibility scripts additionally accept `--ccd-db`. Prepare with
-`foldforge ccd prepare` and verify with `foldforge ccd verify`.
-`audit_model_boundaries.py --out docs/archive/model-boundaries-20260913.csv` inventories
-all model classes with forward methods without loading the GPU stack.
+Inference and benchmark commands accept `--trunk-seed` and `--diffusion-seed`
+(defaults 0/0). Input/conformer/MSA/trunk randomness and diffusion
+noise/augmentation use independent streams. Result JSON records both seeds and
+`seed_policy: split-v1`; historical coupled-seed results are not rewritten. Use
+a new run directory when changing seed policy.
 
-The standard entry point is now `foldforge fold <model> --spec <MiniWorld YAML>`.
-All predictors use `data/ccd/preprocessed_CCD.lmdb`; see
-[the format contract](../docs/guides/MINIWORLD-FORMAT.md). The target-based scripts remain
-compatibility tools for reproducing the recorded validation runs.
+Compatibility tools for reproducing the recorded validation runs:
+
+- `fold_esmfold2.py` / `.sbatch`: same implementation as `foldforge fold esmfold2`
+  through the legacy `--target` inputs. Live ESMC is the default; `--lm-source cache`
+  reuses existing embeddings. Accepts `--ccd-db`.
+- `verify_prediction_artifacts.py`: compare two prediction trees produced with
+  identical inputs, including confidence heads and CIF atom order.
+- `compare_execution_structures.py`: matched graph/compile predictions against
+  0.25 A CA RMSD and one pLDDT point limits.
+- `qualify_execution.py`: graph replays against the same callable with capture off.
+
+## Kernel caches and dispatch
+
+- `build_autotune_cache.py` / `.sbatch`: bounded, resumable model-shape gap builder
+  that runs the ordinary released-model CLI. Rejects PyTorch baselines as cache
+  builds. See [cache build commands](../docs/guides/CACHE-BUILD.md).
+- `op_dispatch_audit.py` / `.sbatch`: which engine ops a fold actually enters and
+  whether the fused residual rode along.
+- `audit_model_boundaries.py --out docs/archive/model-boundaries-<date>.csv`:
+  inventory model classes with forward methods without loading the GPU stack.
+
+## Profiling
+
+- `esmfold2_profile.py` / `.sbatch`: ESMFold2 stage timings with cached embeddings
+  and a summary of what `torch.compile` captured.
+- `profile_af3_modules.py` / `.sbatch`: AF3 stage timings for one complete forward
+  on the qualification target. Eager execution with a CUDA synchronize around
+  every hooked stage (conditioning encoder, trunk and its MSA/Pairformer stacks,
+  diffusion head and its encoder/transformer/decoder, sampling loop, confidence
+  and distogram heads). Writes `profile.json` and `profile.md` under the run
+  directory. Inclusive stage wall time, not a kernel profile; the synchronizes
+  make it an upper bound on the same stages inside the compiled/graph benchmark.
+
+```bash
+sbatch scripts/profile_af3_modules.sbatch --out runs/af3-profile --repeats 2
+```
+
+## Benchmark
 
 `benchmark_end_to_end.py --model <model>` defaults to five explicit modes for
 AF3, OpenDDE, ESMFold2 and Protenix v2:
@@ -65,51 +98,43 @@ with autocast disabled.
 `pytorch_eager` and `pytorch_compile` aliases remain BF16-only.
 `--backends` retains the legacy compile-and-graph comparison and cannot be
 combined with `--modes`. Use `--variant protenix-v2` for the v2 checkpoint.
+
 `render_benchmark_results.py --results RUN --docs docs` validates all 20 cases
 and renders the five-mode latency table and bar chart. It rejects inconsistent
-inputs, precision, sample/recycle counts and execution flags.
-Timing definitions and current results are in
-[benchmark results](../docs/benchmark_results.md).
+inputs, precision, sample/recycle counts and execution flags, and refuses to mix
+legacy and split-seed measurements in one comparison. Timing definitions and
+current results are in [benchmark results](../docs/benchmark_results.md).
 
+## Audits
 
-Precision diagnostics use `audit_af3_precision.py REPORT --spec INPUT
---config CONFIG --out RUN` inside an allocated GPU job. Add `--model esmfold2`, `--model opendde` or `--model protenix` to audit
-the other adapters (AF3 is the default). Supply an eager configuration with
-`precision: bf16`, `af3_default` (AF3), or `model_default` (other models),
-one recycle, two diffusion steps and one sample. The report
-records every parameter, observed Linear/GEMM operand dtypes, DiT module outputs
-and actual CUDA autocast state. Its timings are diagnostic and must not enter
-latency comparisons.
+Run each inside an allocated GPU job. Their timings are diagnostic and must not
+enter latency comparisons.
 
-Batch diagnostics use `audit_af3_batch.py REPORT --spec INPUT --config CONFIG
---out RUN` inside an allocated GPU job. Use five samples in the input and an eager
-configuration with one recycle and two diffusion steps. It compares identical
-coordinates in one batched denoiser call against five independent calls, checks
-one call per step, and observes MiniWorld Q/K/V `num_aug=5` with shared pair bias.
-The full benchmark also rejects sequential AF3 execution through observed wrapper
-call counts. Denoiser batches change random-number consumption relative to the
-old sequential sampler; same-seed old/new trajectories need not match.
-
-`audit_sample_axes.py REPORT MODEL --spec INPUT --config CONFIG --out RUN`
-checks ESMFold2, Protenix v2 and OpenDDE on an allocated GPU. Use eager MiniWorld,
-five samples, one recycle and two steps; supply `--lm-cache` for ESMFold2. It
-records actual token kernel Q/bias shapes, excluding trunk triangle attention,
-and ESMFold2 SWA construction with `num_aug=5`. SWA's FlashAttention boundary
-flattens augmentation and structure batch; token attention retains `[A, B]`.
-Rectangular flat-atom windows use the shared batched PyTorch path because the
-engine pair-bias core currently supports square attention.
-
-`compare_af3_precision.py --results RUN --experimental 4yx2.cif --output
-quality.json --report af3_precision.md` compares all samples with the compiled
-AF3-default reference (`pytorch_compile_reference`) and the experimental complex, and writes a latency chart and
-quality table. Feed a merged `e2e-af3.json` containing the five measured modes.
-Atom correspondence uses chain, label residue index, residue identity and atom
-name; no matching-by-coordinate or best-sample substitution is performed.
-
-
-Inference and benchmark commands accept `--trunk-seed` and `--diffusion-seed`
-(defaults: 0/0). Input/conformer/MSA/trunk randomness and diffusion
-noise/augmentation use independent streams. New result JSON records both seeds
-and `seed_policy: split-v1`; historical coupled-seed results are not rewritten.
-Use a new run directory when changing seed policy. The renderer refuses to mix
-legacy and split-seed measurements in one comparison.
+- `audit_af3_precision.py REPORT --spec INPUT --config CONFIG --out RUN`: records
+  every parameter, observed Linear/GEMM operand dtypes, DiT module outputs and
+  actual CUDA autocast state. Add `--model esmfold2|opendde|protenix` for the
+  other adapters. Supply an eager configuration with `precision: bf16`,
+  `af3_default` (AF3) or `model_default` (other models), one recycle, two
+  diffusion steps and one sample.
+- `audit_af3_batch.py REPORT --spec INPUT --config CONFIG --out RUN`: compares
+  identical coordinates in one batched denoiser call against five independent
+  calls, checks one call per step, and observes MiniWorld Q/K/V `num_aug=5` with
+  shared pair bias. Use five samples, one recycle and two diffusion steps. The
+  full benchmark also rejects sequential AF3 execution through observed wrapper
+  call counts. Denoiser batches change random-number consumption relative to the
+  old sequential sampler; same-seed old/new trajectories need not match.
+- `audit_sample_axes.py REPORT MODEL --spec INPUT --config CONFIG --out RUN`:
+  ESMFold2, Protenix v2 and OpenDDE token kernel Q/bias shapes, excluding trunk
+  triangle attention, and ESMFold2 SWA construction with `num_aug=5`. Use eager
+  MiniWorld, five samples, one recycle and two steps; supply `--lm-cache` for
+  ESMFold2. SWA's FlashAttention boundary flattens augmentation and structure
+  batch; token attention retains `[A, B]`. Rectangular flat-atom windows use the
+  shared batched PyTorch path because the engine pair-bias core currently
+  supports square attention.
+- `compare_af3_precision.py --results RUN --experimental 4yx2.cif --output
+  quality.json --report af3_precision.md`: compares all samples with the compiled
+  AF3-default reference (`pytorch_compile_reference`) and the experimental
+  complex, and writes a latency chart and quality table. Feed a merged
+  `e2e-af3.json` containing the five measured modes. Atom correspondence uses
+  chain, label residue index, residue identity and atom name; no
+  matching-by-coordinate or best-sample substitution is performed.

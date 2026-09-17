@@ -186,7 +186,7 @@ Protenix/OpenDDE use a tensor dictionary.
 
 ## Shared operations and precision
 
-`modules/af_family.py` maps plain residual transitions, compatible residual
+`team_gm.modules.checkpoints.af_family` maps plain residual transitions, compatible residual
 TriMul and LayerNorm onto miniworld-engine. It preserves masks and consumes the
 fused residual exactly once. AF3 interleaved projection weights and incoming
 contraction order are mapped explicitly. Protenix template TriMul with pair

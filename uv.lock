@@ -825,8 +825,6 @@ flash2 = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "matplotlib" },
-    { name = "pandas" },
     { name = "pandas-stubs" },
     { name = "pre-commit" },
     { name = "pyright", extra = ["nodejs"] },
@@ -866,8 +864,6 @@ provides-extras = ["cu12", "cu13", "flash2"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "matplotlib", specifier = ">=3.10,<4" },
-    { name = "pandas", specifier = ">=2.3,<3" },
     { name = "pandas-stubs", specifier = "==2.3.3.260113" },
     { name = "pre-commit", specifier = ">=4.6,<5" },
     { name = "pyright", extras = ["nodejs"], specifier = "==1.1.408" },

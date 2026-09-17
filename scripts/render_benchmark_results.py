@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
-from datetime import date
+from datetime import UTC, datetime
 from pathlib import Path
 
 import matplotlib as mpl
@@ -196,7 +196,7 @@ def render(rows: list[dict], docs: Path) -> None:
     lines = [
         "# Inference benchmark results",
         "",
-        f"Updated {date.today().isoformat()}. **4YX2: 594 residues, three chains "
+        f"Updated {datetime.now(tz=UTC).date().isoformat()}. **4YX2: 594 residues, three chains "
         "(163 + 218 + 213).**",
         "All four models now have five measured configurations. Reference means each",
         "model's released **precision policy** in FoldForge's PyTorch "

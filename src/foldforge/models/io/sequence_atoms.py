@@ -153,7 +153,14 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
         manifest = json.loads((sample / "target.json").read_text())
     builder = ESMFold2InputBuilder(ccd_db=database)
     features, chain_infos = builder.prepare_input(
-        structure_input, seed=args.seed, device=device
+        structure_input, seed=args.trunk_seed, device=device
+    )
+    from esm.models.esmfold2.constants import MSA_GAP_TOKEN_ID
+
+    from foldforge.models.io.images import input_images
+
+    image_inputs = input_images(
+        features, args.output.image_names, gap_id=MSA_GAP_TOKEN_ID, batched=True
     )
     lm_seconds = None
     if args.lm_source == "cache":
@@ -232,10 +239,11 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
         """Compute fold."""
         return model(
             **kwargs,
+            return_distogram="distogram" in args.output.image_names,
             num_diffusion_samples=args.samples,
             num_loops=args.recycles,
             num_sampling_steps=args.steps,
-            generator=torch.Generator(device=device).manual_seed(args.seed),
+            generator=torch.Generator(device=device).manual_seed(args.trunk_seed),
         )
 
     def decode(out: ESMFold2Output, measurements: dict[str, float]) -> Decoded:
@@ -254,7 +262,7 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
             pae=out.confidence.pae,
             ptm=out.confidence.ptm,
             iptm=out.confidence.iptm,
-            distogram_logits=out.distogram_logits,
+            pde=out.confidence.pde,
         )
         for name in ("coords", "plddt", "pae", "ptm"):
             value = getattr(prediction, name)
@@ -268,7 +276,8 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
             "buckets": None if bucket_shape is None else vars(bucket_shape),
             "device": torch.cuda.get_device_name(device),
             "dtype": args.dtype,
-            "seed": args.seed,
+            "trunk_seed": args.trunk_seed,
+            "diffusion_seed": args.diffusion_seed,
             "msa_depth": args.msa_depth,
             "checkpoint": str(checkpoint.resolve()),
             "lm_source": args.lm_source,
@@ -346,6 +355,16 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
             message = "Decoded sample count differs from the requested count"
             raise ValueError(message)
         cifs = [sample.complex.to_mmcif() for sample in decoded_samples]
-        return Decoded(args.target, prediction, cifs, report, singleton_cif=True)
+        return Decoded(
+            args.target,
+            prediction,
+            cifs,
+            report,
+            singleton_cif=True,
+            image_inputs=image_inputs,
+            image_distogram=None
+            if out.distogram_logits is None
+            else out.distogram_logits[0],
+        )
 
     yield Case(fold, decode, inference_mode=False)

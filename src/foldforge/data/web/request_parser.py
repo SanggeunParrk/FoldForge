@@ -535,9 +535,10 @@ class RequestParser:
         """Run notebook requests through the same checkpoint and output runtime."""
         from foldforge.data.ccd import CCDDatabase
         from foldforge.data.ccd.database import current_database
-        from foldforge.models.config import ExecutionConfig
+        from foldforge.models.config import ExecutionConfig, OutputConfig
         from foldforge.models.io.request import Request
         from foldforge.models.io.runtime import run
+        from foldforge.utils.seed import seed_context
 
         database = (
             CCDDatabase(Path(self.request["ccd_db"]))
@@ -545,9 +546,30 @@ class RequestParser:
             else current_database()
         )
         with database.activate():
-            input_path = Path(self.get_data_json())
             checkpoint = Path(self.get_model()) / f"{self.model_name}.pt"
-            for seed in self.request.get("model_seeds", [0]):
+            legacy_seeds = "model_seeds" in self.request
+            if legacy_seeds and any(
+                name in self.request for name in ("trunk_seeds", "diffusion_seeds")
+            ):
+                message = "Use either model_seeds or trunk_seeds/diffusion_seeds"
+                raise ValueError(message)
+            trunk_seeds = self.request.get(
+                "trunk_seeds", self.request.get("model_seeds", [0])
+            )
+            seed_pairs = [
+                (trunk_seed, diffusion_seed)
+                for trunk_seed in trunk_seeds
+                for diffusion_seed in self.request.get(
+                    "diffusion_seeds", [trunk_seed] if legacy_seeds else [0]
+                )
+            ]
+            input_path = None
+            previous_trunk_seed = None
+            for trunk_seed, diffusion_seed in seed_pairs:
+                if input_path is None or trunk_seed != previous_trunk_seed:
+                    with seed_context(int(trunk_seed)):
+                        input_path = Path(self.get_data_json())
+                    previous_trunk_seed = trunk_seed
                 run(
                     Request(
                         model="protenix",
@@ -555,8 +577,10 @@ class RequestParser:
                         ccd_db=database.root,
                         input=input_path,
                         checkpoint=checkpoint,
-                        out=Path(self.request_dir) / f"seed-{seed}",
-                        seed=int(seed),
+                        out=Path(self.request_dir)
+                        / f"trunk-{trunk_seed}_diffusion-{diffusion_seed}",
+                        trunk_seed=int(trunk_seed),
+                        diffusion_seed=int(diffusion_seed),
                         backend=self.request.get("backend", "miniworld"),
                         precision=self.request.get("precision", "bf16"),
                         recycles=int(self.request.get("N_cycle", 10)),
@@ -565,6 +589,9 @@ class RequestParser:
                         templates=bool(self.request.get("use_template", False)),
                         no_msa=not self.request.get("use_msa", True),
                         guidance=self.request.get("use_tfg"),
+                        output=OutputConfig.model_validate(
+                            self.request.get("output", {})
+                        ),
                         execution=ExecutionConfig.model_validate(
                             self.request.get("execution", {})
                         ),

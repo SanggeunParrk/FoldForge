@@ -32,6 +32,7 @@ from foldforge.data.ccd import CCDDatabase, default_path
 from foldforge.models.architectures.esmfold2 import ESMFold2Model as TeamGMModel
 from foldforge.models.checkpoints import esmfold2 as convert
 from foldforge.models.config.esmfold2 import ESMFold2Config
+from foldforge.models.sampling import bind_sampling_seed
 from foldforge.modules.sequence.features import ESMFold2InputBuilder, build_input
 from foldforge.modules.sequence.features import model_kwargs as team_gm_kwargs
 
@@ -147,7 +148,8 @@ def main() -> int:
     parser.add_argument("--out", default="benchmark/esmfold2/profile")
     parser.add_argument("--checkpoint", default="model_checkpoints/esmfold2")
     parser.add_argument("--msa-depth", type=int, default=512)
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--trunk-seed", type=int, default=0)
+    parser.add_argument("--diffusion-seed", type=int, default=0)
     parser.add_argument(
         "--implementation", default=ImplementationType.MINIWORLD_ENGINE.value
     )
@@ -162,7 +164,7 @@ def main() -> int:
     sample = Path(args.data_root) / args.target
     builder = ESMFold2InputBuilder(ccd_db=CCDDatabase(args.ccd_db))
     features, _ = builder.prepare_input(
-        build_input(sample, args.msa_depth), seed=args.seed, device=device
+        build_input(sample, args.msa_depth), seed=args.trunk_seed, device=device
     )
     lm_hidden = torch.load(
         sample / "cache" / "esmc_hidden_states.pt", map_location=device
@@ -174,6 +176,7 @@ def main() -> int:
     model.load_state_dict(
         convert.convert_model(load_file(checkpoint / "model.safetensors"), config)
     )
+    bind_sampling_seed(model, "esmfold2", args.diffusion_seed)
     kwargs = team_gm_kwargs(features, dtype)
 
     def fold() -> torch.Tensor:
@@ -181,7 +184,7 @@ def main() -> int:
             **kwargs,
             lm_hidden_states=lm_hidden,
             num_diffusion_samples=1,
-            generator=torch.Generator(device=device).manual_seed(args.seed),
+            generator=torch.Generator(device=device).manual_seed(args.trunk_seed),
         ).coords
 
     # Warm-up fold first: otherwise the breakdown is a map of Triton autotuning.

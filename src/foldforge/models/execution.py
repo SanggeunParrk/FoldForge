@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import random
 import time
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
@@ -15,6 +14,8 @@ from team_gm.modules.execution import (
     copy_containers as copy_containers,  # noqa: PLC0414 - intentional public re-export
 )
 from torch._dynamo.utils import counters
+
+from foldforge.utils.seed import RNGState
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -126,8 +127,7 @@ def measured_forward[Result](
     if not 0 <= repeats <= MAX_BENCHMARK_REPEATS:
         message = f"benchmark_repeats must be in [0,{MAX_BENCHMARK_REPEATS}]"
         raise ValueError(message)
-    py_state, np_state = random.getstate(), np.random.get_state()
-    cpu_state, cuda_state = torch.get_rng_state(), torch.cuda.get_rng_state()
+    rng_state = RNGState.capture()
     timings = []
     result = None
     torch.cuda.reset_peak_memory_stats()
@@ -135,10 +135,7 @@ def measured_forward[Result](
         if iteration:
             # Do not inflate peak memory by retaining the previous full prediction.
             del result
-        random.setstate(py_state)
-        np.random.set_state(np_state)
-        torch.set_rng_state(cpu_state)
-        torch.cuda.set_rng_state(cuda_state)
+        rng_state.restore()
         torch.cuda.synchronize()
         start = time.perf_counter()
         result = fn()

@@ -275,3 +275,33 @@ CUDA graphs. Set `execution.compile: true` to also compile that callable.
 The trunk, host sampling and confidence remain outside capture; full-model graph
 capture is rejected. Reports record actual graph/replay counts. The complete
 numerical and complex-input qualification is in [the current execution record](../archive/QUALIFICATION-20260914.md).
+
+
+## Inference randomness
+
+Inference has two independent 32-bit unsigned seeds. Both default to zero:
+
+```yaml
+trunk_seed: 7
+diffusion_seed: 19
+```
+
+`trunk_seed` controls input featurization (including SMILES reference conformers),
+MSA sampling and trunk randomness. `diffusion_seed` controls initial coordinates,
+per-step noise, rigid augmentation and stochastic guidance. Changing a diffusion
+seed leaves the trunk's RNG stream untouched. Changing a trunk seed changes the
+conditioning; the same diffusion seed reproduces the noise only when shapes,
+sample count and sampling settings match, not the final predicted coordinates.
+
+Override either value with `foldforge fold <model> --spec input.yaml --config
+config.yaml --trunk-seed 7 --diffusion-seed 19`. The request's trunk seed overrides
+`modelSeeds` in legacy AF3 JSON. Notebook seed lists use the Cartesian product of
+`trunk_seeds` and `diffusion_seeds`.
+
+A legacy config `seed: N` or compatibility CLI `--seed N` sets both seeds to N.
+Mixing the shorthand with explicit split seeds is rejected. New reports and
+resolved configs store both seed values; reports record `seed_policy: split-v1`.
+Same integers do not reproduce the old coupled-stream trajectories. Historical
+benchmark measurements retain their original source manifests and seed policy.
+Seeded RNG does not promise bitwise equality across different backends, shapes,
+precisions, devices or software versions.

@@ -52,6 +52,20 @@ def run(model: str, argv: list[str]) -> int:
     parser.add_argument("--spec", required=True, type=Path)
     parser.add_argument("--config", type=Path)
     parser.add_argument("--checkpoint", type=Path)
+    parser.add_argument(
+        "--trunk-seed", type=int, help="Input/conformer/MSA/trunk randomness"
+    )
+    parser.add_argument(
+        "--diffusion-seed", type=int, help="Diffusion noise and rigid augmentation"
+    )
+    from foldforge.models.config.runtime import IMAGE_KINDS
+
+    parser.add_argument(
+        "--save-images",
+        nargs="+",
+        choices=(*IMAGE_KINDS, "all"),
+        help="Save selected diagnostic PNGs (or all); disabled by default",
+    )
     parser.add_argument("--out", type=Path, help="Run name or path inside runs/")
     parser.add_argument("--lm-cache", type=Path)
     parser.add_argument("--engine-cache-dir", type=Path)
@@ -72,6 +86,14 @@ def run(model: str, argv: list[str]) -> int:
         if args.config
         else Config()
     )
+    overrides = {
+        name: getattr(args, name)
+        for name in ("trunk_seed", "diffusion_seed")
+        if getattr(args, name) is not None
+    }
+    if args.save_images is not None:
+        overrides["output"] = {"images": args.save_images}
+    config = Config.model_validate({**config.model_dump(), **overrides})
     target = load(args.spec)
     _validate_input(model, target, config, args, parser)
     db = CCDDatabase(target.spec.ccd_db)
@@ -113,7 +135,7 @@ def run(model: str, argv: list[str]) -> int:
     path = None
     if model != "esmfold2":
         path = args.out / "input.adapter.json"
-        write_adapter_input(target, model, path, config.seed)
+        write_adapter_input(target, model, path, config.trunk_seed)
     return predict(
         Request(
             model=model,
@@ -127,7 +149,8 @@ def run(model: str, argv: list[str]) -> int:
             else target.spec.name or "prediction",
             backend=config.backend,
             precision=config.precision,
-            seed=config.seed,
+            trunk_seed=config.trunk_seed,
+            diffusion_seed=config.diffusion_seed,
             samples=target.spec.n_diffusion_samples,
             recycles=config.trunk.recycles
             if model == "esmfold2"
@@ -139,6 +162,7 @@ def run(model: str, argv: list[str]) -> int:
             templates=bool(target.spec.template),
             variant=config.variant or "protenix_base_default_v1.0.0",
             execution=config.execution,
+            output=config.output,
             lm_cache=args.lm_cache.resolve() if args.lm_cache else None,
             lm_source="cache" if args.lm_cache else "compute",
         )

@@ -13,7 +13,7 @@ def validate_inference_seed(value: Any, *, location: str = "seed") -> int:
     """Validate a seed before it reaches NumPy/PyTorch RNG setup."""
     if isinstance(value, bool):
         msg = f"{location} must be an integer, not a boolean."
-        raise TypeError(msg)
+        raise ValueError(msg)  # noqa: TRY004 - shared config/CLI validation contract
     if isinstance(value, int):
         seed = value
     elif isinstance(value, str) and value.strip() == value and value.isdecimal():

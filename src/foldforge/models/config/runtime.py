@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+
+from foldforge.data.inputs.validation import validate_inference_seed
 
 
 class TrunkConfig(BaseModel):
@@ -45,14 +47,47 @@ class ExecutionConfig(BaseModel):
         return self
 
 
+IMAGE_KINDS = ("pae", "pde", "distogram", "plddt", "msa", "template")
+ImageKind = Literal["pae", "pde", "distogram", "plddt", "msa", "template", "all"]
+
+
+class OutputConfig(BaseModel):
+    """Opt-in diagnostic PNGs, separate from inference measurements."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    images: tuple[ImageKind, ...] = ()
+
+    @property
+    def image_names(self) -> tuple[str, ...]:
+        """Expand all and remove duplicates in a stable order."""
+        return (
+            IMAGE_KINDS if "all" in self.images else tuple(dict.fromkeys(self.images))
+        )
+
+
 class Config(BaseModel):
     """Execution policy is separate from target data and released weight layout."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     backend: Literal["miniworld", "pytorch", "cuequivariance"] = "miniworld"
     precision: Literal["bf16", "fp32", "af3_default", "model_default"] = "bf16"
-    seed: int = 0
+    trunk_seed: Annotated[int, BeforeValidator(validate_inference_seed)] = 0
+    diffusion_seed: Annotated[int, BeforeValidator(validate_inference_seed)] = 0
     trunk: TrunkConfig = Field(default_factory=TrunkConfig)
     diffusion: DiffusionConfig = Field(default_factory=DiffusionConfig)
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
+    output: OutputConfig = Field(default_factory=OutputConfig)
     variant: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def legacy_seed(cls, values: object) -> object:
+        """Translate old seed-only configs without ambiguous mixed policies."""
+        if isinstance(values, dict) and "seed" in values:
+            if "trunk_seed" in values or "diffusion_seed" in values:
+                message = "Use either seed or trunk_seed/diffusion_seed, not both"
+                raise ValueError(message)
+            values = dict(values)
+            seed = values.pop("seed")
+            values.update(trunk_seed=seed, diffusion_seed=seed)
+        return values

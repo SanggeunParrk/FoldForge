@@ -88,6 +88,7 @@ class DistogramHead(nn.Module):
         contact_probs = pair_mask * contact_probs
 
         return {
+            **({"logits": logits} if getattr(self, "save_distogram", False) else {}),
             "bin_edges": self.breaks,
             "contact_probs": contact_probs,
         }

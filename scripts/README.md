@@ -105,3 +105,11 @@ AF3-default reference (`pytorch_compile_reference`) and the experimental complex
 quality table. Feed a merged `e2e-af3.json` containing the five measured modes.
 Atom correspondence uses chain, label residue index, residue identity and atom
 name; no matching-by-coordinate or best-sample substitution is performed.
+
+
+Inference and benchmark commands accept `--trunk-seed` and `--diffusion-seed`
+(defaults: 0/0). Input/conformer/MSA/trunk randomness and diffusion
+noise/augmentation use independent streams. New result JSON records both seeds
+and `seed_policy: split-v1`; historical coupled-seed results are not rewritten.
+Use a new run directory when changing seed policy. The renderer refuses to mix
+legacy and split-seed measurements in one comparison.

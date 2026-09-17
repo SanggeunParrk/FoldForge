@@ -43,12 +43,16 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         raise ValueError(message)
 
     args.out.mkdir(parents=True, exist_ok=True)
-    text = (
-        json.dumps(args.resolved_input.af3(args.seed))
+    payload = (
+        args.resolved_input.af3(args.trunk_seed)
         if args.resolved_input is not None
-        else args.input.read_text()
+        else json.loads(args.input.read_text())
     )
-    fold_input = folding_input.Input.from_json(text, json_path=args.input)
+    # Input/feature seed is controlled by the request, including legacy JSON.
+    payload["modelSeeds"] = [args.trunk_seed]
+    fold_input = folding_input.Input.from_json(
+        json.dumps(payload), json_path=args.input
+    )
     ccd = database.af3_ccd(user_ccd=fold_input.user_ccd)
     from foldforge.models.bucketing import TOKEN_SHAPES, bucket_af3
 
@@ -78,7 +82,6 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         if args.execution.bucketing:
             example, bucket_shape = bucket_af3(example)
             model.evoformer.foldforge_msa_bucketing = True
-        torch.manual_seed(seed)
         start = time.monotonic()
         tensors = {
             k: torch.from_numpy(v).to("cuda")
@@ -86,6 +89,10 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
             if isinstance(v, np.ndarray) and v.dtype.kind in "biuf"
         }
         tensors["deletion_mean"] = tensors["deletion_mean"].float()
+
+        from foldforge.models.io.images import input_images
+
+        image_inputs = input_images(example, args.output.image_names, gap_id=31)
 
         def decode(
             result: dict[str, Any],
@@ -96,8 +103,12 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
             seed: int = seed,
             start: float = start,
             tensors: dict[str, torch.Tensor] = tensors,
+            image_inputs: dict[str, Any] = image_inputs,
         ) -> Decoded:
-            cpu = numpy_tree(result)
+            # The optional full distogram is only used for its PNG.
+            cpu = numpy_tree(
+                {key: value for key, value in result.items() if key != "distogram"}
+            )
             positions = cpu["diffusion_samples"]["atom_positions"]
             if not np.isfinite(positions).all():
                 msg = "non-finite AF3 coordinates"
@@ -121,20 +132,21 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
             canonical = from_af3(
                 result, torch.from_numpy(coords), tensors["pred_dense_atom_mask"]
             )
-            if bucket_shape is not None:
-                from dataclasses import replace
+            from dataclasses import replace
 
-                canonical = replace(
-                    canonical,
-                    plddt=None
-                    if canonical.plddt is None
-                    else canonical.plddt[..., : bucket_shape.tokens],
-                    pae=None
-                    if canonical.pae is None
-                    else canonical.pae[
-                        ..., : bucket_shape.tokens, : bucket_shape.tokens
-                    ],
-                )
+            n_tokens = int(np.asarray(example["seq_mask"]).sum())
+            canonical = replace(
+                canonical,
+                plddt=None
+                if canonical.plddt is None
+                else canonical.plddt[..., :n_tokens],
+                pae=None
+                if canonical.pae is None
+                else canonical.pae[..., :n_tokens, :n_tokens],
+                pde=None
+                if canonical.pde is None
+                else canonical.pde[..., :n_tokens, :n_tokens],
+            )
             cifs = []
             for i, xyz in enumerate(coords):
                 structure = layout.empty_output_struc.copy_and_update_atoms(
@@ -153,7 +165,8 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
             report = {
                 "ccd": database.describe(),
                 "buckets": None if bucket_shape is None else vars(bucket_shape),
-                "seed": seed,
+                "trunk_seed": seed,
+                "diffusion_seed": args.diffusion_seed,
                 "recycles": args.recycles,
                 "trunk_passes": model.num_recycles + 1,
                 "samples_per_denoiser_call": model.num_samples,
@@ -166,6 +179,17 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
                     k for k, v in cpu.items() if isinstance(v, np.ndarray)
                 ],
             }
-            return Decoded(f"{name}-seed{seed}", canonical, cifs, report, arrays=arrays)
+            logits = result.get("distogram", {}).get("logits")
+            return Decoded(
+                f"{name}-seed{seed}",
+                canonical,
+                cifs,
+                report,
+                arrays=arrays,
+                image_inputs=image_inputs,
+                image_distogram=None
+                if logits is None
+                else logits[:n_tokens, :n_tokens],
+            )
 
         yield Case(lambda tensors=tensors: model(tensors), decode)

@@ -46,6 +46,9 @@ class Prediction:
     #: (n_tokens, n_tokens, n_bins) raw distogram logits.
     distogram_logits: torch.Tensor | None = None
 
+    #: (n_samples, n_tokens, n_tokens) predicted distance error, angstroms.
+    pde: torch.Tensor | None = None
+
     def __post_init__(self) -> None:
         """Reject the shape mistake that otherwise surfaces as a bad structure."""
         expected_dims = 3
@@ -62,20 +65,26 @@ class Prediction:
             msg_0 = "coords must contain at least one sample and atom"
             raise ValueError(msg_0)
         tokens = None
-        for name, dimensions in (("plddt", 2), ("pae", 3), ("ptm", 1), ("iptm", 1)):
+        for name, dimensions in (
+            ("plddt", 2),
+            ("pae", 3),
+            ("pde", 3),
+            ("ptm", 1),
+            ("iptm", 1),
+        ):
             value = getattr(self, name)
             if value is None:
                 continue
             if value.ndim != dimensions or value.shape[0] != self.n_samples:
                 msg_0 = f"{name} must have {dimensions} axes and match n_samples"
                 raise ValueError(msg_0)
-            if name in {"plddt", "pae"}:
+            if name in {"plddt", "pae", "pde"}:
                 if tokens is not None and value.shape[1] != tokens:
                     msg_0 = "confidence heads must have matching token axes"
                     raise ValueError(msg_0)
                 tokens = value.shape[1]
-            if name == "pae" and value.shape[1] != value.shape[2]:
-                msg_0 = "pae must be square on its token axes"
+            if name in {"pae", "pde"} and value.shape[1] != value.shape[2]:
+                msg_0 = f"{name} must be square on its token axes"
                 raise ValueError(msg_0)
         logits = self.distogram_logits
         if logits is not None and (

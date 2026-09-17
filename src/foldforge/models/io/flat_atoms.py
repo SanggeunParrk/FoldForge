@@ -4,13 +4,13 @@
 
 from __future__ import annotations
 
-import random
 import time
 from typing import TYPE_CHECKING, Any
 
 from foldforge.models.execution import copy_containers
 from foldforge.models.io.output import Decoded, json_value, target_name
 from foldforge.models.io.runtime import Case, Runtime, to_device
+from foldforge.utils.seed import seed_all
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -69,9 +69,6 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
         "opendde": StructuralInferenceDataset,
     }[model_name]
     dtype = torch.bfloat16 if args.precision == "bf16" else torch.float32
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
     args.out.mkdir(parents=True, exist_ok=True)
     dataset = dataset_type(config)
     model = load(
@@ -86,14 +83,18 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
 
     print("Loaded", model.foldforge_load_report, flush=True)  # noqa: T201
     for idx in range(len(dataset)):
-        random.seed(args.seed)
-        np.random.seed(args.seed)
-        torch.manual_seed(args.seed)
+        seed_all(args.trunk_seed)
         start = time.monotonic()
         data, atoms, error = dataset[idx]
         if error:
             raise RuntimeError(error)
         features = to_device(data["input_feature_dict"], "cuda")
+
+        from foldforge.models.io.images import input_images
+
+        image_inputs = input_images(
+            data["input_feature_dict"], args.output.image_names, gap_id=31
+        )
 
         def decode(
             output: tuple[dict[str, Any], Any, dict[str, Any]],
@@ -104,6 +105,7 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
             features: dict[str, torch.Tensor] = features,
             idx: int = idx,
             start: float = start,
+            image_inputs: dict[str, Any] = image_inputs,
         ) -> Decoded:
             prediction, _, logs = output
             canonical = from_atom_confidence(prediction)
@@ -154,7 +156,8 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
                 if shape is not None
                 else None,
                 "ccd": database.describe(),
-                "seed": args.seed,
+                "trunk_seed": args.trunk_seed,
+                "diffusion_seed": args.diffusion_seed,
                 "recycles": args.recycles,
                 "steps": args.steps,
                 "samples": args.samples,
@@ -165,7 +168,19 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
                 ),
                 "logs": json_value(logs),
             }
-            return Decoded(name, canonical, cifs, report, raw=prediction)
+            return Decoded(
+                name,
+                canonical,
+                cifs,
+                report,
+                raw={
+                    key: value
+                    for key, value in prediction.items()
+                    if key != "distogram_logits"
+                },
+                image_inputs=image_inputs,
+                image_distogram=prediction.get("distogram_logits"),
+            )
 
         yield Case(
             lambda features=features: model(

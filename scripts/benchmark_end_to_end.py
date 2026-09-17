@@ -71,6 +71,8 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
     parser.add_argument("--no-templates", action="store_true")
     parser.add_argument("--lm-cache", type=Path)
     parser.add_argument("--benchmark-repeats", type=int, default=0)
+    parser.add_argument("--trunk-seed", type=int, default=0)
+    parser.add_argument("--diffusion-seed", type=int, default=0)
     parser.add_argument("--no-bucketing", action="store_true")
     parser.add_argument("--steps", type=int, default=200)
     parser.add_argument("--recycles", type=int, default=10)
@@ -147,7 +149,8 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
             config = {
                 "backend": backend,
                 "precision": precision,
-                "seed": 0,
+                "trunk_seed": args.trunk_seed,
+                "diffusion_seed": args.diffusion_seed,
                 "trunk": {"recycles": args.recycles, "msa_depth": args.msa_depth},
                 "diffusion": {"steps": args.steps},
                 "execution": {
@@ -257,6 +260,9 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
                 assert report["compile_requested"] is compile_enabled
                 assert report["cuda_graph_requested"] is graph_enabled
                 assert report["backend"] == backend
+                assert report["trunk_seed"] == args.trunk_seed
+                assert report["diffusion_seed"] == args.diffusion_seed
+                assert report["seed_policy"] == "split-v1"
                 if not compile_enabled:
                     assert report["compiled_graphs"] == 0, report
                 assert len(report["model_seconds_warm"]) == args.benchmark_repeats

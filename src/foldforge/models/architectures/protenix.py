@@ -418,13 +418,18 @@ class Protenix(RecycledTrunk):
 
         step_diffusion = time.time()
         time_tracker.update({"diffusion": step_diffusion - step_trunk})
+        distogram_logits = self.distogram_head(z)
+        if getattr(self, "save_distogram", False):
+            pred_dict["distogram_logits"] = distogram_logits
         # Distogram logits: log contact_probs only, to reduce the dimension
         pred_dict["contact_probs"] = autocasting_disable_decorator(
             disable_casting=True
         )(sample_confidence.detailed_compute_contact_prob)(
-            distogram_logits=self.distogram_head(z),
+            distogram_logits=distogram_logits,
             **sample_confidence.get_bin_params(self.configs.loss.distogram),
         )  # [N_token, N_token]
+
+        del distogram_logits
 
         # Confidence logits
         (

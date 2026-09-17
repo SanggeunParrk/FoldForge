@@ -33,6 +33,10 @@ AF3_TRUNK_PASSES = 11
 
 
 def validate(rows: list[dict]) -> dict:
+    policies = {r["report"].get("seed_policy", "legacy") for r in rows}
+    if len(policies) != 1:
+        message = "Do not mix legacy and split-seed benchmark measurements"
+        raise ValueError(message)
     indexed = {(r["model"], r["mode"]): r for r in rows}
     if len(rows) != len(MODES) * len(MODELS) or set(indexed) != {
         (m, s) for m in MODELS for s in MODES
@@ -60,7 +64,11 @@ def validate(rows: list[dict]) -> dict:
             row["status"] == 0
             and row["target"] == "4yx2"
             and row["backend"] == config["backend"] == expected_backend
-            and config["seed"] == 0
+            and (
+                config.get("seed") == 0
+                if "seed" in config
+                else config.get("trunk_seed") == config.get("diffusion_seed") == 0
+            )
             and config["execution"]["scope"] == "denoiser"
             and config["execution"]["bucketing"]
             and report["execution_scope"] == "denoiser"
@@ -106,6 +114,11 @@ def validate(rows: list[dict]) -> dict:
 
 def render(rows: list[dict], docs: Path) -> None:
     indexed = validate(rows)
+    seed_description = (
+        "trunk_seed=0 and diffusion_seed=0 (split-v1)"
+        if rows[0]["report"].get("seed_policy") == "split-v1"
+        else "the historical coupled seed=0 policy"
+    )
     assets = docs / "assets"
     assets.mkdir(parents=True, exist_ok=True)
     (assets / "benchmark_results.json").write_text(json.dumps(rows, indent=2) + "\n")
@@ -223,7 +236,7 @@ def render(rows: list[dict], docs: Path) -> None:
         "architecture's permitted",
         "FlashAttention path and uses PyTorch for the other replaceable operations.",
         "",
-        "All cases use seed 0, MSA depth cap 2048, disabled templates, "
+        f"All cases use {seed_description}, MSA depth cap 2048, disabled templates, "
         "200 requested steps",
         "and five samples. Token buckets use multiples of 128: 594 -> "
         "640. OpenDDE expands",

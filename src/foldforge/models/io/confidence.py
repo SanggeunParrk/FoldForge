@@ -33,6 +33,9 @@ def from_atom_confidence(output: Any) -> Prediction:
         coords=output["coordinate"],
         plddt=torch.stack(plddt),
         pae=torch.stack([s["token_pair_pae"] for s in full]),
+        pde=torch.stack([s["token_pair_pde"] for s in full])
+        if all("token_pair_pde" in s for s in full)
+        else None,
         ptm=ptm,
         iptm=iptm,
     )
@@ -45,7 +48,12 @@ def from_af3(
     scores = output["predicted_lddt"].float() / 100.0
     mask = token_atom_mask.to(scores.device).float()
     plddt = (scores * mask).sum(-1) / mask.sum(-1).clamp_min(1)
-    return Prediction(coords=flat_coordinates, plddt=plddt, pae=output["full_pae"])
+    return Prediction(
+        coords=flat_coordinates,
+        plddt=plddt,
+        pae=output["full_pae"],
+        pde=output.get("full_pde"),
+    )
 
 
 def structure_with_confidence(

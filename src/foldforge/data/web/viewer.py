@@ -430,11 +430,11 @@ class ModelWidget(widgets.VBox):
             value=10, description="N_cycle", tooltip="n cycle of model", disabled=False
         )
 
-        self.seeds = widgets.Text(
-            value="1,2,3,4,5",
-            description="seeds",
-            tooltip="random seeds",
-            disabled=False,
+        self.trunk_seeds = widgets.Text(
+            value="0", description="trunk seeds", disabled=False
+        )
+        self.diffusion_seeds = widgets.Text(
+            value="1,2,3,4,5", description="diffusion seeds", disabled=False
         )
 
         self.version = widgets.Dropdown(
@@ -449,13 +449,17 @@ class ModelWidget(widgets.VBox):
     def update(self) -> None:
         """Update ."""
         self.children = [
-            widgets.HBox([self.sample, self.step, self.cycle, self.seeds, self.version])
+            widgets.HBox([self.sample, self.step, self.cycle, self.version]),
+            widgets.HBox([self.trunk_seeds, self.diffusion_seeds]),
         ]
 
     def get_result(self) -> dict[str, Any]:
         """Return result."""
         results = {}
-        results["model_seeds"] = [int(i) for i in self.seeds.value.split(",")]
+        results["trunk_seeds"] = [int(i) for i in self.trunk_seeds.value.split(",")]
+        results["diffusion_seeds"] = [
+            int(i) for i in self.diffusion_seeds.value.split(",")
+        ]
         results["model_version"] = self.version.value
         results["N_sample"] = self.sample.value
         results["N_step"] = self.step.value

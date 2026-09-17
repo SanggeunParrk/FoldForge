@@ -202,6 +202,7 @@ def test_runtime_owns_forward_count_and_every_target_output(tmp_path, monkeypatc
         executions.append((name, config))
         return SimpleNamespace(report=lambda: {"effective_compile": config.compile})
 
+    monkeypatch.setattr(runtime, "bind_sampling_seed", Mock())
     monkeypatch.setattr(runtime, "Execution", execution)
     monkeypatch.setattr(runtime, "measured_forward", measure)
     monkeypatch.setattr(

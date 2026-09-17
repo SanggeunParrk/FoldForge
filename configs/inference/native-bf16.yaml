@@ -1,7 +1,8 @@
 # Optional --config. Null preserves the released model's default.
 backend: miniworld
 precision: bf16
-seed: 0
+trunk_seed: 0
+diffusion_seed: 0
 trunk:
   recycles: null
   msa_depth: null

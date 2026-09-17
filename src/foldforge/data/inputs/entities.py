@@ -18,6 +18,7 @@ from rdkit.Chem import rdDistGeom
 
 from foldforge.data.ccd import components as ccd
 from foldforge.utils.logging import get_logger
+from foldforge.utils.seed import conformer_seed
 
 # Copyright 2024 ByteDance and/or its affiliates.
 #
@@ -551,11 +552,12 @@ def residue_smiles_to_atom_info(smiles: str) -> dict:
     """
     mol = Chem.MolFromSmiles(smiles)
     mol = Chem.AddHs(mol)
+    seed = conformer_seed()
 
     def target(mol: Mol, q: Queue) -> None:
         """Compute target."""
         try:
-            ret = rdDistGeom.EmbedMolecule(mol)
+            ret = rdDistGeom.EmbedMolecule(mol, randomSeed=seed)
             q.put(ret)
         except Exception as e:  # noqa: BLE001 - worker transfers the error through its result queue
             q.put(e)
@@ -576,7 +578,7 @@ def residue_smiles_to_atom_info(smiles: str) -> dict:
 
     if ret_code != 0:
         # retry with random coords
-        ret_code = rdDistGeom.EmbedMolecule(mol, useRandomCoords=True)
+        ret_code = rdDistGeom.EmbedMolecule(mol, useRandomCoords=True, randomSeed=seed)
 
     if ret_code != 0:
         message = f"Conformer generation failed for input SMILES: {smiles}"
@@ -1034,12 +1036,13 @@ def structural_smiles_to_atom_info(smiles: str) -> dict:
     mol = Chem.MolFromSmiles(smiles)
     mol = Chem.AddHs(mol)
 
+    seed = conformer_seed()
     embed_molecule = rdDistGeom.EmbedMolecule
 
     def target(mol: Mol, q: Queue) -> None:
         """Compute target."""
         try:
-            ret = embed_molecule(mol)
+            ret = embed_molecule(mol, randomSeed=seed)
             q.put(ret)
         except Exception as e:  # noqa: BLE001 - worker transfers the error through its result queue
             q.put(e)
@@ -1060,7 +1063,7 @@ def structural_smiles_to_atom_info(smiles: str) -> dict:
 
     if ret_code != 0:
         # retry with random coords
-        ret_code = embed_molecule(mol, useRandomCoords=True)
+        ret_code = embed_molecule(mol, useRandomCoords=True, randomSeed=seed)
 
     if ret_code != 0:
         message = f"Conformer generation failed for input SMILES: {smiles}"

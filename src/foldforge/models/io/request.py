@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from foldforge.models.config import ExecutionConfig
+from foldforge.data.inputs.validation import validate_inference_seed
+from foldforge.models.config import ExecutionConfig, OutputConfig
 from foldforge.models.io.paths import run_directory
 
 if TYPE_CHECKING:
@@ -25,7 +26,8 @@ class Request:
     input: Path | None = None
     backend: str = "miniworld"
     precision: str = "bf16"
-    seed: int = 0
+    trunk_seed: int = 0
+    diffusion_seed: int = 0
     recycles: int | None = None
     steps: int | None = None
     samples: int = 1
@@ -35,6 +37,7 @@ class Request:
     no_msa: bool = False
     variant: str = "protenix_base_default_v1.0.0"
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
+    output: OutputConfig = field(default_factory=OutputConfig)
     # Language-model inputs and optional structure evaluation.
     target: str = "1ubq"
     data_root: Path = Path("validation/inputs/data")
@@ -47,6 +50,8 @@ class Request:
     chain_map: str | None = None
 
     def __post_init__(self) -> None:
+        for name in ("trunk_seed", "diffusion_seed"):
+            object.__setattr__(self, name, validate_inference_seed(getattr(self, name)))
         object.__setattr__(self, "out", run_directory(self.out, model=self.model))
         if self.model not in {"af3", "esmfold2", "protenix", "opendde"}:
             msg = f"Unsupported checkpoint adapter: {self.model}"

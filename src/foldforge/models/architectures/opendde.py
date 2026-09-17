@@ -704,12 +704,15 @@ class OpenDDE(RecycledTrunk):
         return cache
 
     def compute_distogram_contact_probs(
-        self, pair_z: torch.Tensor
+        self, pair_z: torch.Tensor, pred_dict: dict[str, Any] | None = None
     ) -> torch.Tensor | None:
         """Compute distogram contact probs."""
         bin_params = sample_confidence.get_bin_params(self.configs.confidence.distogram)
+        logits = self.distogram_head(pair_z)
+        if getattr(self, "save_distogram", False) and pred_dict is not None:
+            pred_dict["distogram_logits"] = logits
         return sample_confidence.compact_compute_contact_prob(
-            distogram_logits=self.distogram_head(pair_z), **bin_params
+            distogram_logits=logits, **bin_params
         )
 
     def run_distogram_contact_stage(
@@ -718,7 +721,7 @@ class OpenDDE(RecycledTrunk):
         """Compute run distogram contact stage."""
         pred_dict["contact_probs"] = autocasting_disable_decorator(
             disable_casting=True
-        )(self.compute_distogram_contact_probs)(pair_z)
+        )(self.compute_distogram_contact_probs)(pair_z, pred_dict)
         return pred_dict["contact_probs"]
 
     def run_confidence_head(self, *args: Any, **kwargs: Any) -> Any:

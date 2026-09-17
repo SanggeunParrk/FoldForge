@@ -41,7 +41,7 @@ These compare backend configurations with common FoldForge adapters, not exact
 upstream end-to-end applications. PyTorch mode retains the architecture's permitted
 FlashAttention path and uses PyTorch for the other replaceable operations.
 
-All cases use seed 0, MSA depth cap 2048, disabled templates, 200 requested steps
+All cases use the historical coupled seed=0 policy, MSA depth cap 2048, disabled templates, 200 requested steps
 and five samples. Token buckets use multiples of 128: 594 -> 640. OpenDDE expands
 internally to 1140 structural tokens -> 1152. Atom buckets are 8192. Inputs and
 ESMC cached embeddings are identical across modes within each model.

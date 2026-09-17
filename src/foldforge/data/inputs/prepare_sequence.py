@@ -605,8 +605,9 @@ def tokenize_ligand_smiles(
     # Generate 3D conformer
     options = rdDistGeom.ETKDGv3()
     options.clearConfs = False
-    if seed is not None:
-        options.randomSeed = seed
+    from foldforge.utils.seed import conformer_seed
+
+    options.randomSeed = conformer_seed(seed)
     conf_id = rdDistGeom.EmbedMolecule(mol, options)
     if conf_id == -1:
         options.useRandomCoords = True

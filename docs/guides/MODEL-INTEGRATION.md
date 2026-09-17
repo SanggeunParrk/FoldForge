@@ -251,3 +251,91 @@ in place. The single transition inside Pairformer now forwards the requested
 backend in both team-gm copies, with a passing root regression. FoldForge stays
 on `main` and its team-gm member stays on `exp/miniworld`. Consumer changes remain
 local and uncommitted; existing unrelated edits are preserved.
+
+
+## Proposed result storage contract (not implemented)
+
+Resolve the output root independently of the source checkout. All permanent
+prediction artifacts should live under the deployment's top-level `runs/`, even
+when executing a source snapshot. Use one unique directory per run; refuse a
+nonempty destination unless an explicit, validated resume is requested.
+
+For grouped benchmarks or seed sweeps, use a single level of named cases:
+
+```text
+runs/<run-id>/
+  run.json
+  af3-miniworld_graph-t7-d19/
+    sample-000.cif
+    sample-001.cif
+    confidence.npz
+    result.json
+  logs/
+```
+
+`run.json` indexes cases and records source/checkpoint/input hashes and resolved
+configuration. `result.json` records the two seeds, sample indices, confidence
+summaries, timing scope, compile/graph observations, artifact paths and completion
+status. The sample index is not an additional seed. Writes should use temporary
+files and publish the completion manifest last, so interrupted output is not
+mistaken for a successful run.
+
+Default artifacts are mmCIF coordinates, compact common confidence arrays and
+JSON metadata. Full PAE/PDE/distogram matrices, raw model dictionaries, input
+feature tensors and intermediate trajectories should be explicit diagnostics,
+not unconditional duplicate `.pt`/`.npz` output. Use numeric arrays with documented
+axes, units and masks; reading outputs should not require model-class pickles.
+
+Compiler/autotune caches belong in a shared versioned cache location. Disposable
+source snapshots belong in job-local scratch, with the exact source archive/hash
+retained only as needed for provenance. Existing `.bench` artifacts must be
+inventoried and migrated with their manifest paths intact before any deletion.
+
+## Optional diagnostic images (implemented)
+
+All four inference adapters use the same image writer. PNG export is disabled by
+default. Both CLI forms (`--spec` and legacy `--input`/`--input-spec`) accept:
+
+```bash
+foldforge fold af3 --spec input.yaml --config runtime.yaml --save-images all
+# Or select a subset:
+foldforge fold af3 --spec input.yaml --save-images pae pde plddt msa
+```
+
+The equivalent runtime YAML (also supported as `output` in notebook requests) is:
+
+```yaml
+output:
+  images: [pae, pde, distogram, plddt, msa, template]
+```
+
+CLI selection overrides the YAML selection. Empty `images: []` is the default.
+Images are saved beside the existing CIF/JSON artifacts under
+`runs/<run>/images/<target>/`; the result JSON records relative paths and reasons
+for requested images that were unavailable. This addition does not implement the
+proposed output migration above or change existing CIF filenames.
+
+- `sample-000-pae.png`, `sample-000-pde.png`: token-pair errors in angstroms, one
+  image per diffusion sample, with a common scale across samples for each head.
+- `sample-000-plddt.png`: token pLDDT on the 0–100 scale, one image per sample.
+- `distogram.png`: trunk distance distribution summarized as the **most likely
+  distance-bin index**, not an angstrom-valued distance map. Bin definitions can
+  differ between checkpoints; do not compare these colors as physical distances.
+  Saved once per trunk run. ESMFold2's optional distogram head is enabled only
+  when this image is requested; other models retain their already-computed logits.
+- `input-msa.png`: match/mismatch to the prepared query row, with gaps and padding
+  blank. Displays at most the first 1,024 valid rows without reordering them.
+  `input-msa-coverage.png` counts non-gap entries across **all** prepared rows.
+  These show the input alignment, before stochastic internal MSA row sampling.
+- `input-template.png`: resolved-atom coverage on query tokens for nonempty input
+  templates. Empty template slots are excluded. If no templates were supplied or
+  the checkpoint has no template path (ESMFold2), JSON records the omission.
+
+Input images exclude padded tokens/rows; confidence images use decoded unpadded
+outputs. The two seeds continue to control model/input randomness: rendering does
+not draw from those RNG streams. Input image preparation precedes the timed
+forward, and CPU PNG rendering follows it. Requested head computation and retention
+can add inference work/memory (especially ESMFold2 distogram); keep image options
+identical when comparing runtimes. Full optional distogram logits are not added to
+raw result archives merely to save their PNG. Matplotlib is a declared runtime
+dependency and imported only when rendering.

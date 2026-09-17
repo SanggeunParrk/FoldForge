@@ -8,11 +8,11 @@ import argparse
 from pathlib import Path
 
 from foldforge.data.ccd import default_path
-from foldforge.models.config import ExecutionConfig
+from foldforge.models.config import ExecutionConfig, OutputConfig
 from foldforge.models.io.request import Request
 
 
-def parse(model: str, argv: list[str] | None = None) -> Request:
+def parse(model: str, argv: list[str] | None = None) -> Request:  # noqa: PLR0915 - translate compatibility flags at one boundary
     """Parse ."""
     parser = argparse.ArgumentParser(prog=f"foldforge fold {model}")
     sequence_layout = model == "esmfold2"
@@ -24,10 +24,24 @@ def parse(model: str, argv: list[str] | None = None) -> Request:
         default=None,
         help="Run name or path inside runs/ (default: unique model run)",
     )
+    from foldforge.models.config.runtime import IMAGE_KINDS
+
+    parser.add_argument(
+        "--save-images",
+        nargs="+",
+        choices=(*IMAGE_KINDS, "all"),
+        help="Save selected diagnostic PNGs (or all); disabled by default",
+    )
     parser.add_argument("--recycles", type=int, default=None if sequence_layout else 10)
     parser.add_argument("--steps", type=int, default=None if sequence_layout else 200)
     parser.add_argument("--samples", type=int, default=1 if sequence_layout else 5)
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--seed", type=int, help="Legacy shorthand for both seeds")
+    parser.add_argument(
+        "--trunk-seed", type=int, help="Input/conformer/MSA/trunk randomness"
+    )
+    parser.add_argument(
+        "--diffusion-seed", type=int, help="Diffusion noise and rigid augmentation"
+    )
     parser.add_argument("--max-graphs", type=int, default=4)
     parser.add_argument("--compile", action="store_true")
     parser.add_argument("--cuda-graph", action="store_true")
@@ -87,6 +101,15 @@ def parse(model: str, argv: list[str] | None = None) -> Request:
                 ),
             )
     options = vars(parser.parse_args(argv))
+    output = OutputConfig(images=tuple(options.pop("save_images") or ()))
+    legacy_seed = options.pop("seed")
+    if legacy_seed is not None and any(
+        options[name] is not None for name in ("trunk_seed", "diffusion_seed")
+    ):
+        parser.error("Use either --seed or --trunk-seed/--diffusion-seed")
+    for name in ("trunk_seed", "diffusion_seed"):
+        if options[name] is None:
+            options[name] = 0 if legacy_seed is None else legacy_seed
     execution = ExecutionConfig(
         **{
             key: options.pop(key)
@@ -105,7 +128,7 @@ def parse(model: str, argv: list[str] | None = None) -> Request:
         backend = options.pop("implementation")
         options["backend"] = "miniworld" if backend == "miniworld_engine" else backend
     try:
-        return Request(model=model, execution=execution, **options)
+        return Request(model=model, execution=execution, output=output, **options)
     except ValueError as error:
         parser.error(str(error))
 

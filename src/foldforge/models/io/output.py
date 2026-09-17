@@ -80,10 +80,16 @@ class Decoded:
     arrays: dict[str, Any] | None = None
     # Keep existing CLI filenames; the manifest always lists every sample.
     singleton_cif: bool = False
+    image_inputs: dict[str, Any] = field(default_factory=dict)
+    image_distogram: Any = None
 
 
 def write_output(
-    result: Decoded, directory: Path, *, expected_samples: int
+    result: Decoded,
+    directory: Path,
+    *,
+    expected_samples: int,
+    images: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Validate before writing and emit the same manifest for every layout."""
     directory = run_directory(directory)
@@ -122,6 +128,7 @@ def write_output(
             "plddt": "0..1",
             "cif_b_factor": "0..100",
             "pae": "angstrom",
+            "pde": "angstrom",
         },
     }
     # Reject invalid report values before creating any prediction artifact.
@@ -134,5 +141,10 @@ def write_output(
         torch.save(cpu_tree(result.raw), directory / f"{name}.pt")
     if result.arrays is not None:
         np.savez_compressed(directory / f"{name}.npz", **result.arrays)
+    if images:
+        from foldforge.models.io.images import write_images  # noqa: PLC0415
+
+        report["images"] = write_images(result, directory, images)
+        report_text = json.dumps(json_value(report), indent=2, allow_nan=False) + "\n"
     (directory / f"{name}.json").write_text(report_text)
     return report

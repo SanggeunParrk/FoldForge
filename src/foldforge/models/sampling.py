@@ -8,7 +8,7 @@ chunking, integration and training corruption live in team_gm.diffusion.
 
 from __future__ import annotations
 
-from functools import partial
+from functools import partial, wraps
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -16,6 +16,8 @@ import torch
 from team_gm.diffusion.augmentation import centre_random_augmentation
 from team_gm.diffusion.edm.sampling import EulerSampler
 from team_gm.diffusion.edm.training import sample_training
+
+from foldforge.utils.seed import seed_context
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -198,3 +200,33 @@ def sample_diffusion_training(
         num_samples=N_sample,
         chunk_size=diffusion_chunk_size,
     )
+
+
+def bind_sampling_seed(model: torch.nn.Module, family: str, seed: int) -> None:
+    """Isolate the complete diffusion trajectory from trunk and confidence RNGs.
+
+    This host boundary encloses initial noise, augmentation, churn and guidance.
+    The denoiser's compiled/CUDA-graph boundary stays inside it.
+    """
+    if family == "esmfold2":
+        owner, method = model.get_submodule("structure_head"), "sample"
+    elif family == "af3":
+        owner, method = model, "_sample_diffusion"
+    else:
+        owner, method = model, "sample_diffusion"
+    original = getattr(owner, method)
+    device = next(model.parameters()).device
+
+    @torch.compiler.disable
+    @wraps(original)
+    def sample(*args: Any, **kwargs: Any) -> Any:
+        with seed_context(seed):
+            if family == "esmfold2":
+                # Do not consume the explicit generator already used by the trunk.
+                kwargs["generator"] = torch.Generator(device=device).manual_seed(seed)
+            elif family in {"protenix", "opendde"}:
+                # Override optional seeds embedded in old feature dictionaries.
+                kwargs["rollout_seed"] = seed
+            return original(*args, **kwargs)
+
+    setattr(owner, method, sample)

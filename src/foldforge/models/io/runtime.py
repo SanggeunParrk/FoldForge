@@ -16,6 +16,8 @@ from torch.utils._pytree import tree_map
 from foldforge.data.ccd import CCDDatabase
 from foldforge.models.execution import Execution, measured_forward
 from foldforge.models.io.output import Decoded, cpu_tree, json_value, write_output
+from foldforge.models.sampling import bind_sampling_seed
+from foldforge.utils.seed import seed_all, seed_context
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -55,6 +57,12 @@ class Runtime:
         if self.execution is not None:
             msg = "A runtime binds exactly one checkpoint"
             raise RuntimeError(msg)
+        if "distogram" in self.request.output.image_names:
+            image_model: Any = model
+            image_model.save_distogram = True
+            if hasattr(model, "distogram_head"):
+                image_model.distogram_head.save_distogram = True
+        bind_sampling_seed(model, self.request.model, self.request.diffusion_seed)
         self.execution = Execution(model, self.request.model, self.request.execution)
         return self.execution
 
@@ -71,7 +79,7 @@ def run(request: Request) -> int:
         message = "An output run directory is required"
         raise ValueError(message)
     request.out.mkdir(parents=True, exist_ok=True)
-    with database.activate():
+    with seed_context(request.trunk_seed), database.activate():
         cases = adapter.prepare(request, database, runtime)
         try:
             for case in cases:
@@ -87,6 +95,8 @@ def run(request: Request) -> int:
                         raise ValueError(msg)
                     torch.save(cpu_tree(case.features), request.out / case.feature_name)
                 context = torch.inference_mode if case.inference_mode else torch.no_grad
+                # Model loading and feature preparation must not shift sampling RNG.
+                seed_all(request.trunk_seed)
                 with context():
                     output, measurements = measured_forward(
                         case.forward, request.execution.benchmark_repeats
@@ -95,6 +105,9 @@ def run(request: Request) -> int:
                 decoded = case.decode(output, measurements)
                 decoded.report = {
                     **decoded.report,
+                    "trunk_seed": request.trunk_seed,
+                    "diffusion_seed": request.diffusion_seed,
+                    "seed_policy": "split-v1",
                     "model": request.model,
                     "backend": request.backend,
                     "precision": request.precision,
@@ -103,7 +116,10 @@ def run(request: Request) -> int:
                     **measurements,
                 }
                 report = write_output(
-                    decoded, request.out, expected_samples=request.samples
+                    decoded,
+                    request.out,
+                    expected_samples=request.samples,
+                    images=request.output.image_names,
                 )
                 print(  # noqa: T201 - CLI output contract
                     json.dumps(json_value(report), indent=2, allow_nan=False),

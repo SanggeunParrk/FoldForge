@@ -255,7 +255,8 @@ def render(rows: list[dict], docs: Path) -> None:
         "(num_msa), re-drawn on each recycle. This replaces each checkpoint's",
         "released consumption: OpenDDE sampled 1280 rows, Protenix v2 drew a",
         "random-size subset (Uniform[1, n] rows) per cycle, and ESMFold2 embedded",
-        f"every row on every loop. AF3, Protenix v2 and OpenDDE receive up to {TEMPLATE_N} templates per",
+        "every row on every loop. AF3, Protenix v2 and OpenDDE receive up to",
+        f"{TEMPLATE_N} templates per",
         "chain (max_templates); ESMFold2 has no template conditioning path and runs",
         "the same MSA policy without templates. Every case requests 200 steps",
         "and five samples. Token buckets use multiples of 128: 594 -> "

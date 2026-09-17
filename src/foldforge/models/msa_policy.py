@@ -7,8 +7,9 @@ drawn without replacement and re-drawn on each recycle, so passes see different
 alignments while profile and deletion statistics keep the full prepared MSA.
 
 Released adapters differed: AF3 already behaves this way, OpenDDE sampled 1280
-rows per pass, Protenix embedded every prepared row, and ESMFold2 embedded every
-prepared row once and reused that term across its recurrence loops. FoldForge
+rows per pass, Protenix drew a random-size subset (Uniform[1, n] rows, capped at
+16384) per pass in training and inference alike, and ESMFold2 embedded every
+prepared row on every recurrence loop. FoldForge
 applies the AF3 rule to all four at load time, so a benchmark row records
 ``msa_policy`` rather than each checkpoint's own default. Templates are capped
 at ``TEMPLATES_PER_CHAIN`` by the input spec, the AF3 ``max_templates``.

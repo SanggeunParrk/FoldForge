@@ -75,8 +75,9 @@ every trunk pass embeds a fresh uniformly random subset of 1024 valid rows and
 re-draws it on each recycle, as the AF3 MSA module does. FoldForge applies this
 one rule to all four predictors at load time (`foldforge.models.msa_policy`)
 instead of each checkpoint's released consumption: OpenDDE sampled 1280 rows,
-Protenix embedded every prepared row, and ESMFold2 embedded every row once and
-reused that term across its recurrence loops. Profile and deletion statistics
+Protenix drew a random-size subset (Uniform[1, n] rows) on every cycle in
+training and inference alike, and ESMFold2 embedded every prepared row on every
+recurrence loop. Profile and deletion statistics
 still come from the full prepared MSA. Templates are capped at four per chain
 by `template_n`, the AF3 `max_templates`. Run reports record `msa_policy`.
 Unknown config/spec keys fail validation rather than silently doing nothing.

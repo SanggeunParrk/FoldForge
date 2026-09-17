@@ -193,11 +193,11 @@ def render(rows: list[dict], docs: Path) -> None:
     for extension in ("svg", "png"):
         fig.savefig(assets / f"benchmark_latency.{extension}", dpi=180)
     plt.close(fig)
+    updated = datetime.now(tz=UTC).date().isoformat()
     lines = [
         "# Inference benchmark results",
         "",
-        f"Updated {datetime.now(tz=UTC).date().isoformat()}. **4YX2: 594 residues, three chains "
-        "(163 + 218 + 213).**",
+        f"Updated {updated}. **4YX2: 594 residues, three chains (163 + 218 + 213).**",
         "All four models now have five measured configurations. Reference means each",
         "model's released **precision policy** in FoldForge's PyTorch "
         "backend; it is not",

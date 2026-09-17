@@ -1,6 +1,9 @@
 # Documentation
 
 - [Benchmark results](benchmark_results.md): five inference execution modes across four models, latency tables and plots.
+  Rendered by `scripts/render_benchmark_results.py`; hand-written context lives in
+  [benchmark_notes.md](benchmark_notes.md) and is appended on every render. The
+  2026-09-16 report is preserved in [archive/benchmark-20260916](archive/benchmark-20260916/benchmark_results.md).
 - [Code structure](guides/CODE-STRUCTURE.md): shared runtime and code ownership.
 - [Input and database formats](guides/MINIWORLD-FORMAT.md): CCD, MSA-LMDB and template-LMDB.
 - [Data and evaluation](guides/DATA-AND-EVALUATION.md).

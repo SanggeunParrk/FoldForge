@@ -1,0 +1,289 @@
+{
+  "esmfold2": {
+    "reference": {
+      "checks": {
+        "parameter_policy": true,
+        "autocast_policy": true,
+        "denoiser_linears_observed": true,
+        "denoiser_linear_precision": true
+      },
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "job": "46394",
+      "autocast_observed": true,
+      "load_report": {
+        "checkpoint": "/home/psk6950/practice/FoldForge/.bench/model-default-20260916/reference/model_checkpoints/esmfold2",
+        "strict": true,
+        "state_entries": 2055,
+        "precision_policy": "model_default",
+        "autocast_scopes": [
+          "inputs_embedder",
+          "pair_trunk",
+          "confidence_head.folding_trunk",
+          "structure_head.diffusion_module.conditioning.pair_transitions.0",
+          "structure_head.diffusion_module.conditioning.pair_transitions.1"
+        ],
+        "backend": "pytorch",
+        "parameter_dtype": "torch.float32",
+        "device": "cuda"
+      },
+      "linear_compute_overrides": [],
+      "parameter_tensors": {
+        "torch.float32": 2040
+      },
+      "raw_report": "/home/psk6950/practice/FoldForge/.bench/model-default-20260916/reference/runs/audits/esmfold2/dtypes.json"
+    },
+    "native": {
+      "checks": {
+        "parameter_policy": true,
+        "autocast_policy": true,
+        "denoiser_linears_observed": true,
+        "denoiser_linear_precision": true
+      },
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "job": "46404",
+      "autocast_observed": false,
+      "load_report": {
+        "checkpoint": "/home/psk6950/practice/FoldForge/.bench/model-default-20260916/reference/model_checkpoints/esmfold2",
+        "strict": true,
+        "state_entries": 2055,
+        "backend": "pytorch",
+        "parameter_dtype": "torch.bfloat16",
+        "device": "cuda"
+      },
+      "linear_compute_overrides": [],
+      "parameter_tensors": {
+        "torch.bfloat16": 1316,
+        "torch.float32": 724
+      },
+      "raw_report": "/home/psk6950/practice/FoldForge/.bench/model-default-20260916/reference/runs/audits-native/esmfold2/dtypes.json"
+    }
+  },
+  "protenix": {
+    "reference": {
+      "checks": {
+        "parameter_policy": true,
+        "autocast_policy": true,
+        "denoiser_linears_observed": true,
+        "denoiser_linear_precision": true
+      },
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "job": "46395",
+      "autocast_observed": true,
+      "load_report": {
+        "checkpoint": "/home/psk6950/practice/FoldForge/.bench/model-default-20260916/reference/model_checkpoints/protenix/protenix-v2.pt",
+        "strict": true,
+        "variant": "protenix-v2",
+        "state_entries": 4174,
+        "team_gm_pairformer_blocks": 58,
+        "engine_adaln": 75,
+        "engine_conditioned_transition": 33,
+        "precision_policy": "model_default",
+        "autocast_scopes": [
+          "forward (diffusion explicitly disables autocast)"
+        ],
+        "backend": "pytorch",
+        "parameter_dtype": "torch.float32",
+        "device": "cuda"
+      },
+      "linear_compute_overrides": [
+        {
+          "name": "input_embedder.atom_attention_encoder.linear_no_bias_ref_pos",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "input_embedder.atom_attention_encoder.linear_no_bias_d",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.diffusion_conditioning.linear_no_bias_z",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.diffusion_conditioning.linear_no_bias_s",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.diffusion_conditioning.linear_no_bias_n",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.atom_attention_encoder.linear_no_bias_ref_pos",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.atom_attention_encoder.linear_no_bias_d",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.atom_attention_encoder.linear_no_bias_s",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.atom_attention_encoder.linear_no_bias_z",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.atom_attention_encoder.linear_no_bias_r",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.linear_no_bias_s",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.atom_attention_decoder.linear_no_bias_out",
+          "compute_dtype": "torch.float32"
+        }
+      ],
+      "parameter_tensors": {
+        "torch.float32": 4174
+      },
+      "raw_report": "/home/psk6950/practice/FoldForge/.bench/model-default-20260916/reference/runs/audits/protenix/dtypes.json"
+    },
+    "native": {
+      "checks": {
+        "parameter_policy": true,
+        "autocast_policy": true,
+        "no_native_compute_override": true,
+        "denoiser_linears_observed": true,
+        "denoiser_linear_precision": true
+      },
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "job": "46413",
+      "autocast_observed": false,
+      "load_report": {
+        "checkpoint": "/home/psk6950/practice/FoldForge/.bench/model-default-20260916/native/model_checkpoints/protenix/protenix-v2.pt",
+        "strict": true,
+        "variant": "protenix-v2",
+        "state_entries": 4174,
+        "team_gm_pairformer_blocks": 58,
+        "engine_adaln": 75,
+        "engine_conditioned_transition": 33,
+        "backend": "pytorch",
+        "parameter_dtype": "torch.bfloat16",
+        "device": "cuda"
+      },
+      "linear_compute_overrides": [],
+      "parameter_tensors": {
+        "torch.bfloat16": 2882,
+        "torch.float32": 1292
+      },
+      "raw_report": "/home/psk6950/practice/FoldForge/.bench/model-default-20260916/native/runs/audits-native/protenix/dtypes.json"
+    }
+  },
+  "opendde": {
+    "reference": {
+      "checks": {
+        "parameter_policy": true,
+        "autocast_policy": true,
+        "denoiser_linears_observed": true,
+        "denoiser_linear_precision": true
+      },
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "job": "46396",
+      "autocast_observed": false,
+      "load_report": {
+        "checkpoint": "/home/psk6950/practice/FoldForge/.bench/model-default-20260916/reference/model_checkpoints/opendde/opendde.pt",
+        "strict": true,
+        "variant": "opendde_v1",
+        "state_entries": 4482,
+        "team_gm_pairformer_blocks": 62,
+        "engine_adaln": 75,
+        "engine_conditioned_transition": 33,
+        "precision_policy": "model_default",
+        "autocast_scopes": [],
+        "backend": "pytorch",
+        "parameter_dtype": "torch.float32",
+        "device": "cuda"
+      },
+      "linear_compute_overrides": [
+        {
+          "name": "input_embedder.atom_attention_encoder.linear_no_bias_ref_pos",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "input_embedder.atom_attention_encoder.linear_no_bias_d",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.diffusion_conditioning.linear_no_bias_z_trunk",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.diffusion_conditioning.linear_no_bias_z",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.diffusion_conditioning.linear_no_bias_s",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.diffusion_conditioning.linear_no_bias_n",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.atom_attention_encoder.linear_no_bias_ref_pos",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.atom_attention_encoder.linear_no_bias_d",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.atom_attention_encoder.linear_no_bias_s",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.atom_attention_encoder.linear_no_bias_z",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.atom_attention_encoder.linear_no_bias_r",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.linear_no_bias_s",
+          "compute_dtype": "torch.float32"
+        },
+        {
+          "name": "diffusion_module.atom_attention_decoder.linear_no_bias_out",
+          "compute_dtype": "torch.float32"
+        }
+      ],
+      "parameter_tensors": {
+        "torch.float32": 4482
+      },
+      "raw_report": "/home/psk6950/practice/FoldForge/.bench/model-default-20260916/reference/runs/audits/opendde/dtypes.json"
+    },
+    "native": {
+      "checks": {
+        "parameter_policy": true,
+        "autocast_policy": true,
+        "no_native_compute_override": true,
+        "denoiser_linears_observed": true,
+        "denoiser_linear_precision": true
+      },
+      "gpu": "NVIDIA A100 80GB PCIe",
+      "job": "46417",
+      "autocast_observed": false,
+      "load_report": {
+        "checkpoint": "/home/psk6950/practice/FoldForge/.bench/model-default-20260916/native/model_checkpoints/opendde/opendde.pt",
+        "strict": true,
+        "variant": "opendde_v1",
+        "state_entries": 4482,
+        "team_gm_pairformer_blocks": 62,
+        "engine_adaln": 75,
+        "engine_conditioned_transition": 33,
+        "backend": "pytorch",
+        "parameter_dtype": "torch.bfloat16",
+        "device": "cuda"
+      },
+      "linear_compute_overrides": [],
+      "parameter_tensors": {
+        "torch.bfloat16": 3101,
+        "torch.float32": 1381
+      },
+      "raw_report": "/home/psk6950/practice/FoldForge/.bench/model-default-20260916/native/runs/audits-native/opendde/dtypes.json"
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # Inference benchmark results
 
-Updated 2026-09-17. **4YX2: 594 residues, three chains (163 + 218 + 213).**
+Updated 2026-09-16. **4YX2: 594 residues, three chains (163 + 218 + 213).**
 All four models now have five measured configurations. Reference means each
 model's released **precision policy** in FoldForge's PyTorch backend; it is not
 the original application's complete runtime. Native BF16 stores learned parameters
@@ -15,10 +15,10 @@ The initial forward is reported separately. Error bars are warm min/max.
 
 | Model | Reference eager | Reference compile | Native BF16 compile | cuEq BF16 compile | MiniWorld BF16 compile + graph | MiniWorld vs reference compile |
 |---|---:|---:|---:|---:|---:|---:|
-| AF3 | 103.012 | 87.250 | 62.721 | 25.251 | 15.301 | 5.70x |
-| OpenDDE | 232.806 | 225.874 | 186.136 | 77.709 | 47.525 | 4.75x |
-| ESMFold2 | 48.498 | 45.302 | 42.370 | 19.398 | 11.863 | 3.82x |
-| Protenix v2 | 135.468 | 128.075 | 111.821 | 43.006 | 27.200 | 4.71x |
+| AF3 | 102.889 | 87.412 | 63.264 | 25.329 | 15.487 | 5.64x |
+| OpenDDE | 229.598 | 223.745 | 183.808 | 76.809 | 46.943 | 4.77x |
+| ESMFold2 | 45.153 | 41.964 | 39.194 | 17.646 | 10.813 | 3.88x |
+| Protenix v2 | 135.733 | 128.251 | 111.764 | 43.062 | 27.526 | 4.66x |
 
 **Quality caveat:** Protenix v2 and OpenDDE native BF16 runs show more
 local geometry outliers than their default-precision references. The speed
@@ -41,19 +41,9 @@ These compare backend configurations with common FoldForge adapters, not exact
 upstream end-to-end applications. PyTorch mode retains the architecture's permitted
 FlashAttention path and uses PyTorch for the other replaceable operations.
 
-All cases use trunk_seed=0 and diffusion_seed=0 (split-v1) and one MSA policy taken from the AF3
-pipeline: inputs keep up to 16384 alignment rows (msa_crop_size) and
-every trunk pass embeds a fresh random subset of 1024 valid rows
-(num_msa), re-drawn on each recycle. This replaces each checkpoint's
-released consumption: OpenDDE sampled 1280 rows, Protenix v2 drew a
-random-size subset (Uniform[1, n] rows) per cycle, and ESMFold2 embedded
-every row on every loop. AF3, Protenix v2 and OpenDDE receive up to
-4 templates per
-chain (max_templates); ESMFold2 has no template conditioning path and runs
-the same MSA policy without templates. Every case requests 200 steps
+All cases use the historical coupled seed=0 policy, MSA depth cap 2048, disabled templates, 200 requested steps
 and five samples. Token buckets use multiples of 128: 594 -> 640. OpenDDE expands
-internally to 1140 structural tokens -> 1152. Atom buckets are 8192. Sampled MSA rows are padded to the 1024-row MSA bucket.
-Inputs and
+internally to 1140 structural tokens -> 1152. Atom buckets are 8192. Inputs and
 ESMC cached embeddings are identical across modes within each model.
 
 Compile and manual CUDA graphs apply to the **denoiser**; trunk time remains
@@ -65,7 +55,7 @@ builds RoPE once per structure and expands with `num_aug=5`; its FlashAttention
 interface uses flattened `[augmentation * batch, atoms, heads, dim]` rows.
 ESMFold2 retains 134 actual steps after its sigma=256 cutoff; other models use 200.
 
-Hardware is NVIDIA A100 80GB PCIe on gpu04, gpu07. Slurm job IDs
+Hardware is A100 80GB PCIe on cssb3/gpu02 and gpu03. Slurm job IDs
 are retained in the raw results.
 Each mode owns one GPU, requests 16 CPUs and 96 GiB RAM, and uses OMP_NUM_THREADS=8.
 PyTorch 2.10.0+cu128. Fresh processes may reuse disk caches. Missing MiniWorld
@@ -76,26 +66,26 @@ not a claim of fully tuned performance. Per-case logs are preserved under runs/.
 
 | Model | Mode | Peak allocated GiB | Warm min-max (s) | Initial forward (s) | Compiled graphs / manual replays | Job |
 |---|---|---:|---:|---:|---:|---:|
-| AF3 | PyTorch eager · default | 6.44 | 102.605-103.027 | 101.586 | 0 / 0 | 47117 |
-| AF3 | PyTorch compile · default | 6.44 | 86.542-87.376 | 148.815 | 1 / 0 | 47117 |
-| AF3 | PyTorch compile · native BF16 | 6.03 | 61.921-62.914 | 129.204 | 1 / 0 | 47117 |
-| AF3 | cuEq + compile · native BF16 | 3.20 | 24.977-25.307 | 43.797 | 1 / 0 | 47117 |
-| AF3 | MiniWorld + compile + graph · native BF16 | 3.64 | 15.166-15.369 | 320.877 | 1 / 1200 | 47117 |
-| OpenDDE | PyTorch eager · default | 24.49 | 232.457-233.045 | 232.451 | 0 / 0 | 47118 |
-| OpenDDE | PyTorch compile · default | 24.49 | 225.737-226.148 | 304.050 | 1 / 0 | 47118 |
-| OpenDDE | PyTorch compile · native BF16 | 20.08 | 185.870-186.291 | 288.367 | 1 / 0 | 47118 |
-| OpenDDE | cuEq + compile · native BF16 | 20.08 | 77.353-77.775 | 94.269 | 1 / 0 | 47118 |
-| OpenDDE | MiniWorld + compile + graph · native BF16 | 20.96 | 47.002-47.795 | 342.953 | 1 / 1200 | 47118 |
-| ESMFold2 | PyTorch eager · default | 28.10 | 48.402-48.580 | 48.494 | 0 / 0 | 47119 |
-| ESMFold2 | PyTorch compile · default | 28.10 | 45.245-45.379 | 71.771 | 1 / 0 | 47119 |
-| ESMFold2 | PyTorch compile · native BF16 | 21.97 | 42.256-42.427 | 69.406 | 1 / 0 | 47119 |
-| ESMFold2 | cuEq + compile · native BF16 | 21.97 | 19.332-19.444 | 25.142 | 1 / 0 | 47119 |
-| ESMFold2 | MiniWorld + compile + graph · native BF16 | 9.67 | 11.799-11.868 | 115.673 | 1 / 804 | 47119 |
-| Protenix v2 | PyTorch eager · default | 8.90 | 134.998-136.092 | 134.386 | 0 / 0 | 47120 |
-| Protenix v2 | PyTorch compile · default | 8.90 | 126.934-128.318 | 209.644 | 1 / 0 | 47120 |
-| Protenix v2 | PyTorch compile · native BF16 | 7.86 | 111.161-112.373 | 206.477 | 1 / 0 | 47120 |
-| Protenix v2 | cuEq + compile · native BF16 | 7.86 | 42.698-43.069 | 56.714 | 1 / 0 | 47120 |
-| Protenix v2 | MiniWorld + compile + graph · native BF16 | 8.98 | 26.942-27.329 | 238.955 | 1 / 1200 | 47120 |
+| AF3 | PyTorch eager · default | 6.62 | 102.543-102.920 | 102.360 | 0 / 0 | 46435 |
+| AF3 | PyTorch compile · default | 6.62 | 86.769-87.617 | 167.933 | 1 / 0 | 46436 |
+| AF3 | PyTorch compile · native BF16 | 6.21 | 62.908-63.335 | 145.862 | 1 / 0 | 46437 |
+| AF3 | cuEq + compile · native BF16 | 4.27 | 25.141-25.402 | 107.561 | 1 / 0 | 46438 |
+| AF3 | MiniWorld + compile + graph · native BF16 | 3.85 | 15.361-15.522 | 700.078 | 1 / 1200 | 46439 |
+| OpenDDE | PyTorch eager · default | 24.41 | 229.472-229.738 | 228.733 | 0 / 0 | 46402 |
+| OpenDDE | PyTorch compile · default | 24.41 | 223.388-223.891 | 309.585 | 1 / 0 | 46403 |
+| OpenDDE | PyTorch compile · native BF16 | 20.01 | 183.266-184.170 | 285.390 | 1 / 0 | 46414 |
+| OpenDDE | cuEq + compile · native BF16 | 20.01 | 76.318-76.914 | 185.532 | 1 / 0 | 46415 |
+| OpenDDE | MiniWorld + compile + graph · native BF16 | 20.89 | 46.497-47.011 | 333.518 | 1 / 1200 | 46452 |
+| ESMFold2 | PyTorch eager · default | 26.70 | 44.962-45.156 | 45.301 | 0 / 0 | 46446 |
+| ESMFold2 | PyTorch compile · default | 26.70 | 41.798-42.008 | 78.779 | 1 / 0 | 46447 |
+| ESMFold2 | PyTorch compile · native BF16 | 21.20 | 39.091-39.220 | 76.888 | 1 / 0 | 46448 |
+| ESMFold2 | cuEq + compile · native BF16 | 21.20 | 17.527-17.718 | 52.755 | 1 / 0 | 46449 |
+| ESMFold2 | MiniWorld + compile + graph · native BF16 | 8.91 | 10.776-10.843 | 113.458 | 1 / 804 | 46450 |
+| Protenix v2 | PyTorch eager · default | 11.82 | 135.539-135.829 | 135.676 | 0 / 0 | 46400 |
+| Protenix v2 | PyTorch compile · default | 11.82 | 127.729-128.425 | 226.910 | 1 / 0 | 46401 |
+| Protenix v2 | PyTorch compile · native BF16 | 10.92 | 111.243-111.834 | 225.949 | 1 / 0 | 46410 |
+| Protenix v2 | cuEq + compile · native BF16 | 10.92 | 42.714-43.117 | 164.217 | 1 / 0 | 46411 |
+| Protenix v2 | MiniWorld + compile + graph · native BF16 | 10.13 | 27.301-27.617 | 267.613 | 1 / 1200 | 46451 |
 
 Peak allocation includes initial and repeated forwards. Execution counters come
 from observed compiler graphs and manual replays, not requested flags.
@@ -109,14 +99,14 @@ Run inside an allocated GPU job:
 ```bash
 python scripts/benchmark_end_to_end.py --model esmfold2 --targets 4yx2 \
   --root benchmark-default --benchmark-repeats 5 --steps 200 \
-  --recycles 10 --samples 5 \
-  --msa-depth 16384 --template-n 4
+  --recycles 10 --samples 5 --msa-depth 2048 --no-templates
 ```
 
 Use `--model opendde`, or `--model protenix --variant protenix-v2`.
 The first two modes select `model_default` (`af3_default` for AF3). The three
 comparison modes select native BF16. Whole-model FP32 remains an explicit
 diagnostic mode; it is not substituted for the model-default reference.
+
 ## Other-model precision and structural checks
 
 All six reference/native BF16 dtype audits passed. Native BF16 explicitly
@@ -127,14 +117,12 @@ and numerical reductions can still use FP32; this is not a claim that
 every floating-point tensor is BF16.
 
 For MiniWorld native BF16, maximum peptide C-N lengths in Protenix v2
-and OpenDDE are 2.254 A and 1.686 A, respectively.
-Their compiled default-precision references reach 1.554 A and 1.342 A.
-ESMFold2 reaches 22.142 A against 21.974 A in its reference.
+and OpenDDE are 2.009 A and 1.809 A, respectively.
+Their compiled default-precision references reach 1.476 A and 1.355 A.
 Inspect the outlier counts below; finite coordinates alone are not a quality pass.
 
-The dtype audits here and the kernel-shape audits below are code-path
-checks recorded on 2026-09-16 and reused: they run one
-recycle and two steps and do not depend on MSA rows or templates.
+Superseded Protenix/OpenDDE runs that retained FP32 projection overrides
+are excluded from the table. Their raw artifacts remain under `.bench/`.
 
 Below: same-index samples compared with each model's compiled reference.
 CA RMSD uses all residues after rigid alignment; it includes numerical
@@ -143,21 +131,21 @@ counts sum five samples; these do not establish accuracy equivalence.
 
 | Model | Mode | CA RMSD range (A) | Finite samples | Peptide C-N outside 1.0-1.7 A | Heavy-atom pairs <1 A |
 |---|---|---:|---:|---:|---:|
-| ESMFold2 | PyTorch eager · default | 0.058-0.137 | 5/5 | 3 | 3 |
-| ESMFold2 | PyTorch compile · default | 0.000-0.000 | 5/5 | 3 | 3 |
-| ESMFold2 | PyTorch compile · native BF16 | 1.096-2.809 | 5/5 | 2 | 10 |
-| ESMFold2 | cuEq + compile · native BF16 | 1.297-5.107 | 5/5 | 0 | 3 |
-| ESMFold2 | MiniWorld + compile + graph · native BF16 | 0.511-5.141 | 5/5 | 3 | 5 |
-| Protenix v2 | PyTorch eager · default | 0.004-0.011 | 5/5 | 0 | 1 |
-| Protenix v2 | PyTorch compile · default | 0.000-0.000 | 5/5 | 0 | 1 |
-| Protenix v2 | PyTorch compile · native BF16 | 0.376-1.347 | 5/5 | 29 | 75 |
-| Protenix v2 | cuEq + compile · native BF16 | 0.367-2.023 | 5/5 | 28 | 73 |
-| Protenix v2 | MiniWorld + compile + graph · native BF16 | 0.367-2.645 | 5/5 | 34 | 92 |
-| OpenDDE | PyTorch eager · default | 0.002-0.003 | 5/5 | 0 | 0 |
+| ESMFold2 | PyTorch eager · default | 0.051-0.557 | 5/5 | 0 | 0 |
+| ESMFold2 | PyTorch compile · default | 0.000-0.000 | 5/5 | 0 | 7 |
+| ESMFold2 | PyTorch compile · native BF16 | 0.955-2.447 | 5/5 | 0 | 11 |
+| ESMFold2 | cuEq + compile · native BF16 | 0.936-2.529 | 5/5 | 0 | 9 |
+| ESMFold2 | MiniWorld + compile + graph · native BF16 | 0.763-3.578 | 5/5 | 0 | 5 |
+| Protenix v2 | PyTorch eager · default | 0.003-0.011 | 5/5 | 0 | 0 |
+| Protenix v2 | PyTorch compile · default | 0.000-0.000 | 5/5 | 0 | 0 |
+| Protenix v2 | PyTorch compile · native BF16 | 0.198-1.861 | 5/5 | 20 | 56 |
+| Protenix v2 | cuEq + compile · native BF16 | 0.224-0.933 | 5/5 | 28 | 62 |
+| Protenix v2 | MiniWorld + compile + graph · native BF16 | 0.322-1.903 | 5/5 | 19 | 56 |
+| OpenDDE | PyTorch eager · default | 0.003-0.010 | 5/5 | 0 | 0 |
 | OpenDDE | PyTorch compile · default | 0.000-0.000 | 5/5 | 0 | 0 |
-| OpenDDE | PyTorch compile · native BF16 | 0.144-0.295 | 5/5 | 3 | 28 |
-| OpenDDE | cuEq + compile · native BF16 | 0.138-0.209 | 5/5 | 6 | 28 |
-| OpenDDE | MiniWorld + compile + graph · native BF16 | 0.144-0.316 | 5/5 | 4 | 30 |
+| OpenDDE | PyTorch compile · native BF16 | 0.248-1.233 | 5/5 | 9 | 31 |
+| OpenDDE | cuEq + compile · native BF16 | 0.313-1.068 | 5/5 | 6 | 42 |
+| OpenDDE | MiniWorld + compile + graph · native BF16 | 0.228-1.035 | 5/5 | 13 | 42 |
 
 [Precision audits](assets/precision_audits.json) · [Per-sample structural checks](assets/structure_checks.json).
 
@@ -185,25 +173,26 @@ Regression tests cover FP32 residuals with BF16 projection parameters.
 Their rectangular atom windows retain batched shared PyTorch attention:
 the engine pair-biased augmentation core supports square attention only.
 
-Every mode in the latency table comes from one run set. Graph replay
-counts are 804 for ESMFold2 and 1200 for Protenix/OpenDDE: six forwards
+All five ESMFold2 modes and the MiniWorld modes for Protenix/OpenDDE were
+remeasured. Unaffected measurements were retained. Graph replay counts
+are 804 for ESMFold2 and 1200 for Protenix/OpenDDE: six complete forwards
 times 134 or 200 denoising steps, each handling five samples together.
 
 [Observed kernel shapes](assets/sample_axes_audits.json) · [Measured source hashes](assets/sample_axes_source_manifest.json).
 
 ## AF3: official default precision versus native BF16
 
-![Latency](assets/af3_precision.svg)
+![AF3 latency](assets/af3_precision.svg)
 
 Same 4YX2 input, checkpoint, seed 0, 10 recycles (11 trunk passes), 200 diffusion steps and five batched samples per forward (200 denoiser calls). Median of five warm complete-model forwards; first forward excluded. Compile and manual CUDA graphs cover the denoiser. FP32 operations use highest matmul precision (TF32 disabled). No autocast in any mode.
 
 | Mode | Latency (s) | Peak GiB | Mean CA pLDDT | Experimental CA lDDT (%) | Experimental CA RMSD (A) |
 |---|---:|---:|---:|---:|---:|
-| PyTorch eager AF3 default | 103.012 | 6.44 | 88.73 | 95.83 | 3.855 |
-| PyTorch compile AF3 default | 87.250 | 6.44 | 88.73 | 95.83 | 3.855 |
-| PyTorch compile native BF16 | 62.721 | 6.03 | 88.54 | 95.95 | 3.409 |
-| cuEq compile native BF16 | 25.251 | 3.20 | 88.57 | 95.95 | 3.511 |
-| MiniWorld compile + graph native BF16 | 15.301 | 3.64 | 88.70 | 95.86 | 3.701 |
+| PyTorch eager AF3 default | 102.889 | 6.62 | 88.82 | 95.77 | 3.903 |
+| PyTorch compile AF3 default | 87.412 | 6.62 | 88.82 | 95.77 | 3.903 |
+| PyTorch compile native BF16 | 63.264 | 6.21 | 88.70 | 95.75 | 3.678 |
+| cuEq compile native BF16 | 25.329 | 4.27 | 88.73 | 95.72 | 3.838 |
+| MiniWorld compile + graph native BF16 | 15.487 | 3.85 | 88.83 | 95.81 | 3.700 |
 
 Quality columns average all five samples; experimental comparison uses 528 observed CA atoms. Numerical comparisons below match the same sample index against PyTorch compile AF3 default using all 594 predicted CA atoms.
 
@@ -211,42 +200,70 @@ Quality columns average all five samples; experimental comparison uses 528 obser
 |---|---:|---:|---:|---:|
 | PyTorch eager AF3 default | 0.000-0.000 | 0.000-0.000 | 0 | 0 |
 | PyTorch compile AF3 default | 0.000-0.000 | 0.000-0.000 | 0 | 0 |
-| PyTorch compile native BF16 | 0.347-1.107 | 0.178-1.041 | 0 | 0 |
-| cuEq compile native BF16 | 0.335-0.841 | 0.133-0.722 | 0 | 0 |
-| MiniWorld compile + graph native BF16 | 0.386-0.644 | 0.036-0.489 | 0 | 0 |
+| PyTorch compile native BF16 | 0.349-4.815 | 0.205-0.569 | 0 | 0 |
+| cuEq compile native BF16 | 0.400-2.109 | 0.134-0.233 | 0 | 0 |
+| MiniWorld compile + graph native BF16 | 0.595-6.297 | 0.059-0.460 | 0 | 0 |
 
 Peptide outliers use C-N outside 1.0-1.7 A. The <1 A heavy-atom count is a gross-overlap diagnostic, not a full stereochemical clashscore. lDDT here uses CA distances within 15 A and thresholds 0.5/1/2/4 A. Missing experimental residues are excluded. Per-chain RMSD, interface contacts and within-mode sample diversity are included in the JSON.
 
 This single-complex experiment does not establish dataset-level accuracy equivalence. Same-seed diffusion trajectories can diverge after precision changes.
 
-[All structural metrics](assets/af3_precision_quality.json).
+MiniWorld sample 2 reaches 6.297 A all-CA RMSD against the compiled
+reference; its experimentally observed CA subset differs by
+0.460 A. The full-structure drift remains relevant even though the gross
+geometry checks found no outliers.
 
-## Notes
+### Sample batching verification
 
-**Input policy versus the 2026-09-16 report.** The earlier table capped inputs at
-2048 MSA rows, used no templates and a coupled seed. This one prepares up to 16384
-rows, embeds 1024 sampled rows per recycle in every model, gives AF3, Protenix v2
-and OpenDDE four templates per chain, and uses split trunk/diffusion seeds. On the
-same A100 class the MiniWorld mode moved from 15.49 to 15.30 s (AF3), 46.94 to
-47.53 s (OpenDDE), 10.81 to 11.86 s (ESMFold2) and 27.53 to 27.20 s (Protenix v2).
-ESMFold2 pays the most because its MSA encoder now runs on every recurrence loop,
-as its paper specifies, instead of once. The earlier report, its assets, dtype
-audits and batching verification are preserved in
-[archive/benchmark-20260916](archive/benchmark-20260916/benchmark_results.md).
+All five diffusion samples now retain their leading axis through the atom encoder,
+token DiT and atom decoder. Pair/conditioning features are shared. Rigid rotations
+and translations are independently drawn per sample. MiniWorld token attention
+receives Q/K/V `[5, 1, 16, 640, 48]` and pair bias `[1, 16, 640, 640]`.
+The sampler makes **200 denoiser calls**, previously 1000, per complete forward.
+Confidence still processes samples individually. Compile/graph scope remains the
+denoiser; this is not a measurement of the official whole-model JAX runtime.
 
-**1024-row MSA bucket.** Measured against the same policy with the previous
-smallest bucket of 2048 rows, the 1024 bucket changes warm latency by -3.1% to
-+1.6% and lowers peak memory where the MSA stack dominates: AF3 cuEq 4.30 to
-3.20 GiB and Protenix v2 reference 11.03 to 8.90 GiB. ESMFold2 samples exactly
-1024 rows without bucketing and is unaffected.
+44 targeted tests passed on an allocated A100, including sample independence,
+shared-mask broadcasting, MiniWorld augmentation routing and existing precision/
+backend tests. Separate real-checkpoint audits compared identical denoiser inputs
+as a batch against independent calls. Relative RMS errors were 0.000134% for the
+AF3-default PyTorch path, 1.315% for native BF16 PyTorch, and 0.0578% for native
+BF16 MiniWorld. These are one-step numerical checks, not full-trajectory accuracy
+guarantees. Full 200-step structural checks are shown above. Batched sampling
+changes random-number consumption, so old sequential outputs are not expected to
+match the new outputs at the same seed.
 
-**One defective ESMFold2 sample.** With `trunk_seed: 0` and `diffusion_seed: 0`
-the fifth diffusion sample misplaces chain A residues 28-30 (C-N up to 22 A) in
-four of the five modes; the other four samples are clean in every mode, which is
-the whole ESMFold2 peptide-outlier count above. A reference-precision diagnostic
-on an A6000 (Slurm 1712460) reproduces it with the same seeds, and it disappears
-when either seed is changed to 1 or when the same seeds run with the released
-whole-MSA embedding. That is one defective sample in twenty diagnostic samples;
-its rate is not established, so it is reported as observed rather than attributed
-to the MSA policy. ESMFold2's paper always keeps the query row when it samples;
-FoldForge's shared sampler ranks all valid rows equally and can omit it.
+### Previous sequential versus batched latency
+
+Same input, hardware class, precision policies, recycle count, steps and sample
+count. Each row is a median of five warm complete-model forwards. Memory is peak
+allocated GiB across cold and warm forwards. Prior sequential data is retained
+under `runs/af3-batched-20260916/previous-report/`.
+
+| Mode | Sequential (s) | Batched (s) | Speedup | Peak GiB, sequential -> batched |
+|---|---:|---:|---:|---:|
+| PyTorch eager / AF3 default | 139.959 | 102.889 | 1.36x | 6.62 -> 6.62 |
+| PyTorch compile / AF3 default | 110.955 | 87.412 | 1.27x | 6.62 -> 6.62 |
+| PyTorch compile / native BF16 | 72.715 | 63.264 | 1.15x | 6.21 -> 6.21 |
+| cuEq compile / native BF16 | 34.958 | 25.329 | 1.38x | 4.27 -> 4.27 |
+| MiniWorld compile + graph / native BF16 | 24.972 | 15.487 | 1.61x | 3.96 -> 3.85 |
+
+AF3 default retains released precision: input atom encoder and diffusion FP32;
+trunk/confidence Pairformers BF16; norms and final confidence/distogram projections
+FP32. Native BF16 uses BF16 learned parameters except FP32 norms, without autocast.
+Geometry, noise, reductions and selected probability computations can remain FP32.
+FP32 matmuls use highest precision with TF32 disabled. Initial MiniWorld execution
+encountered missing/stale autotune entries and selected heuristic candidate
+subsets; these warm measurements are not a fully tuned performance ceiling.
+The MiniWorld initial forward took **700.08 s**, including cold tuning, compilation
+and capture; the **15.49 s** figure is the subsequent warm median.
+
+[Batch audits](assets/af3_batch_audits.json) ·
+[Raw AF3 measurements](assets/af3_precision_results.json) ·
+[All structural metrics](assets/af3_precision_quality.json) ·
+[Measured source hashes](assets/af3_batch_source_manifest.json) ·
+[Reference dtype audit](assets/af3_reference_precision_audit.json) ·
+[Native BF16 dtype audit](assets/af3_precision_audit.json).
+
+FoldForge source changes and two shared team-gm source changes are included in the
+snapshot hashes. The shared submodule changes must accompany the FoldForge changes.

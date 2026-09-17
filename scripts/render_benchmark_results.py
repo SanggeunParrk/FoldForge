@@ -351,21 +351,20 @@ def render(rows: list[dict], docs: Path) -> None:
         "diagnostic mode; it is not substituted for the model-default reference.",
         "",
     ]
-    path = docs / "benchmark_results.md"
-    previous = path.read_text() if path.exists() else ""
-    marker = "## AF3: official default precision versus native BF16"
-    if marker in previous:
-        detail = previous[previous.index(marker) :].split(
-            "## Historical four-model comparison"
-        )[0]
-        lines += [detail.rstrip(), ""]
-    path.write_text("\n".join(lines))
+    (docs / "benchmark_results.md").write_text("\n".join(lines))
 
 
-def main() -> int:
+def main() -> int:  # noqa: PLR0912 - one linear report assembly
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results", required=True, type=Path)
     parser.add_argument("--docs", type=Path, default=Path("docs"))
+    parser.add_argument(
+        "--audits-recorded",
+        help="Date of reused dtype/kernel-shape code-path audits (YYYY-MM-DD)",
+    )
+    parser.add_argument(
+        "--notes", type=Path, help="Markdown appended as a final Notes section"
+    )
     args = parser.parse_args()
     sample_path = args.results / "sample_axes_audits.json"
     if not sample_path.exists():
@@ -406,6 +405,16 @@ def main() -> int:
         def max_peptide(model: str, mode: str) -> float:
             return max(x["geometry"]["peptide_max_A"] for x in quality[model][mode])
 
+        audit_note = (
+            [
+                "The dtype audits here and the kernel-shape audits below are code-path",
+                f"checks recorded on {args.audits_recorded} and reused: they run one",
+                "recycle and two steps and do not depend on MSA rows or templates.",
+                "",
+            ]
+            if args.audits_recorded
+            else []
+        )
         section = [
             "## Other-model precision and structural checks",
             "",
@@ -422,12 +431,14 @@ def main() -> int:
             "Their compiled default-precision references reach "
             f"{max_peptide('protenix', 'pytorch_compile_reference'):.3f} A and "
             f"{max_peptide('opendde', 'pytorch_compile_reference'):.3f} A.",
+            "ESMFold2 reaches "
+            f"{max_peptide('esmfold2', 'miniworld_graph'):.3f} A against "
+            f"{max_peptide('esmfold2', 'pytorch_compile_reference'):.3f} A "
+            "in its reference.",
             "Inspect the outlier counts below; finite coordinates alone "
             "are not a quality pass.",
             "",
-            "Superseded Protenix/OpenDDE runs that retained FP32 projection overrides",
-            "are excluded from the table. Their raw artifacts remain under `.bench/`.",
-            "",
+            *audit_note,
             "Below: same-index samples compared with each model's compiled reference.",
             "CA RMSD uses all residues after rigid alignment; it includes numerical",
             "trajectory divergence and is not an experimental accuracy score. Geometry",
@@ -506,9 +517,8 @@ def main() -> int:
             "Their rectangular atom windows retain batched shared PyTorch attention:",
             "the engine pair-biased augmentation core supports square attention only.",
             "",
-            "All five ESMFold2 modes and the MiniWorld modes for Protenix/OpenDDE were",
-            "remeasured. Unaffected measurements were retained. Graph replay counts",
-            "are 804 for ESMFold2 and 1200 for Protenix/OpenDDE: six complete forwards",
+            "Every mode in the latency table comes from one run set. Graph replay",
+            "counts are 804 for ESMFold2 and 1200 for Protenix/OpenDDE: six forwards",
             "times 134 or 200 denoising steps, each handling five samples together.",
             "",
             "[Observed kernel shapes](assets/sample_axes_audits.json) · "
@@ -522,6 +532,31 @@ def main() -> int:
         detail = "\n".join(section)
         path.write_text(
             text.replace(marker, detail + marker) if marker in text else text + detail
+        )
+    path = args.docs / "benchmark_results.md"
+    af3_report = args.results / "af3_precision.md"
+    if af3_report.exists():
+        # compare_af3_precision.py writes a standalone report; publish its body.
+        body = af3_report.read_text().split("\n", 1)[1].lstrip()
+        body = body.replace("(af3_precision.svg)", "(assets/af3_precision.svg)")
+        for name in ("af3_precision.svg", "af3_precision.png"):
+            (args.docs / "assets" / name).write_bytes(
+                (args.results / name).read_bytes()
+            )
+        quality = args.results / "af3_precision_quality.json"
+        (args.docs / "assets" / quality.name).write_text(quality.read_text())
+        path.write_text(
+            path.read_text().rstrip()
+            + "\n\n## AF3: official default precision versus native BF16\n\n"
+            + body.rstrip()
+            + "\n\n[All structural metrics](assets/af3_precision_quality.json).\n"
+        )
+    if args.notes:
+        path.write_text(
+            path.read_text().rstrip()
+            + "\n\n## Notes\n\n"
+            + args.notes.read_text().strip()
+            + "\n"
         )
     return 0
 

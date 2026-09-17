@@ -99,11 +99,18 @@ with autocast disabled.
 `--backends` retains the legacy compile-and-graph comparison and cannot be
 combined with `--modes`. Use `--variant protenix-v2` for the v2 checkpoint.
 
-`render_benchmark_results.py --results RUN --docs docs` validates all 20 cases
+`render_benchmark_results.py --results RUN --docs docs [--audits-recorded DATE]
+[--notes docs/benchmark_notes.md]` validates all 20 cases
 and renders the five-mode latency table and bar chart. It rejects inconsistent
 inputs, precision, sample/recycle counts and execution flags, and refuses to mix
 legacy and split-seed measurements in one comparison. Timing definitions and
 current results are in [benchmark results](../docs/benchmark_results.md).
+
+`check_structures.py --results RUN --output RUN/structure_checks.json` writes the
+per-sample geometry and same-index drift records for ESMFold2, Protenix v2 and
+OpenDDE that the renderer publishes; `compare_af3_precision.py` does the same
+for AF3 with an experimental comparison. Place both outputs, `precision_audits.json`
+and `sample_axes_audits.json` in RUN before rendering.
 
 ## Audits
 

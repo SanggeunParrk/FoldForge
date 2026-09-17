@@ -77,7 +77,19 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
     parser.add_argument("--steps", type=int, default=200)
     parser.add_argument("--recycles", type=int, default=10)
     parser.add_argument("--samples", type=int, default=5)
-    parser.add_argument("--msa-depth", type=int, default=2048)
+    parser.add_argument(
+        "--msa-depth",
+        type=int,
+        default=16384,
+        help="Input MSA row cap; the default is AF3's msa_crop_size",
+    )
+    parser.add_argument(
+        "--template-n",
+        type=int,
+        default=4,
+        choices=range(5),
+        help="Templates per chain; the default is AF3's max_templates",
+    )
     parser.add_argument("--timeout", type=int, default=3600)
     args = parser.parse_args()
     if not os.environ.get("SLURM_JOB_ID"):
@@ -127,8 +139,19 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
         for key in ("ccd_db", "template_db", "cif_db"):
             if spec.get(key):
                 spec[key] = str((source.parent / Path(spec[key])).resolve())
-        if args.no_templates:
+        sibling_template_db = source.parent / "template.lmdb"
+        if (
+            spec.get("template_db")
+            and not Path(spec["template_db"]).exists()
+            and sibling_template_db.exists()
+        ):
+            spec["template_db"] = str(sibling_template_db.resolve())
+        # ESMFold2 has no template conditioning path; its input keeps the same
+        # MSA cap and is recorded as template-free rather than failing.
+        templates_dropped = args.model == "esmfold2" and bool(spec.get("template"))
+        if args.no_templates or templates_dropped:
             spec["template"] = {}
+        spec["template_n"] = args.template_n
         spec.update(n_diffusion_samples=args.samples, diffusion_batch_size=args.samples)
         path = args.root / "inputs" / args.model / f"{target}.yaml"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -244,6 +267,16 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
                 "torch": torch.__version__,
                 "cuda": torch.version.cuda,
                 "input_spec": spec,
+                "templates_dropped": (
+                    "esmfold2 checkpoint has no template conditioning path"
+                    if templates_dropped
+                    else None
+                ),
+                "input_resources": (
+                    json.loads((output / "input.resources.json").read_text())
+                    if (output / "input.resources.json").exists()
+                    else None
+                ),
                 "gpu_memory_bytes": torch.cuda.get_device_properties(0).total_memory,
                 "scope": (
                     f"complete CLI process with {args.benchmark_repeats + 1} "

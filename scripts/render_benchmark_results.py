@@ -30,6 +30,9 @@ MODELS = {
 
 REPEATS = 5
 AF3_TRUNK_PASSES = 11
+# Input contract follows the official AF3 pipeline: msa_crop_size and max_templates.
+MSA_DEPTH = 16384
+TEMPLATE_N = 4
 
 
 def validate(rows: list[dict]) -> dict:
@@ -80,10 +83,15 @@ def validate(rows: list[dict]) -> dict:
             and config["precision"] == expected_precision
             and report["precision"] == expected_precision
             and report["autocast"] == expected_autocast
-            and config["trunk"] == {"recycles": 10, "msa_depth": 2048}
+            and config["trunk"] == {"recycles": 10, "msa_depth": MSA_DEPTH}
             and config["diffusion"] == {"steps": 200}
             and row["input_spec"]["n_diffusion_samples"] == REPEATS
-            and not row["input_spec"].get("template")
+            and row["input_spec"].get("template_n") == TEMPLATE_N
+            and (
+                not row["input_spec"].get("template")
+                if model == "esmfold2"
+                else bool(row["input_spec"].get("template"))
+            )
             and report["compile"] == (mode != "pytorch_eager_reference")
             and report["cuda_graph"] == (mode == "miniworld_graph")
             and len(report["prediction_cifs"]) == REPEATS
@@ -236,8 +244,11 @@ def render(rows: list[dict], docs: Path) -> None:
         "architecture's permitted",
         "FlashAttention path and uses PyTorch for the other replaceable operations.",
         "",
-        f"All cases use {seed_description}, MSA depth cap 2048, disabled templates, "
-        "200 requested steps",
+        f"All cases use {seed_description}, an input MSA cap of {MSA_DEPTH} rows "
+        f"(AF3's msa_crop_size) and up to {TEMPLATE_N} templates per chain",
+        "(AF3's max_templates) for AF3, Protenix v2 and OpenDDE. ESMFold2 has no",
+        "template conditioning path and runs the same MSA cap without templates.",
+        "Every case requests 200 steps",
         "and five samples. Token buckets use multiples of 128: 594 -> "
         "640. OpenDDE expands",
         "internally to 1140 structural tokens -> 1152. Atom buckets are "
@@ -301,7 +312,8 @@ def render(rows: list[dict], docs: Path) -> None:
         "```bash",
         "python scripts/benchmark_end_to_end.py --model esmfold2 --targets 4yx2 \\",
         "  --root benchmark-default --benchmark-repeats 5 --steps 200 \\",
-        "  --recycles 10 --samples 5 --msa-depth 2048 --no-templates",
+        "  --recycles 10 --samples 5 \\",
+        f"  --msa-depth {MSA_DEPTH} --template-n {TEMPLATE_N}",
         "```",
         "",
         "Use `--model opendde`, or `--model protenix --variant protenix-v2`.",

@@ -21,6 +21,7 @@ import yaml
 from foldforge.data.ccd import CCDDatabase
 from foldforge.data.inputs.build import limit_msa, load, write_adapter_input
 from foldforge.models import entry
+from foldforge.models.checkpoints import resolve
 from foldforge.models.config import Config
 from foldforge.models.io import runtime as runtime_module
 from foldforge.models.io.output import write_output
@@ -30,6 +31,7 @@ from foldforge.models.msa_policy import PREPARED_ROWS
 from foldforge.utils.seed import seed_all, seed_context
 
 STEP_ATTRIBUTE = {"af3": "diffusion_steps"}
+CHECKPOINTS = {"af3": "af3.bin.zst"}
 
 
 def resolve_spec(target: str, out: Path, samples: int) -> Path:
@@ -105,6 +107,7 @@ def main() -> int:
         out=out,
         resolved_input=target,
         input=adapter_input,
+        checkpoint=resolve(args.model, CHECKPOINTS[args.model]),
         target=target.spec.name or adapter_input.stem,
         backend=config.backend,
         precision=config.precision,

@@ -15,6 +15,7 @@ import json
 import time
 from pathlib import Path
 
+import numpy as np
 import torch
 import yaml
 
@@ -71,6 +72,15 @@ def main() -> int:
     parser.add_argument("--backend", default="pytorch")
     parser.add_argument("--precision", default="af3_default")
     parser.add_argument("--compile", action="store_true")
+    parser.add_argument("--cuda-graph", action="store_true")
+    parser.add_argument(
+        "--warmup",
+        action="store_true",
+        help="Run one untimed forward at the largest step count first",
+    )
+    parser.add_argument(
+        "--repeats", type=int, default=1, help="Timed forwards per step count"
+    )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     if not torch.cuda.is_available():
@@ -90,7 +100,7 @@ def main() -> int:
             "diffusion": {"steps": max(args.steps)},
             "execution": {
                 "compile": args.compile,
-                "cuda_graph": False,
+                "cuda_graph": args.cuda_graph,
                 "bucketing": True,
                 "scope": "denoiser",
             },
@@ -138,16 +148,26 @@ def main() -> int:
         for case in adapter.prepare(request, database, runtime):
             model = captured["model"]
             attribute = STEP_ATTRIBUTE[args.model]
+            context = torch.inference_mode if case.inference_mode else torch.no_grad
+            if args.warmup:
+                setattr(model, attribute, max(args.steps))
+                seed_all(config.trunk_seed)
+                with context():
+                    warm = case.forward()
+                del warm
+                torch.cuda.synchronize()
             for steps in args.steps:
                 setattr(model, attribute, steps)
-                seed_all(config.trunk_seed)
-                context = torch.inference_mode if case.inference_mode else torch.no_grad
-                torch.cuda.synchronize()
-                start = time.perf_counter()
-                with context():
-                    output = case.forward()
-                torch.cuda.synchronize()
-                seconds = time.perf_counter() - start
+                timings = []
+                for _ in range(max(1, args.repeats)):
+                    seed_all(config.trunk_seed)
+                    torch.cuda.synchronize()
+                    start = time.perf_counter()
+                    with context():
+                        output = case.forward()
+                    torch.cuda.synchronize()
+                    timings.append(time.perf_counter() - start)
+                seconds = float(np.median(timings))
                 decoded = case.decode(output, {"model_seconds": seconds})
                 decoded.report = {
                     **decoded.report,
@@ -155,6 +175,7 @@ def main() -> int:
                     "trunk_seed": config.trunk_seed,
                     "diffusion_seed": config.diffusion_seed,
                     "model_seconds": seconds,
+                    "model_seconds_all": timings,
                     "solver": "euler",
                     "schedule": "released",
                     **runtime.execution.report(),

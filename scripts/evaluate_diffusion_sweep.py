@@ -23,7 +23,7 @@ mpl.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from compare_af3_precision import atoms, compare, geometry
+from compare_af3_precision import aligned_rmsd, atoms, compare, geometry
 
 from foldforge.eval.structure import tm_score
 
@@ -48,15 +48,27 @@ def ca_tm(sample: dict, target: dict) -> float | None:
     return tm_score(mobile, reference)
 
 
+def all_atom_rmsd(sample: dict, target: dict) -> float | None:
+    """Kabsch RMSD over every matched heavy atom, not only CA."""
+    keys = sorted(sample.keys() & target.keys())
+    if len(keys) < 3:  # noqa: PLR2004 - a rigid fit needs three points
+        return None
+    x = np.array([sample[k][0] for k in keys])
+    y = np.array([target[k][0] for k in keys])
+    return aligned_rmsd(x, y)
+
+
 def score_sample(sample: dict, reference: dict, experiment: dict | None) -> dict:
     record = {"geometry": geometry(sample), "vs_reference": compare(sample, reference)}
     record["vs_reference"]["tm_score"] = ca_tm(sample, reference)
+    record["vs_reference"]["all_atom_rmsd_A"] = all_atom_rmsd(sample, reference)
     if experiment is not None:
         shared = {k: v for k, v in sample.items() if k in experiment}
         record["vs_experiment"] = compare(
             shared, {k: v for k, v in experiment.items() if k in shared}
         )
         record["vs_experiment"]["tm_score"] = ca_tm(shared, experiment)
+        record["vs_experiment"]["all_atom_rmsd_A"] = all_atom_rmsd(shared, experiment)
     return record
 
 
@@ -64,12 +76,13 @@ def plot_similarity(results: list[dict], root: Path, reference_steps: int) -> No
     """TM-score and CA RMSD against the same-seed reference, per target."""
     targets = sorted({r["target"] for r in results})
     steps = sorted({r["steps"] for r in results})
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4.4), layout="constrained")
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4.4), layout="constrained")
     for target in targets:
         rows = [r for r in results if r["target"] == target]
         for ax, key, label in (
             (axes[0], "tm_score", "TM-score vs reference"),
             (axes[1], "ca_rmsd_A", "CA RMSD vs reference (A)"),
+            (axes[2], "all_atom_rmsd_A", "All-atom RMSD vs reference (A)"),
         ):
             xs, means, lows, highs = [], [], [], []
             for step in steps:
@@ -157,6 +170,21 @@ def main() -> int:
                 [r["vs_experiment"]["ca_rmsd_A"] for r in rows if "vs_experiment" in r]
             ),
             "ref_ca_rmsd": mean([r["vs_reference"]["ca_rmsd_A"] for r in rows]),
+            "ref_aa_rmsd": mean(
+                [
+                    r["vs_reference"]["all_atom_rmsd_A"]
+                    for r in rows
+                    if r["vs_reference"].get("all_atom_rmsd_A") is not None
+                ]
+            ),
+            "exp_aa_rmsd": mean(
+                [
+                    r["vs_experiment"]["all_atom_rmsd_A"]
+                    for r in rows
+                    if "vs_experiment" in r
+                    and r["vs_experiment"].get("all_atom_rmsd_A") is not None
+                ]
+            ),
             "ref_tm": mean(
                 [
                     r["vs_reference"]["tm_score"]
@@ -182,9 +210,10 @@ def main() -> int:
         "columns use observed CA atoms; drift is CA RMSD against the same-seed",
         f"{args.reference_steps}-step samples; counts sum over all samples.",
         "",
-        "| Steps | Samples | Exp CA lDDT | Exp CA RMSD (A) | TM vs ref | "
-        "Drift vs ref (A) | CA pLDDT | Peptide outliers | Clashes | Forward (s) |",
-        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Steps | Samples | Exp CA lDDT | Exp CA RMSD (A) | Exp all-atom RMSD (A) | "
+        "TM vs ref | CA RMSD vs ref (A) | All-atom RMSD vs ref (A) | CA pLDDT | "
+        "Peptide outliers | Clashes | Forward (s) |",
+        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     by_steps: dict[int, list[dict]] = defaultdict(list)
     for r in results:
@@ -193,7 +222,8 @@ def main() -> int:
         s = summarize(by_steps[steps])
         lines.append(
             f"| {steps} | {s['n']} | {fmt(s['exp_ca_lddt'])} | "
-            f"{fmt(s['exp_ca_rmsd'])} | {fmt(s['ref_tm'])} | {fmt(s['ref_ca_rmsd'])} | "
+            f"{fmt(s['exp_ca_rmsd'])} | {fmt(s['exp_aa_rmsd'])} | {fmt(s['ref_tm'])} | "
+            f"{fmt(s['ref_ca_rmsd'])} | {fmt(s['ref_aa_rmsd'])} | "
             f"{fmt(s['ca_plddt'], 2)} | {s['peptide_outliers']} | "
             f"{s['clashes']} | {fmt(s['seconds'], 1)} |"
         )
@@ -205,15 +235,18 @@ def main() -> int:
         lines += [
             f"### {target}",
             "",
-            "| Steps | Exp CA lDDT | Exp CA RMSD (A) | TM vs ref | Drift vs ref (A) | "
-            "CA pLDDT | Peptide outliers | Clashes | Forward (s) |",
-            "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+            "| Steps | Exp CA lDDT | Exp CA RMSD (A) | Exp all-atom RMSD (A) | "
+            "TM vs ref | CA RMSD vs ref (A) | All-atom RMSD vs ref (A) | CA pLDDT | "
+            "Peptide outliers | Clashes | Forward (s) |",
+            "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
         for steps in sorted(per_steps, reverse=True):
             s = summarize(per_steps[steps])
             lines.append(
                 f"| {steps} | {fmt(s['exp_ca_lddt'])} | {fmt(s['exp_ca_rmsd'])} | "
-                f"{fmt(s['ref_tm'])} | {fmt(s['ref_ca_rmsd'])} | "
+                f"{fmt(s['exp_aa_rmsd'])} | {fmt(s['ref_tm'])} | "
+                f"{fmt(s['ref_ca_rmsd'])} | "
+                f"{fmt(s['ref_aa_rmsd'])} | "
                 f"{fmt(s['ca_plddt'], 2)} | "
                 f"{s['peptide_outliers']} | "
                 f"{s['clashes']} | {fmt(s['seconds'], 1)} |"

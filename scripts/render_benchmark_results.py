@@ -363,7 +363,9 @@ def main() -> int:  # noqa: PLR0912 - one linear report assembly
         help="Date of reused dtype/kernel-shape code-path audits (YYYY-MM-DD)",
     )
     parser.add_argument(
-        "--notes", type=Path, help="Markdown appended as a final Notes section"
+        "--notes",
+        type=Path,
+        help="Markdown inserted after the headline table (its own ## sections)",
     )
     args = parser.parse_args()
     sample_path = args.results / "sample_axes_audits.json"
@@ -552,11 +554,11 @@ def main() -> int:  # noqa: PLR0912 - one linear report assembly
             + "\n\n[All structural metrics](assets/af3_precision_quality.json).\n"
         )
     if args.notes:
+        # Hand-written context follows the headline table, before the conditions.
+        anchor = "## Precision and execution conditions"
+        text = path.read_text()
         path.write_text(
-            path.read_text().rstrip()
-            + "\n\n## Notes\n\n"
-            + args.notes.read_text().strip()
-            + "\n"
+            text.replace(anchor, args.notes.read_text().strip() + "\n\n" + anchor, 1)
         )
     return 0
 

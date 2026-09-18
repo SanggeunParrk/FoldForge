@@ -8,7 +8,9 @@ Released model equations, checkpoint layouts and confidence heads remain explici
 in each adapter. Boltz-2 and Chai-1 are planned and are not implemented.
 
 Start with the [documentation index](docs/README.md) and
-[benchmark results](docs/benchmark_results.md).
+[benchmark results](docs/benchmark_results.md): 4YX2 on A100, five execution modes
+per model under one AF3-style input policy (16384 prepared MSA rows, 1024 sampled
+per recycle, four templates per chain).
 
 See the [qualification record](docs/archive/QUALIFICATION-20260914.md) for complex inputs,
 actual compilation/CUDA graph boundaries and remaining deployment requirements.

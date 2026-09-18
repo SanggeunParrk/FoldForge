@@ -8,8 +8,10 @@
 #SBATCH -o validation/reports/logs/%x_%j.log
 #SBATCH -e validation/reports/logs/%x_%j.err
 
-# One model, all five modes, on one A100 (cssb3). Pass benchmark arguments, e.g.
-#   sbatch scripts/benchmark_end_to_end.sbatch --model af3 --root benchmark-x
+# One model on one GPU. Pass every benchmark argument, including --targets, e.g.
+#   sbatch scripts/benchmark_end_to_end.sbatch --model af3 --root benchmark-x \
+#     --targets 5i28x4
+#   sbatch -p gpu --gres=gpu:A6000:1 scripts/benchmark_end_to_end.sbatch ... (local)
 set -euo pipefail
 cd /home/psk6950/practice/FoldForge
 
@@ -18,5 +20,5 @@ ENV=$VIRTUAL_ENV
 export HF_HUB_OFFLINE=1 JAX_PLATFORMS=cpu
 export OMP_NUM_THREADS=8
 
-"$ENV/bin/python" scripts/benchmark_end_to_end.py --targets 4yx2 \
+"$ENV/bin/python" scripts/benchmark_end_to_end.py \
   --benchmark-repeats 5 --steps 200 --recycles 10 --samples 5 "$@"

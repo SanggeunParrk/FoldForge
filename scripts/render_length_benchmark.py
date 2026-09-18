@@ -156,6 +156,24 @@ def matrix_section(label: str, rows: list[dict], assets: Path) -> list[str]:
     return lines
 
 
+def compact_row(row: dict) -> dict:
+    """Shrink a published row: no per-token confidence, one entry for N equal chains."""
+    row = {k: v for k, v in row.items() if k != "resources"}
+    report = row.get("report")
+    if report and "confidence" in report:
+        row["report"] = {k: v for k, v in report.items() if k != "confidence"}
+    chains = row.get("input_resources")
+    if isinstance(chains, list) and chains:
+        first = {k: v for k, v in chains[0].items() if k != "chain_index"}
+        same = all(
+            {k: v for k, v in chain.items() if k != "chain_index"} == first
+            for chain in chains
+        )
+        if same:
+            row["input_resources"] = {"identical_chains": len(chains), "chain": first}
+    return row
+
+
 def model_table(model: str, targets: list[str], index: dict, cell) -> list[str]:  # noqa: ANN001 - local formatter
     lines: list[str] = []
     lines += [
@@ -192,7 +210,7 @@ def scaling_section(label: str, rows: list[dict], assets: Path) -> list[str]:
     targets = sorted({row["target"] for row in rows}, key=tokens_of)
     models = [m for m in MODELS if any(k[0] == m for k in index)]
     (assets / f"benchmark_scaling_{label}.json").write_text(
-        json.dumps(rows, indent=2) + "\n"
+        json.dumps([compact_row(row) for row in rows], indent=2) + "\n"
     )
 
     def cell(row: dict | None) -> tuple[str, str]:
@@ -234,6 +252,7 @@ def scaling_section(label: str, rows: list[dict], assets: Path) -> list[str]:
         )
         axes = np.atleast_1d(axes)
         for ax, model in zip(axes, models, strict=True):
+            shown: set[int] = set()
             for mode, mode_name in SCALING_MODES.items():
                 xs, ys = [], []
                 for target in targets:
@@ -245,6 +264,7 @@ def scaling_section(label: str, rows: list[dict], assets: Path) -> list[str]:
                     ys.append(value / 2**30 if name == "memory" else value)
                 if xs:
                     ax.plot(xs, ys, marker="o", color=COLORS[mode], label=mode_name)
+                    shown.update(xs)
                 failed = [
                     tokens_of(t)
                     for t in targets
@@ -252,6 +272,7 @@ def scaling_section(label: str, rows: list[dict], assets: Path) -> list[str]:
                     and row["status"]
                 ]
                 if failed and ys:
+                    shown.add(min(failed))
                     ax.plot(
                         [min(failed)],
                         [ys[-1]],
@@ -262,8 +283,10 @@ def scaling_section(label: str, rows: list[dict], assets: Path) -> list[str]:
                     )
             ax.set_xscale("log", base=2)
             ax.set_yscale("log", base=2)
-            ax.set_xticks([tokens_of(t) for t in targets])
-            ax.set_xticklabels([str(tokens_of(t)) for t in targets], fontsize=8)
+            ticks = sorted(shown)
+            ax.set_xticks(ticks)
+            ax.set_xticklabels([str(t) for t in ticks], fontsize=8, rotation=45)
+            ax.minorticks_off()
             ax.set_title(MODELS[model])
             ax.set_xlabel("tokens")
             ax.spines[["top", "right"]].set_visible(False)

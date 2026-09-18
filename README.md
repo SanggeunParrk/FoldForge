@@ -8,8 +8,9 @@ Released model equations, checkpoint layouts and confidence heads remain explici
 in each adapter. Boltz-2 and Chai-1 are planned and are not implemented.
 
 Start with the [documentation index](docs/README.md) and
-[benchmark results](docs/benchmark_results.md): 4YX2 on A100, five execution modes
-per model under one AF3-style input policy (16384 prepared MSA rows, 1024 sampled
+[benchmark results](docs/benchmark_results.md): 5I28 replicated to 512 tokens and
+beyond on A100 and A6000, five execution modes at 512 tokens and a length ladder
+to the out-of-memory point, under one AF3-style input policy (16384 prepared MSA rows, 1024 sampled
 per recycle, four templates per chain).
 
 See the [qualification record](docs/archive/QUALIFICATION-20260914.md) for complex inputs,

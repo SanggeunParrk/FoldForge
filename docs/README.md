@@ -1,9 +1,10 @@
 # Documentation
 
-- [Benchmark results](benchmark_results.md): five inference execution modes across four models, latency tables and plots.
-  Rendered by `scripts/render_benchmark_results.py`; the change summary after the
-  headline table is [benchmark_notes.md](benchmark_notes.md), inserted on every render. The
-  2026-09-16 report is preserved in [archive/benchmark-20260916](archive/benchmark-20260916/benchmark_results.md).
+- [Benchmark results](benchmark_results.md): 5I28 replicated N times on A100 and A6000; five inference
+  execution modes across four models at 512 tokens, and a length ladder to the out-of-memory point.
+  Rendered by `scripts/render_length_benchmark.py`; [benchmark_notes.md](benchmark_notes.md) is inserted on
+  every render. Earlier reports: [4YX2, 2026-09-18](archive/benchmark-20260918-4yx2/benchmark_results.md)
+  and [2026-09-16](archive/benchmark-20260916/benchmark_results.md).
 - [Code structure](guides/CODE-STRUCTURE.md): shared runtime and code ownership.
 - [Input and database formats](guides/MINIWORLD-FORMAT.md): CCD, MSA-LMDB and template-LMDB.
 - [Data and evaluation](guides/DATA-AND-EVALUATION.md).

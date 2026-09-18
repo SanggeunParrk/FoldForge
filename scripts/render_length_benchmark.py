@@ -156,6 +156,35 @@ def matrix_section(label: str, rows: list[dict], assets: Path) -> list[str]:
     return lines
 
 
+def model_table(model: str, targets: list[str], index: dict, cell) -> list[str]:  # noqa: ANN001 - local formatter
+    lines: list[str] = []
+    lines += [
+        f"### {MODELS[model]}",
+        "",
+        "| Tokens | Chains | "
+        + " | ".join(f"{name} s | GiB" for name in SCALING_MODES.values())
+        + " |",
+        "|---:|---:|" + "---:|---:|" * len(SCALING_MODES),
+    ]
+    for target in targets:
+        found = [index.get((model, mode, target)) for mode in SCALING_MODES]
+        if all(row is None for row in found):
+            continue
+        cells = []
+        for row in found:
+            cells += cell(row)
+        lines.append(
+            f"| {tokens_of(target)} | {tokens_of(target) // CHAIN_RESIDUES} | "
+            + " | ".join(cells)
+            + " |"
+        )
+        if all(row is None or row["status"] for row in found):
+            lines += ["", "Every longer length fails in every mode."]
+            break
+    lines.append("")
+    return lines
+
+
 def scaling_section(label: str, rows: list[dict], assets: Path) -> list[str]:
     gpu = gpu_of(rows)
     rows = [row for row in rows if row["mode"] in SCALING_MODES]
@@ -173,8 +202,9 @@ def scaling_section(label: str, rows: list[dict], assets: Path) -> list[str]:
             reason = row.get("error") or f"exit {row['status']}"
             return (f"**{'OOM' if reason == 'cuda_oom' else reason}**", "-")
         report = row["report"]
+        single = len(report["model_seconds_warm"]) == 1
         return (
-            f"{report['model_seconds_warm_median']:.2f}",
+            f"{report['model_seconds_warm_median']:.2f}{'†' if single else ''}",
             f"{report['model_peak_allocated_bytes'] / 2**30:.1f}",
         )
 
@@ -187,28 +217,13 @@ def scaling_section(label: str, rows: list[dict], assets: Path) -> list[str]:
         "",
         "Warm median seconds and peak allocated GiB per length. **OOM** marks a "
         "CUDA out-of-memory failure recorded in that process log; other failures "
-        "show their reason. Every length is its own process.",
+        "show their reason. Every length is its own process. † marks one warm "
+        "forward instead of the median of five, used where one forward takes "
+        "tens of minutes.",
         "",
     ]
     for model in models:
-        lines += [
-            f"### {MODELS[model]}",
-            "",
-            "| Tokens | Chains | "
-            + " | ".join(f"{name} s | GiB" for name in SCALING_MODES.values())
-            + " |",
-            "|---:|---:|" + "---:|---:|" * len(SCALING_MODES),
-        ]
-        for target in targets:
-            cells = []
-            for mode in SCALING_MODES:
-                cells += cell(index.get((model, mode, target)))
-            lines.append(
-                f"| {tokens_of(target)} | {tokens_of(target) // CHAIN_RESIDUES} | "
-                + " | ".join(cells)
-                + " |"
-            )
-        lines.append("")
+        lines += model_table(model, targets, index, cell)
 
     for metric, ylabel, name in (
         ("model_seconds_warm_median", "Warm forward (s)", "latency"),

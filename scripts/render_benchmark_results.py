@@ -39,7 +39,7 @@ MSA_DEPTH = MSA_POLICY["prepared_rows"]
 TEMPLATE_N = MSA_POLICY["templates_per_chain"]
 
 
-def validate(rows: list[dict]) -> dict:
+def validate(rows: list[dict], target: str = "4yx2") -> dict:
     policies = {r["report"].get("seed_policy", "legacy") for r in rows}
     if len(policies) != 1:
         message = "Do not mix legacy and split-seed benchmark measurements"
@@ -69,7 +69,7 @@ def validate(rows: list[dict]) -> dict:
         expected_autocast = reference and model in {"esmfold2", "protenix"}
         valid = (
             row["status"] == 0
-            and row["target"] == "4yx2"
+            and row["target"] == target
             and row["backend"] == config["backend"] == expected_backend
             and (
                 config.get("seed") == 0

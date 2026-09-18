@@ -198,6 +198,8 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
         logger.info("ESMC forward completed in %.3f s", lm_seconds)
         del language_model
         torch.cuda.empty_cache()
+        # Keep the computed embeddings reusable as an explicit --lm-cache input.
+        torch.save(lm_hidden.cpu(), args.out / "esmc_hidden_states.pt")
 
     expected_tokens = tuple(features["token_attention_mask"].shape)
     if (
@@ -281,6 +283,11 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
             "msa_depth": args.msa_depth,
             "checkpoint": str(checkpoint.resolve()),
             "lm_source": args.lm_source,
+            "lm_cache_written": (
+                None
+                if args.lm_source == "cache"
+                else str((args.out / "esmc_hidden_states.pt").resolve())
+            ),
             "lm_path": str(lm_path.resolve()),
             "seconds_lm_forward": lm_seconds,
             "scoring_atoms": "CA, matched by chain/residue/name",

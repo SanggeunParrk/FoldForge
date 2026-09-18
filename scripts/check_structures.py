@@ -14,6 +14,7 @@ import argparse
 import json
 from pathlib import Path
 
+from collect_structure_issues import locate
 from compare_af3_precision import atoms, compare, geometry
 
 MODELS = ("esmfold2", "protenix", "opendde")
@@ -32,7 +33,9 @@ def main() -> int:
             message = f"Failed benchmark rows for {model}"
             raise ValueError(message)
         samples = {
-            row["mode"]: [atoms(Path(p)) for p in row["report"]["prediction_cifs"]]
+            row["mode"]: [
+                atoms(locate(p, args.results)) for p in row["report"]["prediction_cifs"]
+            ]
             for row in rows
         }
         references = samples[REFERENCE]

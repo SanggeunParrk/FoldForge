@@ -112,6 +112,12 @@ OpenDDE that the renderer publishes; `compare_af3_precision.py` does the same
 for AF3 with an experimental comparison. Place both outputs, `precision_audits.json`
 and `sample_axes_audits.json` in RUN before rendering.
 
+`collect_structure_issues.py --results RUN --output DIR` copies only the samples
+with a peptide C-N outside 1.0-1.7 A, a heavy-atom pair below 1 A, or CA drift
+above 1.5 A from the same-index compiled reference, beside that reference, and
+writes `DIR/README.md` naming the residues and atom pairs. Report CIF paths from
+another host resolve to copies under `RUN/e2e/`.
+
 ## Audits
 
 Run each inside an allocated GPU job. Their timings are diagnostic and must not

@@ -3,9 +3,11 @@
 Reads a benchmark results directory (``e2e-<model>.json`` rows whose reports list
 ``prediction_cifs``), checks every sample of every mode with the same peptide,
 clash and CA-drift definitions as ``compare_af3_precision.py``, and copies only
-the flagged samples into ``<output>/<model>/<mode>/sample-<i>.cif`` with the
-same-index compiled reference at ``<output>/<model>/reference/sample-<i>.cif``.
-``<output>/README.md`` lists what is wrong in each flagged sample, with residues.
+the flagged samples. One folder per sample holds everything to compare:
+``<output>/<model>/sample-<i>/ref.cif`` (compiled default-precision reference)
+next to ``mini.cif``, ``pytorch_bf16.cif``, ``cueq.cif`` or ``eager_ref.cif``,
+plus ``issues.md`` naming the residues and atom pairs. ``<output>/README.md``
+is the combined index.
 """
 
 from __future__ import annotations
@@ -21,6 +23,12 @@ from scipy.spatial.distance import cdist
 
 REFERENCE = "pytorch_compile_reference"
 MAX_LISTED = 6
+SHORT = {
+    "pytorch_eager_reference": "eager_ref",
+    "pytorch_compile_bf16": "pytorch_bf16",
+    "cuequiv_compile": "cueq",
+    "miniworld_graph": "mini",
+}
 
 
 def locate(path: str, results: Path) -> Path:
@@ -73,6 +81,22 @@ def describe(sample: dict, reference: dict | None) -> dict:
     return record
 
 
+def where(record: dict) -> list[str]:
+    """Residue-level locations, truncated to keep the index readable."""
+    items = [
+        f"{b['chain']}{b['residues'][0]}-{b['residues'][1]} C-N {b['c_n_A']:.2f} A"
+        for b in record["peptide_breaks"][:MAX_LISTED]
+    ]
+    items += [
+        f"{c['a']} / {c['b']} {c['distance_A']:.2f} A"
+        for c in record["clashes"][:MAX_LISTED]
+    ]
+    extra = len(record["peptide_breaks"]) + len(record["clashes"]) - len(items)
+    if extra > 0:
+        items.append(f"and {extra} more in issues.json")
+    return items
+
+
 def flagged(record: dict, rmsd_threshold: float) -> list[str]:
     reasons = []
     if record["peptide_breaks"]:
@@ -111,24 +135,16 @@ def main() -> int:
         ]
         refs = [atoms(p) for p in ref_paths]
         issues[model] = {}
-        index += ["", f"## {model}", ""]
-        ref_records = [describe(r, None) for r in refs]
-        ref_dir = args.output / model / "reference"
-        for i, (record, source) in enumerate(zip(ref_records, ref_paths, strict=True)):
+        per_sample: dict[int, list[str]] = {}
+        for i, ref in enumerate(refs):
+            record = describe(ref, None)
             reasons = flagged(record, args.rmsd_threshold)
             if reasons:
-                ref_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(source, ref_dir / f"sample-{i}.cif")
                 issues[model].setdefault(REFERENCE, {})[str(i)] = record
-                index.append(
-                    f"- reference sample {i} itself: {'; '.join(reasons)} -> "
-                    f"`{model}/reference/sample-{i}.cif`"
+                per_sample.setdefault(i, []).append(
+                    f"- **ref.cif itself**: {'; '.join(reasons)}\n"
+                    + "\n".join(f"  - {w}" for w in where(record))
                 )
-        index += [
-            "",
-            "| mode | sample | problem | where | files |",
-            "|---|---:|---|---|---|",
-        ]
         for mode, row in rows.items():
             if mode == REFERENCE:
                 continue
@@ -141,35 +157,26 @@ def main() -> int:
                 if not reasons:
                     continue
                 issues[model].setdefault(mode, {})[str(i)] = record
-                mode_dir = args.output / model / mode
-                mode_dir.mkdir(parents=True, exist_ok=True)
-                ref_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(source, mode_dir / f"sample-{i}.cif")
-                if not (ref_dir / f"sample-{i}.cif").exists():
-                    shutil.copy2(ref_paths[i], ref_dir / f"sample-{i}.cif")
-                where = []
-                where += [
-                    f"{b['chain']}{b['residues'][0]}-{b['residues'][1]} "
-                    f"C-N {b['c_n_A']:.2f} A"
-                    for b in record["peptide_breaks"][:MAX_LISTED]
-                ]
-                where += [
-                    f"{c['a']} / {c['b']} {c['distance_A']:.2f} A"
-                    for c in record["clashes"][:MAX_LISTED]
-                ]
-                extra = (
-                    len(record["peptide_breaks"]) + len(record["clashes"]) - len(where)
+                folder = args.output / model / f"sample-{i}"
+                folder.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, folder / f"{SHORT.get(mode, mode)}.cif")
+                per_sample.setdefault(i, []).append(
+                    f"- **{SHORT.get(mode, mode)}.cif** ({mode}): "
+                    f"{'; '.join(reasons)}\n"
+                    + "\n".join(f"  - {w}" for w in where(record))
                 )
-                if extra > 0:
-                    where.append(f"and {extra} more in issues.json")
-                files = (
-                    f"`{model}/{mode}/sample-{i}.cif` vs "
-                    f"`{model}/reference/sample-{i}.cif`"
-                )
-                index.append(
-                    f"| {mode} | {i} | {'; '.join(reasons)} | "
-                    f"{'<br>'.join(where) or '-'} | {files} |"
-                )
+        if per_sample:
+            index += ["", f"## {model}", ""]
+        for i in sorted(per_sample):
+            folder = args.output / model / f"sample-{i}"
+            folder.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ref_paths[i], folder / "ref.cif")
+            body = "\n".join(per_sample[i])
+            (folder / "issues.md").write_text(
+                f"# {model} sample {i}\n\nCompare every file with `ref.cif`.\n\n"
+                f"{body}\n"
+            )
+            index += [f"### `{model}/sample-{i}/`", "", body, ""]
     (args.output / "issues.json").write_text(json.dumps(issues, indent=2) + "\n")
     (args.output / "README.md").write_text("\n".join(index) + "\n")
     print(args.output / "README.md")  # noqa: T201 - CLI output contract

@@ -91,6 +91,14 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
         help="Templates per chain; the default is AF3's max_templates",
     )
     parser.add_argument("--timeout", type=int, default=3600)
+    parser.add_argument(
+        "--stop-at-failure",
+        action="store_true",
+        help=(
+            "Length ladders: targets are ascending, so once a mode fails (out of "
+            "memory, timeout or crash) skip that mode for every later target"
+        ),
+    )
     args = parser.parse_args()
     if not os.environ.get("SLURM_JOB_ID"):
         msg = "Run inside an allocated Slurm compute job"
@@ -124,6 +132,7 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
         if args.resume and result_path.exists()
         else []
     )
+    stopped: set[str] = set()
     for target in args.targets:
         source = (
             Path("validation/inputs/qualification")
@@ -167,6 +176,12 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
                 ),
                 None,
             )
+            if args.stop_at_failure:
+                if previous is not None and previous["status"] != 0:
+                    stopped.add(mode)
+                if mode in stopped:
+                    print("SKIP beyond first failure", label, flush=True)  # noqa: T201 - CLI output contract
+                    continue
             output = args.root / "e2e" / label
             output.mkdir(parents=True, exist_ok=True)
             config = {
@@ -334,6 +349,8 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
                 json.dumps(rows, indent=2) + "\n"
             )
             print("FINISH", label, row["status"], round(elapsed, 3), flush=True)  # noqa: T201 - CLI output contract
+            if row["status"]:
+                stopped.add(mode)
     return int(any(row["status"] for row in rows))
 
 

@@ -252,6 +252,10 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
                     status = 124
                     error = "timeout; process group terminated"
             elapsed = time.perf_counter() - start
+            if status and error is None:
+                log_text = (output / "process.log").read_text(errors="replace")
+                if "OutOfMemoryError" in log_text or "out of memory" in log_text:
+                    error = "cuda_oom"
             row = {
                 "model": args.model,
                 "mode": mode,

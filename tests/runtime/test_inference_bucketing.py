@@ -55,6 +55,14 @@ def test_policy_keeps_atom_msa_edges_and_uses_128_step_tokens():
 
     assert ENGINE_ATOMS == ATOM_SHAPES
     assert MSA_SHAPES == (1024, 2048, 4096, 8192, 16384)
+    from team_gm.modules.bucketing import ATOM_BUCKETS
+
+    assert ATOM_BUCKETS[: len(ATOM_SHAPES)] == ATOM_SHAPES
+    assert ATOM_BUCKETS[len(ATOM_SHAPES) :] == (16384, 32768)
+    assert BucketShape.select(4096, 31456, 3).atom_bucket == 32768
+    assert BucketShape.select(1024, 8193, 3).atom_bucket == 16384
+    with pytest.raises(ValueError, match="atoms"):
+        BucketShape.select(4096, 32769, 3)
     assert BucketShape.select(1140, 4591, 2049) == BucketShape(
         1140, 4591, 2049, 1152, 8192, 4096
     )
@@ -66,7 +74,7 @@ def test_policy_keeps_atom_msa_edges_and_uses_128_step_tokens():
         with pytest.raises(ValueError, match="tokens"):
             token_bucket(size)
     with pytest.raises(ValueError, match="atoms"):
-        BucketShape.select(1140, 8193, None)
+        BucketShape.select(1140, 32769, None)
     with pytest.raises(ValueError, match="msa"):
         BucketShape.select(1140, 4591, 16385)
 

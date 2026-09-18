@@ -17,7 +17,15 @@ import statistics
 from collections import defaultdict
 from pathlib import Path
 
+import matplotlib as mpl
+
+mpl.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
 from compare_af3_precision import atoms, compare, geometry
+
+from foldforge.eval.structure import tm_score
 
 EXPERIMENTAL = {
     "1ubq": "validation/inputs/data/1ubq/1ubq.cif",
@@ -28,14 +36,76 @@ EXPERIMENTAL = {
 }
 
 
+def ca_tm(sample: dict, target: dict) -> float | None:
+    """Zhang-Skolnick TM-score on matched CA atoms, normalised by the target."""
+    keys = sorted(k for k in sample.keys() & target.keys() if k[-1] == "CA")
+    if not keys:
+        return None
+    mobile = torch.tensor(np.array([sample[k][0] for k in keys]), dtype=torch.float64)
+    reference = torch.tensor(
+        np.array([target[k][0] for k in keys]), dtype=torch.float64
+    )
+    return tm_score(mobile, reference)
+
+
 def score_sample(sample: dict, reference: dict, experiment: dict | None) -> dict:
     record = {"geometry": geometry(sample), "vs_reference": compare(sample, reference)}
+    record["vs_reference"]["tm_score"] = ca_tm(sample, reference)
     if experiment is not None:
         shared = {k: v for k, v in sample.items() if k in experiment}
         record["vs_experiment"] = compare(
             shared, {k: v for k, v in experiment.items() if k in shared}
         )
+        record["vs_experiment"]["tm_score"] = ca_tm(shared, experiment)
     return record
+
+
+def plot_similarity(results: list[dict], root: Path, reference_steps: int) -> None:
+    """TM-score and CA RMSD against the same-seed reference, per target."""
+    targets = sorted({r["target"] for r in results})
+    steps = sorted({r["steps"] for r in results})
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.4), layout="constrained")
+    for target in targets:
+        rows = [r for r in results if r["target"] == target]
+        for ax, key, label in (
+            (axes[0], "tm_score", "TM-score vs reference"),
+            (axes[1], "ca_rmsd_A", "CA RMSD vs reference (A)"),
+        ):
+            xs, means, lows, highs = [], [], [], []
+            for step in steps:
+                values = [
+                    r["vs_reference"][key]
+                    for r in rows
+                    if r["steps"] == step and r["vs_reference"].get(key) is not None
+                ]
+                if not values:
+                    continue
+                xs.append(step)
+                means.append(float(np.mean(values)))
+                lows.append(float(np.min(values)))
+                highs.append(float(np.max(values)))
+            if not xs:
+                continue
+            line = ax.plot(xs, means, marker="o", label=target)[0]
+            ax.fill_between(xs, lows, highs, color=line.get_color(), alpha=0.12)
+            ax.set_ylabel(label)
+    for ax in axes:
+        ax.set_xscale("log", base=2)
+        ax.set_xticks(steps)
+        ax.set_xticklabels([str(s) for s in steps])
+        ax.set_xlabel("diffusion steps")
+        ax.grid(visible=True, alpha=0.2, which="both")
+        ax.spines[["top", "right"]].set_visible(False)
+    axes[0].set_ylim(0, 1.02)
+    axes[0].legend(fontsize=8, frameon=False, loc="lower right")
+    fig.suptitle(
+        f"Similarity to the same-seed {reference_steps}-step samples "
+        "(mean, min-max over seeds and samples)",
+        fontsize=10,
+    )
+    for extension in ("svg", "png"):
+        fig.savefig(root / f"sweep_similarity.{extension}", dpi=180)
+    plt.close(fig)
 
 
 def main() -> int:
@@ -72,6 +142,7 @@ def main() -> int:
                     }
                 )
     (args.root / "sweep_results.json").write_text(json.dumps(results, indent=2) + "\n")
+    plot_similarity(results, args.root, args.reference_steps)
 
     def summarize(rows: list[dict]) -> dict:
         def mean(values: list[float]) -> float | None:
@@ -86,6 +157,13 @@ def main() -> int:
                 [r["vs_experiment"]["ca_rmsd_A"] for r in rows if "vs_experiment" in r]
             ),
             "ref_ca_rmsd": mean([r["vs_reference"]["ca_rmsd_A"] for r in rows]),
+            "ref_tm": mean(
+                [
+                    r["vs_reference"]["tm_score"]
+                    for r in rows
+                    if r["vs_reference"].get("tm_score") is not None
+                ]
+            ),
             "ca_plddt": mean([r["geometry"]["ca_mean_plddt"] for r in rows]),
             "peptide_outliers": sum(
                 r["geometry"]["peptide_outside_1_0_to_1_7_A"] for r in rows
@@ -104,9 +182,9 @@ def main() -> int:
         "columns use observed CA atoms; drift is CA RMSD against the same-seed",
         f"{args.reference_steps}-step samples; counts sum over all samples.",
         "",
-        "| Steps | Samples | Exp CA lDDT | Exp CA RMSD (A) | Drift vs ref (A) | "
-        "CA pLDDT | Peptide outliers | Clashes | Forward (s) |",
-        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Steps | Samples | Exp CA lDDT | Exp CA RMSD (A) | TM vs ref | "
+        "Drift vs ref (A) | CA pLDDT | Peptide outliers | Clashes | Forward (s) |",
+        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     by_steps: dict[int, list[dict]] = defaultdict(list)
     for r in results:
@@ -115,7 +193,7 @@ def main() -> int:
         s = summarize(by_steps[steps])
         lines.append(
             f"| {steps} | {s['n']} | {fmt(s['exp_ca_lddt'])} | "
-            f"{fmt(s['exp_ca_rmsd'])} | {fmt(s['ref_ca_rmsd'])} | "
+            f"{fmt(s['exp_ca_rmsd'])} | {fmt(s['ref_tm'])} | {fmt(s['ref_ca_rmsd'])} | "
             f"{fmt(s['ca_plddt'], 2)} | {s['peptide_outliers']} | "
             f"{s['clashes']} | {fmt(s['seconds'], 1)} |"
         )
@@ -127,15 +205,16 @@ def main() -> int:
         lines += [
             f"### {target}",
             "",
-            "| Steps | Exp CA lDDT | Exp CA RMSD (A) | Drift vs ref (A) | "
+            "| Steps | Exp CA lDDT | Exp CA RMSD (A) | TM vs ref | Drift vs ref (A) | "
             "CA pLDDT | Peptide outliers | Clashes | Forward (s) |",
-            "|---:|---:|---:|---:|---:|---:|---:|---:|",
+            "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
         for steps in sorted(per_steps, reverse=True):
             s = summarize(per_steps[steps])
             lines.append(
                 f"| {steps} | {fmt(s['exp_ca_lddt'])} | {fmt(s['exp_ca_rmsd'])} | "
-                f"{fmt(s['ref_ca_rmsd'])} | {fmt(s['ca_plddt'], 2)} | "
+                f"{fmt(s['ref_tm'])} | {fmt(s['ref_ca_rmsd'])} | "
+                f"{fmt(s['ca_plddt'], 2)} | "
                 f"{s['peptide_outliers']} | "
                 f"{s['clashes']} | {fmt(s['seconds'], 1)} |"
             )

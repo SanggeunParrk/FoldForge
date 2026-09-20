@@ -195,9 +195,14 @@ class SelfAttention(nn.Module):
         c_single_cond: int = 384,
         num_head: int = 16,
         use_single_cond: bool = False,
+        kq_norm: bool = False,
     ) -> None:
 
         super().__init__()
+        self.kq_norm = kq_norm
+        if kq_norm:
+            self.query_layer_norm = fastnn.LayerNorm(c_x)
+            self.key_layer_norm = fastnn.LayerNorm(c_x)
 
         self.c_x = c_x
         self.c_single_cond = c_single_cond
@@ -245,6 +250,9 @@ class SelfAttention(nn.Module):
         q = self.q_projection(x)
         k = self.k_projection(x)
         v = self.v_projection(x)
+        if self.kq_norm:
+            # Over the flattened head axis, before the per-head scaling.
+            q, k = self.query_layer_norm(q), self.key_layer_norm(k)
 
         q, k, v = (
             einops.rearrange(t, "... n (h c) -> ... h n c", h=self.num_head)
@@ -288,6 +296,7 @@ class DiffusionTransformer(nn.Module):
 
         super().__init__()
         self.per_block_pair = spec.per_block_pair_layer_norm
+        self.parallel = spec.parallel_attention_transition
 
         self.c_act = c_act
         self.c_single_cond = c_single_cond
@@ -327,7 +336,12 @@ class DiffusionTransformer(nn.Module):
 
         self.self_attention = nn.ModuleList(
             [
-                SelfAttention(self.c_act, self.c_single_cond, use_single_cond=True)
+                SelfAttention(
+                    self.c_act,
+                    self.c_single_cond,
+                    use_single_cond=True,
+                    kq_norm=spec.attention_kq_norm,
+                )
                 for _ in range(self.num_blocks)
             ]
         )
@@ -353,6 +367,13 @@ class DiffusionTransformer(nn.Module):
                 pair_logits = self.pair_logits_projection[idx](
                     self.pair_input_layer_norm[idx](pair_cond)
                 ).permute(2, 0, 1)
+                if self.parallel:
+                    act = (
+                        act
+                        + self.self_attention[idx](act, mask, pair_logits, single_cond)
+                        + self.transition_block[idx](act, single_cond)
+                    )
+                    continue
                 act = conditioned_residual(
                     act,
                     single_cond,
@@ -396,10 +417,15 @@ class CrossAttention(nn.Module):
         c_single_cond: int = 128,
         num_head: int = 4,
         key_masked: bool = False,
+        kq_norm: bool = False,
     ) -> None:
         super().__init__()
 
         self.key_masked = key_masked
+        self.kq_norm = kq_norm
+        if kq_norm:
+            self.query_layer_norm = fastnn.LayerNorm(key_dim)
+            self.key_layer_norm = fastnn.LayerNorm(key_dim)
         self.key_dim = key_dim
         self.value_dim = value_dim
         self.c_single_cond = c_single_cond
@@ -463,6 +489,8 @@ class CrossAttention(nn.Module):
 
         q = self.q_projection(x_q)
         k = self.k_projection(x_k)
+        if self.kq_norm:
+            q, k = self.query_layer_norm(q), self.key_layer_norm(k)
         q = torch.reshape(q, (*q.shape[:-1], self.num_head, self.key_dim_per_head))
         k = torch.reshape(k, (*k.shape[:-1], self.num_head, self.key_dim_per_head))
 
@@ -507,15 +535,33 @@ class DiffusionCrossAttTransformer(nn.Module):
         self.num_blocks = num_blocks
         self.num_head = num_head
 
-        self.pair_input_layer_norm = fastnn.LayerNorm(self.c_pair_cond, bias=False)
-        self.pair_logits_projection = nn.Linear(
-            self.c_pair_cond, self.num_blocks * self.num_head, bias=False
-        )
+        self.per_block_pair = spec.per_block_atom_pair_layer_norm
+        self.parallel = spec.parallel_attention_transition
+        if self.per_block_pair:
+            self.pair_input_layer_norm = nn.ModuleList(
+                [
+                    fastnn.LayerNorm(self.c_pair_cond, bias=False)
+                    for _ in range(self.num_blocks)
+                ]
+            )
+            self.pair_logits_projection = nn.ModuleList(
+                [
+                    nn.Linear(self.c_pair_cond, self.num_head, bias=False)
+                    for _ in range(self.num_blocks)
+                ]
+            )
+        else:
+            self.pair_input_layer_norm = fastnn.LayerNorm(self.c_pair_cond, bias=False)
+            self.pair_logits_projection = nn.Linear(
+                self.c_pair_cond, self.num_blocks * self.num_head, bias=False
+            )
 
         self.cross_attention = nn.ModuleList(
             [
                 CrossAttention(
-                    num_head=self.num_head, key_masked=spec.key_masked_atom_attention
+                    num_head=self.num_head,
+                    key_masked=spec.key_masked_atom_attention,
+                    kq_norm=spec.attention_kq_norm,
                 )
                 for _ in range(self.num_blocks)
             ]
@@ -543,18 +589,40 @@ class DiffusionCrossAttTransformer(nn.Module):
         pair_cond: torch.Tensor,  # (num_subsets, num_queries, num_keys, ch)
     ) -> torch.Tensor:
         """Compute the module output."""
-        pair_logits = pair_bias_projection(
-            self.pair_input_layer_norm, self.pair_logits_projection, pair_cond
-        )
-
-        pair_logits = einops.rearrange(
-            pair_logits, "n q k (b h) -> b n h q k", h=self.num_head
-        )
+        if self.per_block_pair:
+            pair_logits = [
+                projection(norm(pair_cond)).permute(0, 3, 1, 2)
+                for norm, projection in zip(
+                    self.pair_input_layer_norm, self.pair_logits_projection, strict=True
+                )
+            ]
+        else:
+            pair_logits = pair_bias_projection(
+                self.pair_input_layer_norm, self.pair_logits_projection, pair_cond
+            )
+            pair_logits = einops.rearrange(
+                pair_logits, "n q k (b h) -> b n h q k", h=self.num_head
+            )
 
         for block_idx in range(self.num_blocks):
             keys_act = atom_layout.convert(
                 queries_to_keys, queries_act, layout_axes=(-3, -2)
             )
+            if self.parallel:
+                queries_act = (
+                    queries_act
+                    + self.cross_attention[block_idx](
+                        x_q=queries_act,
+                        x_k=keys_act,
+                        mask_q=queries_mask,
+                        mask_k=keys_mask,
+                        pair_logits=pair_logits[block_idx],
+                        single_cond_q=queries_single_cond,
+                        single_cond_k=keys_single_cond,
+                    )
+                    + self.transition_block[block_idx](queries_act, queries_single_cond)
+                )
+                continue
 
             queries_act = conditioned_residual(
                 queries_act,

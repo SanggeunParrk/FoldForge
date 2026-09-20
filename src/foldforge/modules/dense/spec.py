@@ -66,6 +66,11 @@ class DenseSpec:
     #: Per-head width of the template pair attention; None is channel / heads.
     template_qkv_dim: int | None = None
     template_transition_factor: int = 2
+    #: Whether homolog templates from the input reach the embedder. RoseTTAFold3's
+    #: template channel is distance-distribution CONDITIONING with a noise level: a
+    #: homolog fed as an exact condition is obeyed, not weighed (5I28 with four
+    #: homologs: CA RMSD 1.9 A and strained peptide bonds, against 0.7 A without).
+    use_input_templates: bool = True
     #: Fused templates: a template's visibility follows what it covers, not chains.
     template_visibility_by_coverage: bool = False
     #: Fused templates: the stack input is added once more around the whole stack.
@@ -96,6 +101,24 @@ class DenseSpec:
     raw_ref_charge: bool = False
     #: A padded key atom is masked from every query, not only from padded queries.
     key_masked_atom_attention: bool = False
+    #: Atom transformers norm and project their pair conditioning in every block.
+    per_block_atom_pair_layer_norm: bool = False
+    #: Diffusion attentions LayerNorm the projected queries and keys (all heads flat).
+    attention_kq_norm: bool = False
+    #: Diffusion blocks feed the transition the PRE-attention activation and add
+    #: both deltas in one residual: x + attention(x) + transition(x).
+    parallel_attention_transition: bool = False
+    #: Triangle attention's gate and output projections carry trained biases.
+    triangle_attention_bias: bool = False
+    #: Triangle multiplication divides by the sequence length before its centre norm.
+    triangle_mul_divide_by_length: bool = False
+    #: The outer product's left and right projections carry trained biases.
+    opm_projection_bias: bool = False
+    distogram_bins: int = 64
+    #: A constant the vendor's conformer-embedding MLP emits for an all-zero input.
+    conformer_embedding_bias: bool = False
+    #: The diffusion atom encoder embeds chirality gradients of the noisy coordinates.
+    atom_chiral_features: bool = False
     gamma_0: float = 0.8
     gamma_min: float = 1.0
     noise_scale: float = 1.003
@@ -204,7 +227,50 @@ BOLTZ2 = replace(
     rho=8.0,
 )
 
+#: RoseTTAFold3 (RosettaCommons foundry). OpenFold3 lineage by its forward
+#: conventions, with its own template conditioning, attention details and confidence
+#: input normalisation. Its MSA stack is one block's weights run four times; the
+#: converter replicates them.
+ROSETTAFOLD3 = replace(
+    OPENBIND0,
+    family="rosettafold3",
+    centre_ref_conformers=False,
+    per_block_pair_layer_norm=True,
+    msa_value_dim=32,
+    affine_norms=BOLTZ2.affine_norms,
+    msa_query_paired=0.0,
+    template="rf3",
+    use_input_templates=False,
+    template_qkv_dim=64,
+    template_transition_factor=4,
+    confidence="rf3",
+    opm_bias_after_norm=True,
+    opm_projection_bias=True,
+    distogram_bias=True,
+    distogram_bins=65,
+    diffusion_projected_relpos=True,
+    pre_trunk_atom_query=True,
+    raw_ref_charge=True,
+    key_masked_atom_attention=True,
+    per_block_atom_pair_layer_norm=True,
+    attention_kq_norm=True,
+    parallel_attention_transition=True,
+    triangle_attention_bias=True,
+    triangle_mul_divide_by_length=True,
+    conformer_embedding_bias=True,
+    atom_chiral_features=True,
+    dedupe_self_msa=True,
+    atom_key_window="pad",
+)
+
 SPECS = {
     spec.family: spec
-    for spec in (ALPHAFOLD3, INTELLIFOLD2, OPENBIND0, OPENFOLD3_PREVIEW2, BOLTZ2)
+    for spec in (
+        ALPHAFOLD3,
+        INTELLIFOLD2,
+        OPENBIND0,
+        OPENFOLD3_PREVIEW2,
+        BOLTZ2,
+        ROSETTAFOLD3,
+    )
 }

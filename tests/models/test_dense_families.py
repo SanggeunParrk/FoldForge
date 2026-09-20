@@ -117,3 +117,52 @@ def test_centre_conformers_is_masked_and_per_group():
     # Padding stays exactly zero, whatever it held before.
     assert not example["ref_pos"][0, 2].any()
     assert not example["ref_pos"][1, 2].any()
+
+
+def test_rosettafold3_declares_its_attention_and_template_conventions():
+    model = _meta_model("rosettafold3")
+    transformer = model.diffusion_head.transformer
+    assert transformer.parallel
+    assert transformer.self_attention[0].kq_norm
+    encoder = model.diffusion_head.atom_cross_att_encoder.atom_transformer_encoder
+    assert len(encoder.pair_input_layer_norm) == 3
+    assert encoder.cross_attention[0].kq_norm
+    attention = model.evoformer.trunk_pairformer[0].pair_attention1
+    assert attention.gating_query.bias is not None
+    assert model.evoformer.trunk_pairformer[
+        0
+    ].triangle_multiplication_outgoing.divide_by_length
+    assert model.distogram_head.half_logits.out_features == 65
+    assert not model.spec.use_input_templates
+
+
+def test_masked_global_norm_ignores_padding_and_counts_missing_columns():
+    from foldforge.modules.dense.head import masked_global_norm
+
+    torch.manual_seed(0)
+    real = torch.randn(5, 7)
+    mask = torch.tensor([1, 1, 1, 1, 1, 0, 0], dtype=torch.bool)
+    padded = torch.cat([real, 100 * torch.ones(2, 7)])
+    expected = (real - real.mean()) / (real.var(unbiased=False) + 1e-5).sqrt()
+    torch.testing.assert_close(masked_global_norm(padded, mask)[:5], expected)
+    wider = masked_global_norm(real, mask[:5], width=9)
+    full = torch.cat([real, torch.zeros(5, 2)], dim=-1)
+    reference = (real - full.mean()) / (full.var(unbiased=False) + 1e-5).sqrt()
+    torch.testing.assert_close(wider, reference)
+
+
+def test_length_divided_triangle_equals_scaling_the_norm_epsilon():
+    from team_gm.modules.checkpoints.af_family import triangle_residual
+
+    from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
+
+    torch.manual_seed(0)
+    plain = TriangleMultiplication(c_pair=8)
+    divided = TriangleMultiplication(c_pair=8, divide_by_length=True)
+    divided.load_state_dict(plain.state_dict())
+    pair, mask = 1e-3 * torch.randn(6, 6, 8), torch.ones(6, 6)
+    plain.center_norm.eps = plain.center_norm.eps * 36
+    torch.testing.assert_close(
+        triangle_residual(divided, pair, mask), triangle_residual(plain, pair, mask)
+    )
+    assert divided.center_norm.eps == 1e-5

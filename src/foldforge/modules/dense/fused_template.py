@@ -14,6 +14,8 @@ spec, never in this forward.
 
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -84,7 +86,36 @@ def boltz2_template_features(
     )
 
 
-_FEATURES = {"boltz2": (boltz2_template_features, 109)}
+def rf3_template_features(
+    aatype: torch.Tensor,
+    positions: torch.Tensor,
+    mask: torch.Tensor,
+    visible: torch.Tensor,
+) -> torch.Tensor:
+    """66 features: CA distogram 64 (1 to 20 A), has-condition, joint noise level.
+
+    An exact template has noise scale zero, so its noise level is the constant
+    ``(log(1e-4 / 16) + 1.2) / 1.5``. The condition mask gates every channel.
+    """
+    _, ca, _, _ = _backbone(aatype, positions, mask)
+    group = protein_data_processing.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX.to(aatype.device)
+    ca_index = group[aatype.to(torch.int64)][:, 0, 1].to(torch.int64)
+    ca_mask = torch.gather(mask, 1, ca_index[:, None])[:, 0].float()
+    distance = ((ca[:, None] - ca[None]).square().sum(-1) + _EPS).sqrt()
+    distance = torch.nan_to_num(distance, nan=1e9)
+    edges = torch.cat([torch.arange(1.0, 4.0, 0.1), torch.arange(4.0, 20.5, 0.5)]).to(
+        distance.device
+    )
+    distogram = F.one_hot((distance[..., None] > edges).sum(-1), 64).float()
+    condition = (ca_mask[:, None] * ca_mask[None] * visible.float())[..., None]
+    noise = torch.full_like(condition, (math.log(1e-4 / 16.0) + 1.2) / 1.5)
+    return torch.cat([distogram, condition, noise], dim=-1) * condition
+
+
+_FEATURES = {
+    "boltz2": (boltz2_template_features, 109),
+    "rf3": (rf3_template_features, 66),
+}
 
 
 class FusedTemplateEmbedding(nn.Module):
@@ -125,6 +156,10 @@ class FusedTemplateEmbedding(nn.Module):
         dtype = query_embedding.dtype
         count = templates.aatype.shape[0]
         query = self.z_proj(self.z_norm(query_embedding))
+        if self.spec.template == "rf3":
+            return self._single_pass(
+                query, templates, padding_mask_2d, multichain_mask_2d
+            )
         total = torch.zeros_like(query)
         present = query.new_zeros(())
         for index in range(count):
@@ -158,3 +193,35 @@ class FusedTemplateEmbedding(nn.Module):
             present = present + 1
         mean = total / present.clamp_min(1.0)
         return self.u_proj(torch.relu(mean))
+
+    def _single_pass(
+        self,
+        query: torch.Tensor,
+        templates: features.Templates,
+        padding_mask_2d: torch.Tensor,
+        multichain_mask_2d: torch.Tensor,
+    ) -> torch.Tensor:
+        """One pass on the MEAN template feature, run even with no template.
+
+        The vendor has no per-template loop and no gating: the normed query pair
+        alone drives the stack when nothing is supplied, so the term is live on
+        every recycle. No outer residual around the stack.
+        """
+        feature = query.new_zeros(*query.shape[:2], self.a_proj.in_features)
+        present = 0
+        count = templates.aatype.shape[0] if self.spec.use_input_templates else 0
+        for index in range(count):
+            template = templates[index]
+            if not bool(template.atom_mask.any()):
+                continue
+            feature = feature + self.build(
+                template.aatype,
+                template.atom_positions.float(),
+                template.atom_mask.float(),
+                multichain_mask_2d,
+            ).to(query.dtype)
+            present += 1
+        value = query + self.a_proj(feature / max(present, 1))
+        for block in self.tmpl_pairformer:
+            value = block(value, padding_mask_2d)
+        return self.u_proj(torch.relu(self.v_norm(value)))

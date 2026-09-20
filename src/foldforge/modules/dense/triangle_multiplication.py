@@ -22,10 +22,18 @@ from foldforge.modules import ops as fastnn
 class TriangleMultiplication(nn.Module):
     """Represent triangle multiplication."""
 
-    def __init__(self, c_pair: int = 128, _outgoing: bool = True) -> None:
+    def __init__(
+        self,
+        c_pair: int = 128,
+        _outgoing: bool = True,
+        divide_by_length: bool = False,
+    ) -> None:
         super().__init__()
 
         self.c_pair = c_pair
+        #: Read by the shared triangle update: the contraction is divided by the
+        #: sequence length before the centre norm.
+        self.divide_by_length = divide_by_length
         self.left_norm_input = fastnn.LayerNorm(self.c_pair)
         self.projection = nn.Linear(self.c_pair, 2 * self.c_pair, bias=False)
         self.gate = nn.Linear(self.c_pair, 2 * self.c_pair, bias=False)

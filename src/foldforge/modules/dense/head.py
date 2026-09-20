@@ -98,6 +98,28 @@ class DistogramHead(nn.Module):
         }
 
 
+def masked_global_norm(
+    x: torch.Tensor, mask: torch.Tensor, width: int | None = None
+) -> torch.Tensor:
+    """Normalise by the mean and variance over the REAL tokens and every feature.
+
+    A statistic that reduces over more than the feature axis is padding-sensitive;
+    the vendor never pads, so padding must not enter it. ``width`` is the vendor's
+    feature width where it exceeds ours: each missing all-zero column still adds
+    ``mean**2`` to the variance sum per real token.
+    """
+    value = x.float()
+    weight = mask.float()[..., None]
+    width = value.shape[-1] if width is None else width
+    count = (weight.sum() * width).clamp_min(1.0)
+    mean = (value * weight).sum() / count
+    missing = (width - value.shape[-1]) * mask.float().sum()
+    variance = (
+        ((value - mean).square() * weight).sum() + missing * mean.square()
+    ) / count
+    return ((value - mean) / (variance + 1e-5).sqrt()).to(x.dtype)
+
+
 class ConfidenceReembedding(nn.Module):
     """Rebuild single and pair from the normed trunk outputs before the confidence stack.
 
@@ -196,6 +218,9 @@ class ConfidenceHead(nn.Module):
         #: "boltz2": re-embedded inputs, no norm before any head, and separate
         #: intra- and inter-chain heads for the distance error and the PAE.
         self.split_heads = spec.confidence == "boltz2"
+        #: "rf3": trunk inputs normalised over the WHOLE tensor of real tokens, and
+        #: the predicted structure embedded as 40 CA-CA distance bins.
+        self.global_norm_inputs = spec.confidence == "rf3"
 
         self.dgram_features_config = template.DistogramFeaturesConfig()
 
@@ -219,7 +244,9 @@ class ConfidenceHead(nn.Module):
                 self.c_target_feat, self.c_pair, bias=False
             )
             self.distogram_feat_project = nn.Linear(
-                self.dgram_features_config.num_bins, self.c_pair, bias=False
+                40 if self.global_norm_inputs else self.dgram_features_config.num_bins,
+                self.c_pair,
+                bias=False,
             )
 
         self.confidence_pairformer = nn.ModuleList(
@@ -306,7 +333,16 @@ class ConfidenceHead(nn.Module):
             layout_axes=(-3, -2),
         )
 
-        dgram = template.dgram_from_positions(positions, self.dgram_features_config)
+        if self.global_norm_inputs:
+            # Token-centre (CA, dense atom 1) distances over 39 edges from 3.25 A.
+            ca = dense_atom_positions[:, 1, :]
+            distance = ((ca[:, None] - ca[None]).square().sum(-1) + 1e-10).sqrt()
+            edges = torch.arange(39, device=ca.device) * ((50.75 - 3.25) / 39.0) + 3.25
+            dgram = torch.nn.functional.one_hot(
+                (distance[..., None] > edges).sum(-1), 40
+            ).to(target_feat.dtype)
+        else:
+            dgram = template.dgram_from_positions(positions, self.dgram_features_config)
 
         dgram *= pair_mask[..., None]
 
@@ -314,7 +350,7 @@ class ConfidenceHead(nn.Module):
 
         return out
 
-    def forward(
+    def forward(  # noqa: PLR0915 - one head sequence per released variant
         self,
         dense_atom_positions: torch.Tensor,
         embeddings: dict[str, torch.Tensor],
@@ -345,6 +381,14 @@ class ConfidenceHead(nn.Module):
         pair_act = embeddings["pair"].clone().to(dtype=dtype)
         single_act = embeddings["single"].clone().to(dtype=dtype)
         target_feat = embeddings["target_feat"].clone().to(dtype=dtype)
+
+        if self.global_norm_inputs:
+            real = seq_mask.bool()
+            pair_act = masked_global_norm(pair_act, real[:, None] & real[None])
+            single_act = masked_global_norm(single_act, real)
+            # The vendor's input features are 449 wide; the two classes FoldForge's
+            # alphabet lacks are zero but still enter its mean and variance.
+            target_feat = masked_global_norm(target_feat, real, width=449)
 
         if self.split_heads:
             if batch is None:

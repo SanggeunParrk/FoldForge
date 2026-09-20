@@ -36,6 +36,7 @@ DEFAULT_FILES = {
     "openfold3": "openbind0.bin.zst",
     "openfold3-preview2": "openfold3.bin.zst",
     "opendde": "opendde.pt",
+    "rosettafold3": "rosettafold3.bin.zst",
 }
 
 #: Manifest of known models: ``{name: {path: ..., files: [...]}}``.

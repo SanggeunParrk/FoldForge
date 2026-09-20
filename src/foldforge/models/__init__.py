@@ -46,6 +46,12 @@ _REGISTRY = {
         "OpenFold3 preview-2 — AlQuraishi Lab; superseded by v0.5.0",
         "openfold3",
     ),
+    "rosettafold3": Entry(
+        "foldforge.models.architectures.af3.AlphaFold3",
+        "dense_atoms",
+        "RoseTTAFold3 — RosettaCommons foundry, BSD-3-Clause",
+        "rosettafold3",
+    ),
     "protenix": Entry(
         "foldforge.models.architectures.protenix.Protenix",
         "flat_atoms",

@@ -596,8 +596,14 @@ def build_outer_product_mean_params(outer_product_mean: ParameterModule) -> Para
         "layer_norm_input": build_layer_norm_params(
             l=outer_product_mean.layer_norm_input
         ),
-        "left_projection": build_linear_params(l=outer_product_mean.left_projection),
-        "right_projection": build_linear_params(l=outer_product_mean.right_projection),
+        "left_projection": build_linear_params(
+            l=outer_product_mean.left_projection,
+            use_bias=outer_product_mean.left_projection.bias is not None,
+        ),
+        "right_projection": build_linear_params(
+            l=outer_product_mean.right_projection,
+            use_bias=outer_product_mean.right_projection.bias is not None,
+        ),
         "output_w": Param(outer_product_mean.output_w),
         "output_b": Param(outer_product_mean.output_b),
     }
@@ -627,9 +633,24 @@ def build_grid_self_attention_params(pair_attention: ParameterModule) -> ParamTr
         ),
         "v_projection": build_linear_hma_params(l=pair_attention.v_projection),
         "gating_query": build_linear_params(
-            l=pair_attention.gating_query, already_transpose_weights=True
+            l=pair_attention.gating_query,
+            already_transpose_weights=True,
+            use_bias=pair_attention.gating_query.bias is not None,
         ),
-        "output_projection": build_linear_params(l=pair_attention.output_projection),
+        "output_projection": build_linear_params(
+            l=pair_attention.output_projection,
+            use_bias=pair_attention.output_projection.bias is not None,
+        ),
+    }
+
+
+def build_kq_norm_params(attention: ParameterModule) -> ParamTree:
+    """Map the query and key norms of a diffusion attention that has them."""
+    if not getattr(attention, "kq_norm", False):
+        return {}
+    return {
+        "query_layer_norm": build_layer_norm_params(l=attention.query_layer_norm),
+        "key_layer_norm": build_layer_norm_params(l=attention.key_layer_norm),
     }
 
 
@@ -644,6 +665,7 @@ def build_self_attention_params(
         "k_projection": build_linear_hma_params(l=self_attention.k_projection),
         "v_projection": build_linear_hma_params(l=self_attention.v_projection),
         "gating_query": build_linear_params(l=self_attention.gating_query),
+        **build_kq_norm_params(self_attention),
         "transition2": build_linear_params(
             l=self_attention.adaptive_zero_init.transition2
         ),
@@ -678,6 +700,7 @@ def build_cross_attention_params(cross_attention: ParameterModule) -> ParamTree:
         "k_projection": build_linear_hma_params(l=cross_attention.k_projection),
         "v_projection": build_linear_hma_params(l=cross_attention.v_projection),
         "gating_query": build_linear_params(l=cross_attention.gating_query),
+        **build_kq_norm_params(cross_attention),
         **build_ada_ln_zero_params(
             ada_ln_zero=cross_attention.adaptive_zero_init, use_single_cond=True
         ),
@@ -778,6 +801,21 @@ def build_diffusion_cross_att_transformer_params(
         ]
     )
 
+    if getattr(transformer, "per_block_pair", False):
+        stack = "__layer_stack_no_per_layer/"
+        return {
+            stack + "pair_input_layer_norm": stacked(
+                [
+                    build_layer_norm_params(l=l, use_bias=False)
+                    for l in transformer.pair_input_layer_norm
+                ]
+            ),
+            stack + "pair_logits_projection": stacked(
+                [build_linear_params(l=l) for l in transformer.pair_logits_projection]
+            ),
+            **cat_params(cross_attention_params, stack + prefix),
+            **cat_params(transistion_params, f"{stack}{prefix}ffw_"),
+        }
     return {
         "pair_input_layer_norm": build_layer_norm_params(
             l=transformer.pair_input_layer_norm, use_bias=False
@@ -837,6 +875,12 @@ def build_atom_cross_att_encoder_params(
 
     if hasattr(encoder, "embed_atom_features_bias"):
         d["embed_atom_features_bias"] = Param(encoder.embed_atom_features_bias)
+    if hasattr(encoder, "conformer_embedding_bias"):
+        d["conformer_embedding_bias"] = Param(encoder.conformer_embedding_bias)
+    if hasattr(encoder, "atom_chiral_to_features"):
+        d["atom_chiral_to_features"] = build_linear_params(
+            l=encoder.atom_chiral_to_features
+        )
 
     if with_token_atoms_act is True:
         d.update(

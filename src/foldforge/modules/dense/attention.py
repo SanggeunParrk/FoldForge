@@ -50,8 +50,12 @@ class GridSelfAttention(nn.Module):
         self.k_projection = nn.Linear(self.c_pair, hidden, bias=False)
         self.v_projection = nn.Linear(self.c_pair, hidden, bias=False)
 
-        self.gating_query = nn.Linear(self.c_pair, hidden, bias=False)
-        self.output_projection = nn.Linear(hidden, self.c_pair, bias=False)
+        self.gating_query = nn.Linear(
+            self.c_pair, hidden, bias=spec.triangle_attention_bias
+        )
+        self.output_projection = nn.Linear(
+            hidden, self.c_pair, bias=spec.triangle_attention_bias
+        )
 
     def _attention(self, pair: torch.Tensor, mask: torch.Tensor, bias: torch.Tensor):
         q = self.q_projection(pair)

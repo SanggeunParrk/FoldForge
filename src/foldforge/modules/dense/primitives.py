@@ -48,6 +48,7 @@ class OuterProductMean(nn.Module):
         num_output_channel: int = 128,
         num_outer_channel: int = 32,
         bias_after_norm: bool = False,
+        projection_bias: bool = False,
     ) -> None:
         super().__init__()
 
@@ -59,9 +60,11 @@ class OuterProductMean(nn.Module):
         self.epsilon = 1e-3
 
         self.layer_norm_input = fastnn.LayerNorm(self.c_msa)
-        self.left_projection = nn.Linear(self.c_msa, self.num_outer_channel, bias=False)
+        self.left_projection = nn.Linear(
+            self.c_msa, self.num_outer_channel, bias=projection_bias
+        )
         self.right_projection = nn.Linear(
-            self.c_msa, self.num_outer_channel, bias=False
+            self.c_msa, self.num_outer_channel, bias=projection_bias
         )
 
         self.output_w = nn.Parameter(

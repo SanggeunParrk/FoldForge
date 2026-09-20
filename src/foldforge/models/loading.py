@@ -7,6 +7,9 @@ key conversion. Neither of them chooses runtime precision or installs backends.
 
 from __future__ import annotations
 
+import dataclasses
+import json
+import os
 from importlib import import_module
 from pathlib import Path
 from typing import Any
@@ -88,6 +91,12 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         from foldforge.modules.dense.spec import SPECS
 
         dense_spec = SPECS[spec.family or "alphafold3"]
+        override = os.environ.get("FOLDFORGE_DENSE_SPEC_OVERRIDE")
+        if override:
+            # Porting aid: flip forward conventions of a family to price each one.
+            # Fields that change a parameter shape make the strict load fail loudly.
+            dense_spec = dataclasses.replace(dense_spec, **json.loads(override))
+            report["dense_spec_override"] = override
         model = architecture(
             num_recycles=recycles,
             num_samples=samples,

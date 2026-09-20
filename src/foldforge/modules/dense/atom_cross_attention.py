@@ -40,7 +40,7 @@ class AtomCrossAttEncoderOutput:
 class AtomCrossAttEncoder(nn.Module):
     """Represent atom cross att encoder."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0915 - one checkpoint parameter layout
         self,
         per_token_channels: int = 384,
         per_atom_channels: int = 128,
@@ -86,6 +86,12 @@ class AtomCrossAttEncoder(nn.Module):
         self.embed_ref_atom_name = nn.Linear(
             self.c_atom_name, self.per_atom_channels, bias=False
         )
+        if spec.conformer_embedding_bias:
+            # The vendor's conformer-embedding MLP has biases and a final norm, so an
+            # all-zero conformer input still emits this fixed vector for every atom.
+            self.conformer_embedding_bias = nn.Parameter(
+                torch.zeros(self.per_atom_channels)
+            )
         if spec.atom_features_bias:
             # The vendor embeds the concatenated atom features with ONE biased
             # Linear; AF3's per-feature projections are bias-free.
@@ -160,6 +166,13 @@ class AtomCrossAttEncoder(nn.Module):
             self.atom_positions_to_features = nn.Linear(
                 self.c_positions, self.per_atom_channels, bias=False
             )
+            if spec.atom_chiral_features:
+                # Embeds the gradient of the chiral-centre dihedral error w.r.t. the
+                # noisy coordinates. FoldForge featurises no chiral centres yet, so
+                # the term is zero; the reference measured no effect on any outcome.
+                self.atom_chiral_to_features = nn.Linear(
+                    self.c_positions, self.per_atom_channels, bias=False
+                )
 
         if self.with_trunk_pair_cond is True:
             self.c_trunk_pair_cond = trunk_pair_channels
@@ -208,6 +221,8 @@ class AtomCrossAttEncoder(nn.Module):
 
         if self.spec.atom_features_bias:
             act = act + self.embed_atom_features_bias
+        if self.spec.conformer_embedding_bias:
+            act = act + self.conformer_embedding_bias
         act *= batch.ref_structure.mask[:, :, None]
 
         # Compute pair conditioning

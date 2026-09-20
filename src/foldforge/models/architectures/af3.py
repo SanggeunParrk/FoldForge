@@ -368,7 +368,9 @@ class AlphaFold3(nn.Module):
             self.input_embedder = SummedInputEmbedder(spec.seq_channel)
 
         self.distogram_head = DistogramHead(
-            c_pair=spec.pair_channel, bias=spec.distogram_bias
+            c_pair=spec.pair_channel,
+            num_bins=spec.distogram_bins,
+            bias=spec.distogram_bias,
         )
         self.confidence_head = ConfidenceHead(
             c_single=spec.seq_channel,

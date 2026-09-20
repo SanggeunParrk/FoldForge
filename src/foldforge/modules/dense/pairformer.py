@@ -63,10 +63,14 @@ class PairformerBlock(nn.Module):
         self.num_intermediate_factor = num_intermediate_factor
 
         self.triangle_multiplication_outgoing = TriangleMultiplication(
-            c_pair=c_pair, _outgoing=True
+            c_pair=c_pair,
+            _outgoing=True,
+            divide_by_length=spec.triangle_mul_divide_by_length,
         )
         self.triangle_multiplication_incoming = TriangleMultiplication(
-            c_pair=c_pair, _outgoing=False
+            c_pair=c_pair,
+            _outgoing=False,
+            divide_by_length=spec.triangle_mul_divide_by_length,
         )
         self.pair_attention1 = GridSelfAttention(
             c_pair=c_pair,
@@ -157,6 +161,7 @@ class EvoformerBlock(nn.Module):
             c_msa=c_msa,
             num_output_channel=c_pair,
             bias_after_norm=spec.opm_bias_after_norm,
+            projection_bias=spec.opm_projection_bias,
         )
         self.msa_attention1 = MSAAttention(
             c_msa=c_msa, c_pair=c_pair, value_dim=spec.msa_value_dim
@@ -164,10 +169,14 @@ class EvoformerBlock(nn.Module):
         self.msa_transition = Transition(c_x=c_msa)
 
         self.triangle_multiplication_outgoing = TriangleMultiplication(
-            c_pair=c_pair, _outgoing=True
+            c_pair=c_pair,
+            _outgoing=True,
+            divide_by_length=spec.triangle_mul_divide_by_length,
         )
         self.triangle_multiplication_incoming = TriangleMultiplication(
-            c_pair=c_pair, _outgoing=False
+            c_pair=c_pair,
+            _outgoing=False,
+            divide_by_length=spec.triangle_mul_divide_by_length,
         )
         self.pair_attention1 = GridSelfAttention(
             c_pair=c_pair, num_head=n_heads_pair, transpose=False, spec=spec

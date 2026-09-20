@@ -18,6 +18,7 @@ from foldforge.data.constants import atom_types
 from foldforge.data.features import dense_batch as feat_batch
 from foldforge.modules import ops as fastnn
 from foldforge.modules.dense import atom_layout, pairformer, template
+from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 
 _CONTACT_THRESHOLD = 8.0
 _CONTACT_EPSILON = 1e-3
@@ -111,7 +112,7 @@ class ConfidenceHead(nn.Module):
         c_pair: int = 128,
         c_target_feat: int = 447,
         n_pairformer_layers: int = 4,
-        n_heads_pair: int = 4,
+        spec: DenseSpec = ALPHAFOLD3,
     ) -> None:
         super().__init__()
 
@@ -146,8 +147,9 @@ class ConfidenceHead(nn.Module):
                 pairformer.PairformerBlock(
                     c_single=self.c_single,
                     c_pair=self.c_pair,
-                    n_heads_pair=n_heads_pair,
+                    n_heads_pair=spec.pair_heads,
                     with_single=True,
+                    spec=spec,
                 )
                 for _ in range(n_pairformer_layers)
             ]

@@ -85,7 +85,7 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
 
     if spec.layout == "dense_atoms":
         from foldforge.models.checkpoints.haiku import import_jax_weights_
-        from foldforge.models.config.dense import SPECS
+        from foldforge.modules.dense.spec import SPECS
 
         dense_spec = SPECS[spec.family or "alphafold3"]
         model = architecture(

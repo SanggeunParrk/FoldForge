@@ -21,6 +21,7 @@ from foldforge.data.features import dense_protein as protein_data_processing
 from foldforge.eval import dense_confidence as scoring
 from foldforge.modules import ops as fastnn
 from foldforge.modules.dense import pairformer
+from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 from foldforge.utils import dense_geometry as geometry
 
 
@@ -123,19 +124,13 @@ def make_backbone_rigid(
 class TemplateEmbedding(nn.Module):
     """Embed a set of templates."""
 
-    def __init__(
-        self, pair_channel: int = 128, num_channels: int = 64, n_heads_pair: int = 4
-    ) -> None:
+    def __init__(self, spec: DenseSpec = ALPHAFOLD3) -> None:
         super().__init__()
 
-        self.pair_channel = pair_channel
-        self.num_channels = num_channels
+        self.pair_channel = spec.pair_channel
+        self.num_channels = spec.template_channel
 
-        self.single_template_embedding = SingleTemplateEmbedding(
-            num_channels=num_channels,
-            pair_channel=pair_channel,
-            n_heads_pair=n_heads_pair,
-        )
+        self.single_template_embedding = SingleTemplateEmbedding(spec)
 
         self.output_linear = nn.Linear(self.num_channels, self.pair_channel, bias=False)
 
@@ -162,12 +157,11 @@ class TemplateEmbedding(nn.Module):
 class SingleTemplateEmbedding(nn.Module):
     """Embed a single template."""
 
-    def __init__(
-        self, num_channels: int = 64, pair_channel: int = 128, n_heads_pair: int = 4
-    ) -> None:
+    def __init__(self, spec: DenseSpec = ALPHAFOLD3) -> None:
         super().__init__()
 
-        self.num_channels = num_channels
+        self.num_channels = spec.template_channel
+        pair_channel = spec.pair_channel
         self.template_stack_num_layer = 2
 
         self.dgram_features_config = DistogramFeaturesConfig()
@@ -189,8 +183,9 @@ class SingleTemplateEmbedding(nn.Module):
             [
                 pairformer.PairformerBlock(
                     c_pair=self.num_channels,
-                    n_heads_pair=n_heads_pair,
+                    n_heads_pair=spec.pair_heads,
                     num_intermediate_factor=2,
+                    spec=spec,
                     with_single=False,
                 )
                 for _ in range(self.template_stack_num_layer)

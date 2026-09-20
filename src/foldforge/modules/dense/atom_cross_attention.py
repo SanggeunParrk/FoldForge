@@ -21,6 +21,7 @@ from foldforge.data.features import dense_batch as feat_batch
 from foldforge.modules import ops as fastnn
 from foldforge.modules.dense import atom_layout, utils
 from foldforge.modules.dense.diffusion_transformer import DiffusionCrossAttTransformer
+from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 
 
 @dataclasses.dataclass(frozen=True)
@@ -49,9 +50,11 @@ class AtomCrossAttEncoder(nn.Module):
         with_trunk_pair_cond: bool = False,
         trunk_pair_channels: int = 128,
         trunk_single_channels: int = 384,
+        spec: DenseSpec = ALPHAFOLD3,
     ) -> None:
         super().__init__()
 
+        self.key_masked_offsets = spec.key_masked_offsets
         self.with_token_atoms_act = with_token_atoms_act
         self.with_trunk_single_cond = with_trunk_single_cond
         self.with_trunk_pair_cond = with_trunk_pair_cond
@@ -364,6 +367,8 @@ class AtomCrossAttEncoder(nn.Module):
         offsets_valid = (
             queries_ref_space_uid[:, :, None] == keys_ref_space_uid[:, None, :]
         )
+        if self.key_masked_offsets:
+            offsets_valid = offsets_valid & keys_mask[:, None, :].to(torch.bool)
         offsets = queries_ref_pos[:, :, None, :] - keys_ref_pos[:, None, :, :]
 
         pair_act += self.embed_pair_offsets_1(offsets) * offsets_valid[:, :, :, None]

@@ -19,6 +19,7 @@ from foldforge.modules.dense.diffusion_transformer import (
     DiffusionTransformer,
     DiffusionTransition,
 )
+from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 
 # Copyright 2024 xfold authors
 # Copyright 2024 DeepMind Technologies Limited
@@ -57,13 +58,14 @@ class FourierEmbeddings(nn.Module):
 class DiffusionHead(nn.Module):
     """Represent diffusion head."""
 
-    def __init__(
-        self,
-        pair_channel: int = 128,
-        seq_channel: int = 384,
-        trunk_pair_channel: int = 128,
-    ) -> None:
+    def __init__(self, spec: DenseSpec = ALPHAFOLD3) -> None:
         super().__init__()
+
+        pair_channel = spec.diffusion_pair_channel
+        seq_channel = spec.seq_channel
+        trunk_pair_channel = spec.pair_channel
+        padded_single_cond = spec.padded_single_cond
+        self.padded_single_cond = padded_single_cond
 
         self.c_act = 768
         self.pair_channel = pair_channel
@@ -86,7 +88,7 @@ class DiffusionHead(nn.Module):
         )
 
         # Trunk single plus the 447 target features.
-        self.c_single_cond_initial = seq_channel + 447
+        self.c_single_cond_initial = seq_channel + 447 + 2 * padded_single_cond
         self.single_cond_initial_norm = fastnn.LayerNorm(
             self.c_single_cond_initial, bias=False
         )
@@ -116,6 +118,7 @@ class DiffusionHead(nn.Module):
             with_trunk_single_cond=True,
             trunk_pair_channels=pair_channel,
             trunk_single_channels=seq_channel,
+            spec=spec,
         )
 
         self.single_cond_embedding_norm = fastnn.LayerNorm(self.seq_channel, bias=False)
@@ -124,7 +127,7 @@ class DiffusionHead(nn.Module):
         )
 
         self.transformer = DiffusionTransformer(
-            c_single_cond=seq_channel, c_pair_cond=pair_channel
+            c_single_cond=seq_channel, c_pair_cond=pair_channel, spec=spec
         )
 
         self.output_norm = fastnn.LayerNorm(self.c_act, bias=False)
@@ -161,6 +164,20 @@ class DiffusionHead(nn.Module):
 
         target_feat = embeddings["target_feat"]
         features_1d = torch.concatenate([single_embedding, target_feat], dim=-1)
+        if self.padded_single_cond:
+            # One zero column after each 31-class block (restype, then profile).
+            pad = torch.zeros_like(features_1d[..., :1])
+            restype_end = single_embedding.shape[-1] + 31
+            features_1d = torch.concatenate(
+                [
+                    features_1d[..., :restype_end],
+                    pad,
+                    features_1d[..., restype_end : restype_end + 31],
+                    pad,
+                    features_1d[..., restype_end + 31 :],
+                ],
+                dim=-1,
+            )
         single_cond = layernorm_projection(
             self.single_cond_initial_norm,
             self.single_cond_initial_projection,

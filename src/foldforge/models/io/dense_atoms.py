@@ -76,8 +76,10 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
     runtime.bind(model)
 
     print("Loaded", model.foldforge_load_report, flush=True)  # noqa: T201
+    from foldforge.data.features import dense_conventions
+
     for seed, raw_example in zip(fold_input.rng_seeds, examples, strict=True):
-        example = raw_example
+        example = dense_conventions.apply(raw_example, model.spec)
         bucket_shape = None
         if args.execution.bucketing:
             example, bucket_shape = bucket_af3(example)

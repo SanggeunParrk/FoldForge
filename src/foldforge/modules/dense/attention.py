@@ -21,19 +21,25 @@ from team_gm.modules.checkpoints.backend_attention import (
 )
 
 from foldforge.modules import ops as fastnn
+from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 
 
 class GridSelfAttention(nn.Module):
     """Represent grid self attention."""
 
     def __init__(
-        self, c_pair: int = 128, num_head: int = 4, transpose: bool = False
+        self,
+        c_pair: int = 128,
+        num_head: int = 4,
+        transpose: bool = False,
+        spec: DenseSpec = ALPHAFOLD3,
     ) -> None:
         super().__init__()
         self.c_pair = c_pair
         self.num_head = num_head
         self.qkv_dim = self.c_pair // self.num_head
         self.transpose = transpose
+        self.transposed_bias = transpose and spec.transposed_column_pair_bias
 
         self.act_norm = fastnn.LayerNorm(self.c_pair)
         self.pair_bias_projection = nn.Linear(self.c_pair, self.num_head, bias=False)
@@ -95,6 +101,8 @@ class GridSelfAttention(nn.Module):
         """
         pair = self.act_norm(pair)
         nonbatched_bias = self.pair_bias_projection(pair).permute(2, 0, 1)
+        if self.transposed_bias:
+            nonbatched_bias = nonbatched_bias.transpose(-1, -2)
 
         if self.transpose:
             pair = pair.permute(1, 0, 2)

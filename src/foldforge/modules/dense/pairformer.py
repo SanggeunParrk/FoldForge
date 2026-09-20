@@ -23,6 +23,7 @@ from foldforge.modules import ops as fastnn
 from foldforge.modules.dense.attention import GridSelfAttention, MSAAttention
 from foldforge.modules.dense.diffusion_transformer import SelfAttention
 from foldforge.modules.dense.primitives import OuterProductMean, Transition
+from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
 
 
@@ -41,6 +42,7 @@ class PairformerBlock(nn.Module):
         n_heads_pair: int = 4,
         num_intermediate_factor: int = 4,
         with_single: bool = True,
+        spec: DenseSpec = ALPHAFOLD3,
     ) -> None:
         """Args:
 
@@ -66,10 +68,10 @@ class PairformerBlock(nn.Module):
             c_pair=c_pair, _outgoing=False
         )
         self.pair_attention1 = GridSelfAttention(
-            c_pair=c_pair, num_head=n_heads_pair, transpose=False
+            c_pair=c_pair, num_head=n_heads_pair, transpose=False, spec=spec
         )
         self.pair_attention2 = GridSelfAttention(
-            c_pair=c_pair, num_head=n_heads_pair, transpose=True
+            c_pair=c_pair, num_head=n_heads_pair, transpose=True, spec=spec
         )
         self.pair_transition = Transition(
             c_x=c_pair, num_intermediate_factor=self.num_intermediate_factor
@@ -131,7 +133,11 @@ class EvoformerBlock(nn.Module):
     """Represent evoformer block."""
 
     def __init__(
-        self, c_msa: int = 64, c_pair: int = 128, n_heads_pair: int = 4
+        self,
+        c_msa: int = 64,
+        c_pair: int = 128,
+        n_heads_pair: int = 4,
+        spec: DenseSpec = ALPHAFOLD3,
     ) -> None:
         super().__init__()
         self.msa_update_config = MSAUpdateConfig()
@@ -149,10 +155,10 @@ class EvoformerBlock(nn.Module):
             c_pair=c_pair, _outgoing=False
         )
         self.pair_attention1 = GridSelfAttention(
-            c_pair=c_pair, num_head=n_heads_pair, transpose=False
+            c_pair=c_pair, num_head=n_heads_pair, transpose=False, spec=spec
         )
         self.pair_attention2 = GridSelfAttention(
-            c_pair=c_pair, num_head=n_heads_pair, transpose=True
+            c_pair=c_pair, num_head=n_heads_pair, transpose=True, spec=spec
         )
         self.pair_transition = Transition(c_x=c_pair)
 

@@ -721,6 +721,21 @@ def build_diffusion_transformer_params(transformer: ParameterModule) -> ParamTre
         ]
     )
 
+    if getattr(transformer, "per_block_pair", False):
+        stack = "__layer_stack_no_per_layer/__layer_stack_no_per_layer/"
+        return {
+            stack + "pair_input_layer_norm": stacked(
+                [
+                    build_layer_norm_params(l=l, use_bias=False)
+                    for l in transformer.pair_input_layer_norm
+                ]
+            ),
+            stack + "pair_logits_projection": stacked(
+                [build_linear_params(l=l) for l in transformer.pair_logits_projection]
+            ),
+            **cat_params(self_attention_params, stack + "transformer"),
+            **cat_params(transistion_params, stack + "transformerffw_"),
+        }
     return {
         "pair_input_layer_norm": build_layer_norm_params(
             l=transformer.pair_input_layer_norm, use_bias=False
@@ -1153,7 +1168,7 @@ def import_jax_weights_(
     flat = _process_translations_dict(d=translations, _key_prefix="diffuser/")
 
     missing = sorted(set(flat) - set(params))
-    extra = sorted(set(params) - set(flat) - {"__meta__/__identifier__"})
+    extra = sorted(name for name in set(params) - set(flat) if "__meta__/" not in name)
     if missing or extra:
         msg = f"AF3 checkpoint mapping mismatch: missing={missing}, extra={extra}"
         raise ValueError(msg)

@@ -27,6 +27,7 @@ from team_gm.modules.checkpoints.backend_attention import (
 
 from foldforge.modules import ops as fastnn
 from foldforge.modules.dense import atom_layout
+from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 
 
 class AdaptiveLayerNorm(nn.Module):
@@ -253,9 +254,11 @@ class DiffusionTransformer(nn.Module):
         num_head: int = 16,
         num_blocks: int = 24,
         super_block_size: int = 4,
+        spec: DenseSpec = ALPHAFOLD3,
     ) -> None:
 
         super().__init__()
+        self.per_block_pair = spec.per_block_pair_layer_norm
 
         self.c_act = c_act
         self.c_single_cond = c_single_cond
@@ -266,15 +269,32 @@ class DiffusionTransformer(nn.Module):
 
         self.num_super_blocks = self.num_blocks // self.super_block_size
 
-        self.pair_input_layer_norm = fastnn.LayerNorm(self.c_pair_cond)
-        self.pair_logits_projection = nn.ModuleList(
-            [
-                nn.Linear(
-                    self.c_pair_cond, self.super_block_size * self.num_head, bias=False
-                )
-                for _ in range(self.num_super_blocks)
-            ]
-        )
+        if self.per_block_pair:
+            # One pair norm and one projection per block, as the vendor trained it.
+            self.pair_input_layer_norm = nn.ModuleList(
+                [
+                    fastnn.LayerNorm(self.c_pair_cond, bias=False)
+                    for _ in range(self.num_blocks)
+                ]
+            )
+            self.pair_logits_projection = nn.ModuleList(
+                [
+                    nn.Linear(self.c_pair_cond, self.num_head, bias=False)
+                    for _ in range(self.num_blocks)
+                ]
+            )
+        else:
+            self.pair_input_layer_norm = fastnn.LayerNorm(self.c_pair_cond)
+            self.pair_logits_projection = nn.ModuleList(
+                [
+                    nn.Linear(
+                        self.c_pair_cond,
+                        self.super_block_size * self.num_head,
+                        bias=False,
+                    )
+                    for _ in range(self.num_super_blocks)
+                ]
+            )
 
         self.self_attention = nn.ModuleList(
             [
@@ -299,6 +319,21 @@ class DiffusionTransformer(nn.Module):
         pair_cond: torch.Tensor,
     ) -> torch.Tensor:
         """Compute the module output."""
+        if self.per_block_pair:
+            for idx in range(self.num_blocks):
+                pair_logits = self.pair_logits_projection[idx](
+                    self.pair_input_layer_norm[idx](pair_cond)
+                ).permute(2, 0, 1)
+                act = conditioned_residual(
+                    act,
+                    single_cond,
+                    attention=lambda value, idx=idx, pair_logits=pair_logits: (
+                        self.self_attention[idx](value, mask, pair_logits, single_cond)
+                    ),
+                    transition=self.transition_block[idx],
+                )
+            return act
+
         pair_act = self.pair_input_layer_norm(pair_cond)
 
         for super_block_i in range(self.num_super_blocks):

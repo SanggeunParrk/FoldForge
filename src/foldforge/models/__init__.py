@@ -34,6 +34,18 @@ _REGISTRY = {
         "IntelliFold-v2 — IntelliGen-AI; the AF3 graph at wider channels",
         "intellifold2",
     ),
+    "openfold3": Entry(
+        "foldforge.models.architectures.af3.AlphaFold3",
+        "dense_atoms",
+        "OpenFold3 v0.5.0 OpenBind — AlQuraishi Lab",
+        "openbind0",
+    ),
+    "openfold3-preview2": Entry(
+        "foldforge.models.architectures.af3.AlphaFold3",
+        "dense_atoms",
+        "OpenFold3 preview-2 — AlQuraishi Lab; superseded by v0.5.0",
+        "openfold3",
+    ),
     "protenix": Entry(
         "foldforge.models.architectures.protenix.Protenix",
         "flat_atoms",

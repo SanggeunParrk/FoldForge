@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from foldforge.data.inputs.validation import validate_inference_seed
+from foldforge.models import is_dense, registered_models
 from foldforge.models.config import ExecutionConfig, OutputConfig
 from foldforge.models.io.paths import run_directory
 from foldforge.models.msa_policy import PREPARED_ROWS
@@ -54,7 +55,7 @@ class Request:
         for name in ("trunk_seed", "diffusion_seed"):
             object.__setattr__(self, name, validate_inference_seed(getattr(self, name)))
         object.__setattr__(self, "out", run_directory(self.out, model=self.model))
-        if self.model not in {"af3", "esmfold2", "protenix", "opendde"}:
+        if self.model not in registered_models():
             msg = f"Unsupported checkpoint adapter: {self.model}"
             raise ValueError(msg)
         if self.backend not in {"miniworld", "pytorch", "cuequivariance"}:
@@ -63,8 +64,8 @@ class Request:
         if self.precision not in {"bf16", "fp32", "af3_default", "model_default"}:
             msg = f"Unsupported precision: {self.precision}"
             raise ValueError(msg)
-        if self.precision == "af3_default" and self.model != "af3":
-            msg = "af3_default precision applies only to AF3"
+        if self.precision == "af3_default" and not is_dense(self.model):
+            msg = "af3_default precision applies only to dense AF3-graph families"
             raise ValueError(msg)
         if any(
             v is not None and v < 1

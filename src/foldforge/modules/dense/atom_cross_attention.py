@@ -47,6 +47,8 @@ class AtomCrossAttEncoder(nn.Module):
         with_token_atoms_act: bool = False,
         with_trunk_single_cond: bool = False,
         with_trunk_pair_cond: bool = False,
+        trunk_pair_channels: int = 128,
+        trunk_single_channels: int = 384,
     ) -> None:
         super().__init__()
 
@@ -135,7 +137,7 @@ class AtomCrossAttEncoder(nn.Module):
         )
 
         if self.with_trunk_single_cond is True:
-            self.c_trunk_single_cond = 384
+            self.c_trunk_single_cond = trunk_single_channels
             self.lnorm_trunk_single_cond = fastnn.LayerNorm(
                 self.c_trunk_single_cond, bias=False
             )
@@ -149,7 +151,7 @@ class AtomCrossAttEncoder(nn.Module):
             )
 
         if self.with_trunk_pair_cond is True:
-            self.c_trunk_pair_cond = 128
+            self.c_trunk_pair_cond = trunk_pair_channels
             self.lnorm_trunk_pair_cond = fastnn.LayerNorm(
                 self.c_trunk_pair_cond, bias=False
             )

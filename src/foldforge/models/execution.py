@@ -15,6 +15,7 @@ from team_gm.modules.execution import (
 )
 from torch._dynamo.utils import counters
 
+from foldforge.models import is_dense
 from foldforge.utils.seed import RNGState
 
 if TYPE_CHECKING:
@@ -63,7 +64,7 @@ class Execution:
                 model.get_submodule("structure_head.diffusion_module"),
                 "denoise",
             )
-        elif family == "af3":
+        elif is_dense(family):
             owner, method = model.get_submodule("diffusion_head"), "forward"
         else:
             owner, method = model.get_submodule("diffusion_module"), "forward"

@@ -8,6 +8,7 @@ import argparse
 from pathlib import Path
 
 from foldforge.data.ccd import default_path
+from foldforge.models import is_dense
 from foldforge.models.config import ExecutionConfig, OutputConfig
 from foldforge.models.io.request import Request
 
@@ -85,7 +86,7 @@ def parse(model: str, argv: list[str] | None = None) -> Request:  # noqa: PLR091
         parser.add_argument(
             "--precision",
             choices=("bf16", "fp32", "af3_default", "model_default")
-            if model == "af3"
+            if is_dense(model)
             else ("bf16", "fp32"),
             default="bf16",
         )

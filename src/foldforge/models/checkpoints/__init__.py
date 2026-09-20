@@ -27,6 +27,14 @@ ROOT = Path(__file__).resolve().parents[4]
 #: Per-model directories live under here unless the env var overrides it.
 DEFAULT_DIR = ROOT / "model_checkpoints"
 
+#: Default weight file inside each model's directory; Protenix names its file by
+#: variant and ESMFold2 is a directory, so neither is listed.
+DEFAULT_FILES = {
+    "af3": "af3.bin.zst",
+    "intellifold2": "intellifold2.bin.zst",
+    "opendde": "opendde.pt",
+}
+
 #: Manifest of known models: ``{name: {path: ..., files: [...]}}``.
 REGISTRY = DEFAULT_DIR / "registry.yaml"
 

@@ -15,7 +15,7 @@ import torch
 from team_gm.modules.checkpoints.layers import skip_random_init
 
 from foldforge.models import entry
-from foldforge.models.checkpoints import resolve
+from foldforge.models.checkpoints import DEFAULT_FILES, resolve
 from foldforge.models.config import VARIANTS, configuration
 from foldforge.models.msa_policy import RECORD, apply_esmfold2, apply_flat
 
@@ -43,8 +43,9 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     if backend not in {"miniworld", "pytorch", "cuequivariance"}:
         message = f"Unknown backend: {backend}"
         raise ValueError(message)
+    dense = entry(name).layout == "dense_atoms"
     if precision_policy == "model_default":
-        if name == "af3":
+        if dense:
             precision_policy = "af3_default"
             dtype = torch.bfloat16
         else:
@@ -53,8 +54,8 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     if precision_policy not in {None, "bf16", "fp32", "af3_default", "model_default"}:
         message = f"Unsupported precision policy: {precision_policy}"
         raise ValueError(message)
-    if precision_policy == "af3_default" and (name != "af3" or dtype != torch.bfloat16):
-        message = "af3_default requires AF3 with a BF16 trunk"
+    if precision_policy == "af3_default" and (not dense or dtype != torch.bfloat16):
+        message = "af3_default requires a dense AF3-graph family with a BF16 trunk"
         raise ValueError(message)
 
     spec = entry(name)
@@ -73,12 +74,9 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
             message = f"Unsupported Protenix variant {variant!r}; choose {VARIANTS}"
             raise ValueError(message)
     if checkpoint is None:
-        filename = {
-            "af3": "af3.bin.zst",
-            "opendde": "opendde.pt",
-            "protenix": f"{variant}.pt",
-            "esmfold2": None,
-        }[name]
+        filename = {**DEFAULT_FILES, "protenix": f"{variant}.pt", "esmfold2": None}[
+            name
+        ]
         checkpoint = resolve(name) if filename is None else resolve(name, filename)
     checkpoint = Path(checkpoint)
     package, _, symbol = spec.architecture.rpartition(".")
@@ -87,10 +85,16 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
 
     if spec.layout == "dense_atoms":
         from foldforge.models.checkpoints.haiku import import_jax_weights_
+        from foldforge.models.config.dense import SPECS
 
+        dense_spec = SPECS[spec.family or "alphafold3"]
         model = architecture(
-            num_recycles=recycles, num_samples=samples, diffusion_steps=steps
+            num_recycles=recycles,
+            num_samples=samples,
+            diffusion_steps=steps,
+            spec=dense_spec,
         )
+        report["family"] = dense_spec.family
         report.update(
             import_jax_weights_(model, checkpoint, preserve_dtype=True)
             if precision_policy == "af3_default"
@@ -146,6 +150,9 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         from team_gm.modules.checkpoints.conditioning import install_conditioning
         from team_gm.modules.checkpoints.pairformer import install_pairformers
 
+        if spec.layout == "dense_atoms":
+            source = model.get_submodule("diffusion_head.fourier_embeddings")
+            fourier_fp32 = (source.weight.float().clone(), source.bias.float().clone())
         if precision_policy == "af3_default":
             model.reference_precision = True
             # Configure shared wrappers in FP32, preserving every released FP32
@@ -158,11 +165,10 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         else:
             model = configure_model(model, backend, dtype, device)
         if spec.layout == "dense_atoms":
-            from foldforge.models.config.fourier import _BIAS, _WEIGHT
-
+            # Noise Fourier features stay FP32 whatever the parameter dtype.
             fourier = model.get_submodule("diffusion_head.fourier_embeddings")
-            fourier.weight = torch.tensor(_WEIGHT, device=device)
-            fourier.bias = torch.tensor(_BIAS, device=device)
+            fourier.weight = fourier_fp32[0].to(device)
+            fourier.bias = fourier_fp32[1].to(device)
         model = install_conditioning(install_pairformers(model))
     if dtype == torch.bfloat16 and precision_policy != "af3_default":
         from team_gm.modules.precision import NativeLinear

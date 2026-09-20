@@ -17,6 +17,7 @@ from team_gm.diffusion.augmentation import centre_random_augmentation
 from team_gm.diffusion.edm.sampling import EulerSampler
 from team_gm.diffusion.edm.training import sample_training
 
+from foldforge.models import is_dense
 from foldforge.utils.seed import seed_context
 
 if TYPE_CHECKING:
@@ -210,7 +211,7 @@ def bind_sampling_seed(model: torch.nn.Module, family: str, seed: int) -> None:
     """
     if family == "esmfold2":
         owner, method = model.get_submodule("structure_head"), "sample"
-    elif family == "af3":
+    elif is_dense(family):
         owner, method = model, "_sample_diffusion"
     else:
         owner, method = model, "sample_diffusion"

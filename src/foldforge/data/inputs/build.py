@@ -347,7 +347,9 @@ def write_adapter_input(
 ) -> None:
     """Persist the exact translated input for review and reproduction."""
     destination.parent.mkdir(parents=True, exist_ok=True)
-    payload = target.af3(seed) if model == "af3" else target.af_family()
+    from foldforge.models import is_dense
+
+    payload = target.af3(seed) if is_dense(model) else target.af_family()
     destination.write_text(json.dumps(payload, indent=2) + "\n")
 
 

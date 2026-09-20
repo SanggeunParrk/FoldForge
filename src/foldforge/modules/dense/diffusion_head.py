@@ -57,14 +57,20 @@ class FourierEmbeddings(nn.Module):
 class DiffusionHead(nn.Module):
     """Represent diffusion head."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        pair_channel: int = 128,
+        seq_channel: int = 384,
+        trunk_pair_channel: int = 128,
+    ) -> None:
         super().__init__()
 
         self.c_act = 768
-        self.pair_channel = 128
-        self.seq_channel = 384
+        self.pair_channel = pair_channel
+        self.seq_channel = seq_channel
 
-        self.c_pair_cond_initial = 267
+        # Trunk pair plus the 139 relative-position features.
+        self.c_pair_cond_initial = trunk_pair_channel + 139
         self.pair_cond_initial_norm = fastnn.LayerNorm(
             self.c_pair_cond_initial, bias=False
         )
@@ -79,7 +85,8 @@ class DiffusionHead(nn.Module):
             self.pair_channel, c_single_cond=None
         )
 
-        self.c_single_cond_initial = 831
+        # Trunk single plus the 447 target features.
+        self.c_single_cond_initial = seq_channel + 447
         self.single_cond_initial_norm = fastnn.LayerNorm(
             self.c_single_cond_initial, bias=False
         )
@@ -107,6 +114,8 @@ class DiffusionHead(nn.Module):
             with_token_atoms_act=True,
             with_trunk_pair_cond=True,
             with_trunk_single_cond=True,
+            trunk_pair_channels=pair_channel,
+            trunk_single_channels=seq_channel,
         )
 
         self.single_cond_embedding_norm = fastnn.LayerNorm(self.seq_channel, bias=False)
@@ -114,7 +123,9 @@ class DiffusionHead(nn.Module):
             self.seq_channel, self.c_act, bias=False
         )
 
-        self.transformer = DiffusionTransformer()
+        self.transformer = DiffusionTransformer(
+            c_single_cond=seq_channel, c_pair_cond=pair_channel
+        )
 
         self.output_norm = fastnn.LayerNorm(self.c_act, bias=False)
 

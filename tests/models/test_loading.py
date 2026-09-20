@@ -40,7 +40,8 @@ def test_flat_checkpoint_uses_strict_native_precision(
         loading, "import_module", lambda _: SimpleNamespace(**{constructor: TinyModel})
     )
     config = SimpleNamespace(
-        model_name="protenix-v2" if name == "protenix" else "opendde_v1"
+        model_name="protenix-v2" if name == "protenix" else "opendde_v1",
+        data={"msa": {}},
     )
     model = load(name, checkpoint, configs=config, backend="pytorch", device="cpu")
     assert model.projection.weight.dtype == torch.bfloat16
@@ -73,7 +74,7 @@ def test_sequence_checkpoint_uses_same_loader(tmp_path, monkeypatch, backend, ex
 
     reference = TinyModel()
     save_file(reference.state_dict(), tmp_path / "model.safetensors")
-    monkeypatch.setattr(ESMFold2Config, "from_json", lambda _: object())
+    monkeypatch.setattr(ESMFold2Config, "from_json", lambda _: SimpleNamespace())
     monkeypatch.setattr(esmfold2, "convert_model", lambda state, _config: state)
     selected = []
 
@@ -120,7 +121,10 @@ def test_haiku_checkpoint_is_imported_before_precision(tmp_path, monkeypatch):
         def __init__(self, **kwargs: Any) -> None:
             super().__init__(**kwargs)
             self.diffusion_head = nn.Module()
-            self.diffusion_head.fourier_embeddings = nn.Module()
+            fourier = nn.Module()
+            fourier.register_buffer("weight", torch.zeros(4))
+            fourier.register_buffer("bias", torch.zeros(4))
+            self.diffusion_head.fourier_embeddings = fourier
 
     def import_weights(model, checkpoint) -> dict[str, int]:
         assert checkpoint == tmp_path / "af3.bin.zst"
@@ -152,7 +156,10 @@ def test_af3_default_keeps_released_mixed_parameters(tmp_path, monkeypatch):
             super().__init__(**kwargs)
             self.diffusion_head = nn.Module()
             self.diffusion_head.projection = nn.Linear(4, 4, bias=False)
-            self.diffusion_head.fourier_embeddings = nn.Module()
+            fourier = nn.Module()
+            fourier.register_buffer("weight", torch.zeros(4))
+            fourier.register_buffer("bias", torch.zeros(4))
+            self.diffusion_head.fourier_embeddings = fourier
 
     def import_weights(model, checkpoint, *, preserve_dtype=False) -> dict[str, int]:
         assert preserve_dtype
@@ -265,7 +272,7 @@ def test_projection_compute_override_follows_native_policy(
     model = load(
         "opendde",
         checkpoint,
-        configs=SimpleNamespace(model_name="opendde_v1"),
+        configs=SimpleNamespace(model_name="opendde_v1", data={"msa": {}}),
         backend="pytorch",
         device="cpu",
         dtype=dtype,

@@ -127,12 +127,12 @@ def run(model: str, argv: list[str]) -> int:
 
     checkpoint = args.checkpoint
     if checkpoint is None and model != "esmfold2":
-        from foldforge.models.checkpoints import resolve
+        from foldforge.models.checkpoints import DEFAULT_FILES, resolve
 
         checkpoint = (
             resolve(model, (config.variant or "protenix_base_default_v1.0.0") + ".pt")
             if model == "protenix"
-            else resolve(model, "af3.bin.zst" if model == "af3" else "opendde.pt")
+            else resolve(model, DEFAULT_FILES[model])
         )
     path = None
     if model != "esmfold2":

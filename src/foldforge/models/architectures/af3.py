@@ -11,6 +11,7 @@ from team_gm.modules.bucketing import MSA_SHAPES, ceiling, pad_axis
 
 from foldforge.data.features import dense as features
 from foldforge.data.features import dense_batch as feat_batch
+from foldforge.models.config.dense import ALPHAFOLD3, DenseSpec
 from foldforge.modules.dense import atom_cross_attention, diffusion_head, featurization
 from foldforge.modules.dense.head import ConfidenceHead, DistogramHead
 from foldforge.modules.dense.pairformer import EvoformerBlock, PairformerBlock
@@ -30,16 +31,16 @@ from foldforge.modules.dense.template import TemplateEmbedding
 class Evoformer(nn.Module):
     """Represent evoformer."""
 
-    def __init__(self, msa_channel: int = 64) -> None:
+    def __init__(self, spec: DenseSpec = ALPHAFOLD3) -> None:
         super().__init__()
 
-        self.msa_channel = msa_channel
+        self.msa_channel = spec.msa_channel
         self.msa_stack_num_layer = 4
         self.pairformer_num_layer = 48
         self.num_msa = 1024
 
-        self.seq_channel = 384
-        self.pair_channel = 128
+        self.seq_channel = spec.seq_channel
+        self.pair_channel = spec.pair_channel
         self.c_target_feat = 447
 
         self.left_single = nn.Linear(self.c_target_feat, self.pair_channel, bias=False)
@@ -57,14 +58,25 @@ class Evoformer(nn.Module):
 
         self.bond_embedding = nn.Linear(1, self.pair_channel, bias=False)
 
-        self.template_embedding = TemplateEmbedding(pair_channel=self.pair_channel)
+        self.template_embedding = TemplateEmbedding(
+            pair_channel=self.pair_channel,
+            num_channels=spec.template_channel,
+            n_heads_pair=spec.pair_heads,
+        )
 
         self.msa_activations = nn.Linear(34, self.msa_channel, bias=False)
         self.extra_msa_target_feat = nn.Linear(
             self.c_target_feat, self.msa_channel, bias=False
         )
         self.msa_stack = nn.ModuleList(
-            [EvoformerBlock() for _ in range(self.msa_stack_num_layer)]
+            [
+                EvoformerBlock(
+                    c_msa=self.msa_channel,
+                    c_pair=self.pair_channel,
+                    n_heads_pair=spec.pair_heads,
+                )
+                for _ in range(self.msa_stack_num_layer)
+            ]
         )
 
         self.single_activations = nn.Linear(
@@ -78,7 +90,12 @@ class Evoformer(nn.Module):
 
         self.trunk_pairformer = nn.ModuleList(
             [
-                PairformerBlock(with_single=True)
+                PairformerBlock(
+                    c_pair=self.pair_channel,
+                    c_single=self.seq_channel,
+                    n_heads_pair=spec.pair_heads,
+                    with_single=True,
+                )
                 for _ in range(self.pairformer_num_layer)
             ]
         )
@@ -279,31 +296,45 @@ class AlphaFold3(nn.Module):
     """Represent alpha fold3."""
 
     def __init__(
-        self, num_recycles: int = 10, num_samples: int = 5, diffusion_steps: int = 200
+        self,
+        num_recycles: int = 10,
+        num_samples: int = 5,
+        diffusion_steps: int = 200,
+        spec: DenseSpec = ALPHAFOLD3,
     ) -> None:
         super().__init__()
+
+        self.spec = spec
 
         self.reference_precision = False
         self.num_recycles = num_recycles
         self.num_samples = num_samples
         self.diffusion_steps = diffusion_steps
 
-        self.gamma_0 = 0.8
-        self.gamma_min = 1.0
-        self.noise_scale = 1.003
-        self.step_scale = 1.5
+        self.gamma_0 = spec.gamma_0
+        self.gamma_min = spec.gamma_min
+        self.noise_scale = spec.noise_scale
+        self.step_scale = spec.step_scale
 
-        self.evoformer_pair_channel = 128
-        self.evoformer_seq_channel = 384
+        self.evoformer_pair_channel = spec.pair_channel
+        self.evoformer_seq_channel = spec.seq_channel
 
         self.evoformer_conditioning = atom_cross_attention.AtomCrossAttEncoder()
 
-        self.evoformer = Evoformer()
+        self.evoformer = Evoformer(spec)
 
-        self.diffusion_head = diffusion_head.DiffusionHead()
+        self.diffusion_head = diffusion_head.DiffusionHead(
+            pair_channel=spec.diffusion_pair_channel,
+            seq_channel=spec.seq_channel,
+            trunk_pair_channel=spec.pair_channel,
+        )
 
-        self.distogram_head = DistogramHead()
-        self.confidence_head = ConfidenceHead()
+        self.distogram_head = DistogramHead(c_pair=spec.pair_channel)
+        self.confidence_head = ConfidenceHead(
+            c_single=spec.seq_channel,
+            c_pair=spec.pair_channel,
+            n_heads_pair=spec.pair_heads,
+        )
 
     def create_target_feat_embedding(self, batch: feat_batch.Batch) -> torch.Tensor:
         """Create target feat embedding."""

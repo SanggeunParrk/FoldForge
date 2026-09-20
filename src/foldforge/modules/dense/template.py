@@ -123,13 +123,19 @@ def make_backbone_rigid(
 class TemplateEmbedding(nn.Module):
     """Embed a set of templates."""
 
-    def __init__(self, pair_channel: int = 128, num_channels: int = 64) -> None:
+    def __init__(
+        self, pair_channel: int = 128, num_channels: int = 64, n_heads_pair: int = 4
+    ) -> None:
         super().__init__()
 
         self.pair_channel = pair_channel
         self.num_channels = num_channels
 
-        self.single_template_embedding = SingleTemplateEmbedding()
+        self.single_template_embedding = SingleTemplateEmbedding(
+            num_channels=num_channels,
+            pair_channel=pair_channel,
+            n_heads_pair=n_heads_pair,
+        )
 
         self.output_linear = nn.Linear(self.num_channels, self.pair_channel, bias=False)
 
@@ -156,7 +162,9 @@ class TemplateEmbedding(nn.Module):
 class SingleTemplateEmbedding(nn.Module):
     """Embed a single template."""
 
-    def __init__(self, num_channels: int = 64) -> None:
+    def __init__(
+        self, num_channels: int = 64, pair_channel: int = 128, n_heads_pair: int = 4
+    ) -> None:
         super().__init__()
 
         self.num_channels = num_channels
@@ -164,7 +172,7 @@ class SingleTemplateEmbedding(nn.Module):
 
         self.dgram_features_config = DistogramFeaturesConfig()
 
-        self.query_embedding_norm = fastnn.LayerNorm(128)
+        self.query_embedding_norm = fastnn.LayerNorm(pair_channel)
         self.template_pair_embedding_0 = nn.Linear(39, self.num_channels, bias=False)
         self.template_pair_embedding_1 = nn.Linear(1, self.num_channels, bias=False)
         self.template_pair_embedding_2 = nn.Linear(31, self.num_channels, bias=False)
@@ -173,12 +181,15 @@ class SingleTemplateEmbedding(nn.Module):
         self.template_pair_embedding_5 = nn.Linear(1, self.num_channels, bias=False)
         self.template_pair_embedding_6 = nn.Linear(1, self.num_channels, bias=False)
         self.template_pair_embedding_7 = nn.Linear(1, self.num_channels, bias=False)
-        self.template_pair_embedding_8 = nn.Linear(128, self.num_channels, bias=False)
+        self.template_pair_embedding_8 = nn.Linear(
+            pair_channel, self.num_channels, bias=False
+        )
 
         self.template_embedding_iteration = nn.ModuleList(
             [
                 pairformer.PairformerBlock(
                     c_pair=self.num_channels,
+                    n_heads_pair=n_heads_pair,
                     num_intermediate_factor=2,
                     with_single=False,
                 )

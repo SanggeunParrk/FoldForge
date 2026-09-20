@@ -101,6 +101,8 @@ _DTYPE_MAP = {
     "bfloat16": torch.bfloat16,
     "float16": torch.float16,
     "uint8": torch.uint8,
+    "int32": torch.int32,
+    "int64": torch.int64,
 }
 
 
@@ -1135,6 +1137,16 @@ def import_jax_weights_(
     """Compute import jax weights."""
     checkpoint = model_path / "af3.bin.zst" if model_path.is_dir() else model_path
     params = get_alphafold3_params(checkpoint)
+    # AF3's noise Fourier features are fixed constants; ported families train
+    # theirs and carry them in the blob.
+    trained_fourier = {
+        name: params.pop(f"diffuser/~/diffusion_head/fourier_embedding_{name}")
+        for name in ("weight", "bias")
+        if f"diffuser/~/diffusion_head/fourier_embedding_{name}" in params
+    }
+    if len(trained_fourier) == 1:
+        msg = f"Checkpoint carries only one Fourier record: {sorted(trained_fourier)}"
+        raise ValueError(msg)
 
     translations = get_translation_dict(model)
 
@@ -1149,6 +1161,20 @@ def import_jax_weights_(
     setattr(model, "__identifier__", params["__meta__/__identifier__"])  # noqa: B010 - dynamic checkpoint metadata
 
     fourier = model.diffusion_head.fourier_embeddings
-    fourier.register_buffer("weight", torch.tensor(_WEIGHT, dtype=torch.float32))
-    fourier.register_buffer("bias", torch.tensor(_BIAS, dtype=torch.float32))
-    return {"source_records": len(params), "mapped_records": len(flat)}
+    fourier.register_buffer(
+        "weight",
+        trained_fourier["weight"].to(torch.float32).reshape(-1)
+        if trained_fourier
+        else torch.tensor(_WEIGHT, dtype=torch.float32),
+    )
+    fourier.register_buffer(
+        "bias",
+        trained_fourier["bias"].to(torch.float32).reshape(-1)
+        if trained_fourier
+        else torch.tensor(_BIAS, dtype=torch.float32),
+    )
+    return {
+        "source_records": len(params) + len(trained_fourier),
+        "mapped_records": len(flat),
+        "trained_fourier": bool(trained_fourier),
+    }

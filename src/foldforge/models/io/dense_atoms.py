@@ -64,7 +64,7 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
     )
     dtype = torch.float32 if args.precision == "fp32" else torch.bfloat16
     model = load(
-        "af3",
+        args.model,
         args.checkpoint,
         backend=args.backend,
         dtype=dtype,

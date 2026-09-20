@@ -18,6 +18,8 @@ class Entry:
     architecture: str | None
     layout: str | None
     summary: str
+    #: Row of ``foldforge.models.config.dense.SPECS`` for dense AF3-graph families.
+    family: str | None = None
 
 
 _REGISTRY = {
@@ -25,6 +27,12 @@ _REGISTRY = {
         "foldforge.models.architectures.af3.AlphaFold3",
         "dense_atoms",
         "AlphaFold 3 — DeepMind; weights are access-gated",
+    ),
+    "intellifold2": Entry(
+        "foldforge.models.architectures.af3.AlphaFold3",
+        "dense_atoms",
+        "IntelliFold-v2 — IntelliGen-AI; the AF3 graph at wider channels",
+        "intellifold2",
     ),
     "protenix": Entry(
         "foldforge.models.architectures.protenix.Protenix",
@@ -61,6 +69,11 @@ def entry(name: str) -> Entry:
     except KeyError:
         message = f"unknown model {name!r}; known: {', '.join(known_models())}"
         raise KeyError(message) from None
+
+
+def is_dense(name: str) -> bool:
+    """Whether ``name`` is a family of the one dense AF3 graph."""
+    return entry(name).layout == "dense_atoms"
 
 
 def describe(name: str) -> str:

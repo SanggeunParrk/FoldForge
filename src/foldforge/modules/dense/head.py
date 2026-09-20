@@ -111,6 +111,7 @@ class ConfidenceHead(nn.Module):
         c_pair: int = 128,
         c_target_feat: int = 447,
         n_pairformer_layers: int = 4,
+        n_heads_pair: int = 4,
     ) -> None:
         super().__init__()
 
@@ -145,6 +146,7 @@ class ConfidenceHead(nn.Module):
                 pairformer.PairformerBlock(
                     c_single=self.c_single,
                     c_pair=self.c_pair,
+                    n_heads_pair=n_heads_pair,
                     with_single=True,
                 )
                 for _ in range(n_pairformer_layers)

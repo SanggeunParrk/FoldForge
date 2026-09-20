@@ -10,6 +10,8 @@
 # https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md
 
 
+from typing import Any
+
 import einops
 import torch
 import torch.nn as nn
@@ -155,6 +157,33 @@ class DiffusionTransition(nn.Module):
     ) -> torch.Tensor:
         """Compute the module output."""
         return reference_conditioned_transition(self, x, single_cond)
+
+
+class GatedDiffusionTransition(DiffusionTransition):
+    """Conditioned transition whose SwiGLU output passes a linear up-gate.
+
+    ``b = swiglu(norm(x)) * a_to_b(norm(x))`` before the zero-initialised output.
+    It is a class of its own so the engine's conditioned-transition wrapper, which
+    has no slot for the gate, leaves it alone and converts only its AdaLN.
+    """
+
+    def __init__(self, c_x: int, c_single_cond: int | None, **options: Any) -> None:
+        super().__init__(c_x, c_single_cond, **options)
+        self.a_to_b = nn.Linear(c_x, self.num_intermediate_factor * c_x, bias=False)
+
+    def forward(
+        self, x: torch.Tensor, single_cond: torch.Tensor | None = None
+    ) -> torch.Tensor:
+        """Compute the module output."""
+        normed = self.adaptive_layernorm(x, single_cond)
+        gate, value = self.transition1(normed).chunk(2, dim=-1)
+        hidden = torch.nn.functional.silu(gate) * value * self.a_to_b(normed)
+        return self.adaptive_zero_init(hidden, single_cond)
+
+
+def conditioned_transition(spec: DenseSpec) -> type[DiffusionTransition]:
+    """Transition class for blocks conditioned on a single representation."""
+    return GatedDiffusionTransition if spec.transition_up_gate else DiffusionTransition
 
 
 class SelfAttention(nn.Module):
@@ -304,7 +333,7 @@ class DiffusionTransformer(nn.Module):
         )
         self.transition_block = nn.ModuleList(
             [
-                DiffusionTransition(
+                conditioned_transition(spec)(
                     self.c_act, self.c_single_cond, use_single_cond=True
                 )
                 for _ in range(self.num_blocks)
@@ -366,9 +395,11 @@ class CrossAttention(nn.Module):
         value_dim: int = 128,
         c_single_cond: int = 128,
         num_head: int = 4,
+        key_masked: bool = False,
     ) -> None:
         super().__init__()
 
+        self.key_masked = key_masked
         self.key_dim = key_dim
         self.value_dim = value_dim
         self.c_single_cond = c_single_cond
@@ -413,11 +444,19 @@ class CrossAttention(nn.Module):
             message = f"{mask_k.shape}, {x_k.shape}"
             raise ValueError(message)
 
-        bias = (
-            1e9
-            * mask_q.logical_not()[..., None, :, None]
-            * mask_k.logical_not()[..., None, None, :]
-        )
+        if self.key_masked:
+            # OR form: a padded key is masked from every query. AF3's AND form is
+            # only safe because it slides its key window inside the real atoms.
+            bias = -1e9 * (
+                mask_q.logical_not()[..., None, :, None].float()
+                + mask_k.logical_not()[..., None, None, :].float()
+            )
+        else:
+            bias = (
+                1e9
+                * mask_q.logical_not()[..., None, :, None]
+                * mask_k.logical_not()[..., None, None, :]
+            )
 
         x_q = self.q_adaptive_layernorm(x_q, single_cond_q)
         x_k = self.k_adaptive_layernorm(x_k, single_cond_k)
@@ -457,6 +496,7 @@ class DiffusionCrossAttTransformer(nn.Module):
         c_pair_cond: int = 16,
         num_blocks: int = 3,
         num_head: int = 4,
+        spec: DenseSpec = ALPHAFOLD3,
     ) -> None:
         super().__init__()
 
@@ -473,12 +513,17 @@ class DiffusionCrossAttTransformer(nn.Module):
         )
 
         self.cross_attention = nn.ModuleList(
-            [CrossAttention(num_head=self.num_head) for _ in range(self.num_blocks)]
+            [
+                CrossAttention(
+                    num_head=self.num_head, key_masked=spec.key_masked_atom_attention
+                )
+                for _ in range(self.num_blocks)
+            ]
         )
 
         self.transition_block = nn.ModuleList(
             [
-                DiffusionTransition(
+                conditioned_transition(spec)(
                     c_x=self.c_query,
                     c_single_cond=self.c_single_cond,
                     use_single_cond=True,

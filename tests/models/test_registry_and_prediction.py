@@ -36,7 +36,7 @@ def test_registered_is_only_what_is_actually_ported():
 
 def test_planned_model_fails_at_lookup_not_mid_forward():
     with pytest.raises(NotImplementedError, match="not ported yet"):
-        get_model("boltz2")
+        get_model("chai1")
 
 
 def test_unknown_model_names_the_known_ones():

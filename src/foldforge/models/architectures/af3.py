@@ -12,7 +12,13 @@ from team_gm.modules.bucketing import MSA_SHAPES, ceiling, pad_axis
 from foldforge.data.features import dense as features
 from foldforge.data.features import dense_batch as feat_batch
 from foldforge.modules.dense import atom_cross_attention, diffusion_head, featurization
+from foldforge.modules.dense.fused_template import FusedTemplateEmbedding
 from foldforge.modules.dense.head import ConfidenceHead, DistogramHead
+from foldforge.modules.dense.pair_init import (
+    ContactConditioning,
+    SummedInputEmbedder,
+    token_bond_types,
+)
 from foldforge.modules.dense.pairformer import EvoformerBlock, PairformerBlock
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 from foldforge.modules.dense.template import TemplateEmbedding
@@ -34,15 +40,16 @@ class Evoformer(nn.Module):
     def __init__(self, spec: DenseSpec = ALPHAFOLD3) -> None:
         super().__init__()
 
+        self.spec = spec
         self.msa_channel = spec.msa_channel
         self.msa_stack_num_layer = 4
-        self.pairformer_num_layer = 48
+        self.pairformer_num_layer = spec.trunk_layers
         self.num_msa = 1024
 
         self.seq_channel = spec.seq_channel
         self.pair_channel = spec.pair_channel
         self.symmetric_bonds = spec.symmetric_bonds
-        self.c_target_feat = 447
+        self.c_target_feat = spec.target_feat_channel
 
         self.left_single = nn.Linear(self.c_target_feat, self.pair_channel, bias=False)
         self.right_single = nn.Linear(self.c_target_feat, self.pair_channel, bias=False)
@@ -58,10 +65,19 @@ class Evoformer(nn.Module):
         )
 
         self.bond_embedding = nn.Linear(1, self.pair_channel, bias=False)
+        if spec.bond_type_and_contact_init:
+            self.token_bonds_type_embed = nn.Linear(7, self.pair_channel, bias=False)
+            self.contact_conditioning = ContactConditioning(self.pair_channel)
 
-        self.template_embedding = TemplateEmbedding(spec)
+        self.template_embedding = (
+            TemplateEmbedding(spec)
+            if spec.template == "af3"
+            else FusedTemplateEmbedding(spec)
+        )
 
-        self.msa_activations = nn.Linear(34, self.msa_channel, bias=False)
+        self.msa_activations = nn.Linear(
+            spec.msa_feat_channel, self.msa_channel, bias=False
+        )
         self.extra_msa_target_feat = nn.Linear(
             self.c_target_feat, self.msa_channel, bias=False
         )
@@ -173,9 +189,20 @@ class Evoformer(nn.Module):
         # Because all the padded index's are 0's.
         contact_matrix[0, 0] = 0.0
 
-        bonds_act = self.bond_embedding(contact_matrix[:, :, None])
-
-        return pair_activations + bonds_act
+        pair_activations = pair_activations + self.bond_embedding(
+            contact_matrix[:, :, None]
+        )
+        if self.spec.bond_type_and_contact_init:
+            # Both terms contribute on EVERY pair: bond order 0 and the unspecified
+            # contact class are learned vectors, not zeros.
+            bond_types = token_bond_types(batch, symmetric=self.symmetric_bonds)
+            pair_activations = pair_activations + self.token_bonds_type_embed(
+                nn.functional.one_hot(bond_types, 7).to(pair_activations.dtype)
+            )
+            pair_activations = pair_activations + self.contact_conditioning(
+                num_tokens, pair_activations
+            )
+        return pair_activations
 
     def _embed_template_pair(
         self,
@@ -222,11 +249,16 @@ class Evoformer(nn.Module):
 
         msa_mask = msa_batch.mask.to(dtype=dtype)
         msa_feat = featurization.create_msa_feat(msa_batch).to(dtype=dtype)
+        if self.spec.msa_query_paired is not None:
+            paired = torch.zeros_like(msa_feat[..., :1])
+            paired[0] = self.spec.msa_query_paired
+            msa_feat = torch.cat([msa_feat, paired], dim=-1)
 
         msa_activations = self.msa_activations(msa_feat)
         msa_activations += self.extra_msa_target_feat(target_feat)[None]
 
         # Evoformer MSA stack.
+        pair_input = pair_activations
         for msa_block in self.msa_stack:
             msa_activations, pair_activations = msa_block(
                 msa=msa_activations,
@@ -235,6 +267,10 @@ class Evoformer(nn.Module):
                 pair_mask=pair_mask,
             )
 
+        if self.spec.msa_double_add:
+            # The vendor's MSA module returns the updated pair and its caller adds
+            # that to the pair again; the weights were fitted with both copies.
+            pair_activations = pair_activations + pair_input
         return pair_activations
 
     def forward(
@@ -328,10 +364,17 @@ class AlphaFold3(nn.Module):
 
         self.diffusion_head = diffusion_head.DiffusionHead(spec)
 
-        self.distogram_head = DistogramHead(c_pair=spec.pair_channel)
+        if spec.summed_input_embedder:
+            self.input_embedder = SummedInputEmbedder(spec.seq_channel)
+
+        self.distogram_head = DistogramHead(
+            c_pair=spec.pair_channel, bias=spec.distogram_bias
+        )
         self.confidence_head = ConfidenceHead(
             c_single=spec.seq_channel,
             c_pair=spec.pair_channel,
+            c_target_feat=spec.target_feat_channel,
+            n_pairformer_layers=spec.confidence_layers,
             spec=spec,
         )
 
@@ -349,9 +392,10 @@ class AlphaFold3(nn.Module):
             batch=batch,
         )
 
-        return torch.concatenate([target_feat, enc.token_act], dim=-1).to(
-            self.evoformer.left_single.weight.dtype
-        )
+        dtype = self.evoformer.left_single.weight.dtype
+        if self.spec.summed_input_embedder:
+            return self.input_embedder(batch, enc.token_act).to(dtype)
+        return torch.concatenate([target_feat, enc.token_act], dim=-1).to(dtype)
 
     def _sample_diffusion(
         self,
@@ -362,6 +406,9 @@ class AlphaFold3(nn.Module):
         mask = batch.predicted_structure_info.atom_mask
         sigmas = PowerLawSchedule(
             PowerLawSchedule.Config(
+                sigma_max=self.spec.sigma_max,
+                sigma_min=self.spec.sigma_min,
+                rho=self.spec.rho,
                 terminal_zero=False,
                 include_minimum_before_zero=False,
             )
@@ -449,6 +496,7 @@ class AlphaFold3(nn.Module):
                 seq_mask=batch_data.token_features.mask,
                 token_atoms_to_pseudo_beta=batch_data.pseudo_beta_info.token_atoms_to_pseudo_beta,
                 asym_id=batch_data.token_features.asym_id,
+                batch=batch_data,
             )
             for sample_dense_atom_position in samples["atom_positions"]
         )

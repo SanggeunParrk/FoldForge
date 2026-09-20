@@ -130,6 +130,7 @@ def test_af3_diffusion_preserves_random_noise_field():
     from types import SimpleNamespace
 
     from foldforge.models.architectures.af3 import AlphaFold3
+    from foldforge.modules.dense.spec import ALPHAFOLD3
 
     class IdentityDenoiser(torch.nn.Module):
         def forward(self, positions_noisy, **_kwargs: object) -> torch.Tensor:
@@ -140,6 +141,7 @@ def test_af3_diffusion_preserves_random_noise_field():
     model.gamma_0, model.gamma_min = 0.8, 1.0
     model.noise_scale, model.step_scale = 1.003, 1.5
     model.num_samples, model.diffusion_steps = 2, 2
+    model.spec = ALPHAFOLD3
     model.diffusion_head = IdentityDenoiser()
     batch = SimpleNamespace(
         predicted_structure_info=SimpleNamespace(atom_mask=torch.ones(4, 24))

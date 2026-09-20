@@ -47,8 +47,11 @@ class OuterProductMean(nn.Module):
         c_msa: int = 64,
         num_output_channel: int = 128,
         num_outer_channel: int = 32,
+        bias_after_norm: bool = False,
     ) -> None:
         super().__init__()
+
+        self.bias_after_norm = bias_after_norm
 
         self.c_msa = c_msa
         self.num_outer_channel = num_outer_channel
@@ -77,6 +80,13 @@ class OuterProductMean(nn.Module):
 
         from team_gm.modules.blocks.attention_math import af3_outer_product_mean
 
+        if self.bias_after_norm:
+            # Divide by the pair count clamped at one, THEN add the bias. The two
+            # orders differ by bias * (1 - 1/n): a per-channel constant.
+            outer = torch.einsum("acb,ade->dceb", left_act.permute(0, 2, 1), right_act)
+            output = torch.einsum("dceb,cef->dbf", outer, self.output_w)
+            norm = torch.einsum("abc,adc->bdc", mask, mask)
+            return output.permute(1, 0, 2) / norm.clamp_min(1.0) + self.output_b
         return af3_outer_product_mean(
             left_act, right_act, mask, self.output_w, self.output_b, eps=self.epsilon
         )

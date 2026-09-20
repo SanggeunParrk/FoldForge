@@ -33,23 +33,25 @@ class GridSelfAttention(nn.Module):
         num_head: int = 4,
         transpose: bool = False,
         spec: DenseSpec = ALPHAFOLD3,
+        qkv_dim: int | None = None,
     ) -> None:
         super().__init__()
         self.c_pair = c_pair
         self.num_head = num_head
-        self.qkv_dim = self.c_pair // self.num_head
+        self.qkv_dim = qkv_dim or self.c_pair // self.num_head
+        hidden = self.num_head * self.qkv_dim
         self.transpose = transpose
         self.transposed_bias = transpose and spec.transposed_column_pair_bias
 
         self.act_norm = fastnn.LayerNorm(self.c_pair)
         self.pair_bias_projection = nn.Linear(self.c_pair, self.num_head, bias=False)
 
-        self.q_projection = nn.Linear(self.c_pair, self.c_pair, bias=False)
-        self.k_projection = nn.Linear(self.c_pair, self.c_pair, bias=False)
-        self.v_projection = nn.Linear(self.c_pair, self.c_pair, bias=False)
+        self.q_projection = nn.Linear(self.c_pair, hidden, bias=False)
+        self.k_projection = nn.Linear(self.c_pair, hidden, bias=False)
+        self.v_projection = nn.Linear(self.c_pair, hidden, bias=False)
 
-        self.gating_query = nn.Linear(self.c_pair, self.c_pair, bias=False)
-        self.output_projection = nn.Linear(self.c_pair, self.c_pair, bias=False)
+        self.gating_query = nn.Linear(self.c_pair, hidden, bias=False)
+        self.output_projection = nn.Linear(hidden, self.c_pair, bias=False)
 
     def _attention(self, pair: torch.Tensor, mask: torch.Tensor, bias: torch.Tensor):
         q = self.q_projection(pair)
@@ -118,14 +120,21 @@ class GridSelfAttention(nn.Module):
 class MSAAttention(nn.Module):
     """Represent m s a attention."""
 
-    def __init__(self, c_msa: int = 64, c_pair: int = 128, num_head: int = 8) -> None:
+    def __init__(
+        self,
+        c_msa: int = 64,
+        c_pair: int = 128,
+        num_head: int = 8,
+        value_dim: int | None = None,
+    ) -> None:
         super().__init__()
 
         self.c_msa = c_msa
         self.c_pair = c_pair
         self.num_head = num_head
 
-        self.value_dim = self.c_msa // self.num_head
+        self.value_dim = value_dim or self.c_msa // self.num_head
+        hidden = self.num_head * self.value_dim
 
         self.act_norm = fastnn.LayerNorm(self.c_msa)
         self.pair_norm = fastnn.LayerNorm(self.c_pair)
@@ -133,8 +142,8 @@ class MSAAttention(nn.Module):
         self.v_projection = nn.Linear(
             self.c_msa, self.num_head * self.value_dim, bias=False
         )
-        self.gating_query = nn.Linear(self.c_msa, self.c_msa, bias=False)
-        self.output_projection = nn.Linear(self.c_msa, self.c_msa, bias=False)
+        self.gating_query = nn.Linear(self.c_msa, hidden, bias=False)
+        self.output_projection = nn.Linear(hidden, self.c_msa, bias=False)
 
     def forward(self, msa, msa_mask, pair):
         """Compute the module output."""

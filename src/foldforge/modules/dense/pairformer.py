@@ -43,6 +43,7 @@ class PairformerBlock(nn.Module):
         num_intermediate_factor: int = 4,
         with_single: bool = True,
         spec: DenseSpec = ALPHAFOLD3,
+        pair_qkv_dim: int | None = None,
     ) -> None:
         """Args:
 
@@ -68,10 +69,18 @@ class PairformerBlock(nn.Module):
             c_pair=c_pair, _outgoing=False
         )
         self.pair_attention1 = GridSelfAttention(
-            c_pair=c_pair, num_head=n_heads_pair, transpose=False, spec=spec
+            c_pair=c_pair,
+            num_head=n_heads_pair,
+            transpose=False,
+            spec=spec,
+            qkv_dim=pair_qkv_dim,
         )
         self.pair_attention2 = GridSelfAttention(
-            c_pair=c_pair, num_head=n_heads_pair, transpose=True, spec=spec
+            c_pair=c_pair,
+            num_head=n_heads_pair,
+            transpose=True,
+            spec=spec,
+            qkv_dim=pair_qkv_dim,
         )
         self.pair_transition = Transition(
             c_x=c_pair, num_intermediate_factor=self.num_intermediate_factor
@@ -140,12 +149,18 @@ class EvoformerBlock(nn.Module):
         spec: DenseSpec = ALPHAFOLD3,
     ) -> None:
         super().__init__()
-        self.msa_update_config = MSAUpdateConfig()
+        self.msa_update_config = MSAUpdateConfig(
+            order="msa_first" if spec.msa_update_before_opm else "opm_first"
+        )
 
         self.outer_product_mean = OuterProductMean(
-            c_msa=c_msa, num_output_channel=c_pair
+            c_msa=c_msa,
+            num_output_channel=c_pair,
+            bias_after_norm=spec.opm_bias_after_norm,
         )
-        self.msa_attention1 = MSAAttention(c_msa=c_msa, c_pair=c_pair)
+        self.msa_attention1 = MSAAttention(
+            c_msa=c_msa, c_pair=c_pair, value_dim=spec.msa_value_dim
+        )
         self.msa_transition = Transition(c_x=c_msa)
 
         self.triangle_multiplication_outgoing = TriangleMultiplication(

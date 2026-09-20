@@ -359,7 +359,7 @@ def _process_translations_dict(
             }
             flat.update(sub_flat)
         else:
-            flat[k] = v
+            flat[(_key_prefix if top_layer else "") + k] = v
 
     return flat
 
@@ -534,6 +534,11 @@ def build_layer_norm_params(l: ParameterModule, *, use_bias: bool = True) -> Par
     return d
 
 
+def build_scale_norm_params(l: ParameterModule) -> ParamTree:
+    """Map a norm that is scale-only in AF3 and affine in some families."""
+    return build_layer_norm_params(l=l, use_bias=l.bias is not None)
+
+
 def build_adaptive_layer_norm_params(
     aln: ParameterModule, *, use_single_cond: bool = False
 ) -> ParamTree:
@@ -700,6 +705,11 @@ def build_diffusion_transition_params(
             aln=transition.adaptive_layernorm, use_single_cond=use_single_cond
         ),
         "transition1": build_linear_params(l=transition.transition1),
+        **(
+            {"a_to_b": build_linear_params(l=transition.a_to_b)}
+            if hasattr(transition, "a_to_b")
+            else {}
+        ),
         **build_ada_ln_zero_params(
             ada_ln_zero=transition.adaptive_zero_init, use_single_cond=use_single_cond
         ),
@@ -825,6 +835,9 @@ def build_atom_cross_att_encoder_params(
         ),
     }
 
+    if hasattr(encoder, "embed_atom_features_bias"):
+        d["embed_atom_features_bias"] = Param(encoder.embed_atom_features_bias)
+
     if with_token_atoms_act is True:
         d.update(
             {
@@ -837,8 +850,8 @@ def build_atom_cross_att_encoder_params(
     if with_trunk_single_cond is True:
         d.update(
             {
-                "lnorm_trunk_single_cond": build_layer_norm_params(
-                    l=encoder.lnorm_trunk_single_cond, use_bias=False
+                "lnorm_trunk_single_cond": build_scale_norm_params(
+                    encoder.lnorm_trunk_single_cond
                 ),
                 "embed_trunk_single_cond": build_linear_params(
                     l=encoder.embed_trunk_single_cond
@@ -849,8 +862,8 @@ def build_atom_cross_att_encoder_params(
     if with_trunk_pair_cond:
         d.update(
             {
-                "lnorm_trunk_pair_cond": build_layer_norm_params(
-                    l=encoder.lnorm_trunk_pair_cond, use_bias=False
+                "lnorm_trunk_pair_cond": build_scale_norm_params(
+                    encoder.lnorm_trunk_pair_cond
                 ),
                 "embed_trunk_pair_cond": build_linear_params(
                     l=encoder.embed_trunk_pair_cond
@@ -871,8 +884,8 @@ def build_atom_cross_att_decoder_params(decoder: ParameterModule) -> ParamTree:
             decoder.atom_transformer_decoder,
             prefix="diffusion_atom_transformer_decoder",
         ),
-        "atom_features_layer_norm": build_layer_norm_params(
-            l=decoder.atom_features_layer_norm, use_bias=False
+        "atom_features_layer_norm": build_scale_norm_params(
+            decoder.atom_features_layer_norm
         ),
         "atom_features_to_position_update": build_linear_params(
             l=decoder.atom_features_to_position_update
@@ -936,6 +949,38 @@ def build_template_embedding_params(template_embedding: ParameterModule) -> Para
     }
 
 
+def build_contact_conditioning_params(module: ParameterModule) -> ParamTree:
+    """Contact conditioning; the two class constants are bare parameters."""
+    return {
+        "contact_fourier": build_linear_params(l=module.contact_fourier, use_bias=True),
+        "contact_encoder": build_linear_params(l=module.contact_encoder, use_bias=True),
+    }
+
+
+def build_fused_template_params(template: ParameterModule) -> ParamTree:
+    """Fused template embedder shared by the Boltz-2, Protenix and RF3 weights."""
+    tree = {
+        "z_norm": build_layer_norm_params(l=template.z_norm),
+        "z_proj": build_linear_params(l=template.z_proj),
+        "a_proj": build_linear_params(l=template.a_proj),
+        "v_norm": build_layer_norm_params(l=template.v_norm),
+        "u_proj": build_linear_params(l=template.u_proj),
+    }
+    if len(template.tmpl_pairformer):
+        tree.update(
+            cat_params(
+                stacked(
+                    [
+                        build_pairformer_block_params(b=b, with_single=False)
+                        for b in template.tmpl_pairformer
+                    ]
+                ),
+                "__layer_stack_no_per_layer/tmpl_pairformer/",
+            )
+        )
+    return tree
+
+
 def build_pairformer_block_params(
     b: ParameterModule, *, with_single: bool = False
 ) -> ParamTree:
@@ -993,9 +1038,7 @@ def build_evoformer_block_params(b: ParameterModule) -> ParamTree:
 def build_diffusion_head_params(head: ParameterModule) -> ParamTree:
     """Compute diffusion head params."""
     return {
-        "pair_cond_initial_norm": build_layer_norm_params(
-            l=head.pair_cond_initial_norm, use_bias=False
-        ),
+        "pair_cond_initial_norm": build_scale_norm_params(head.pair_cond_initial_norm),
         "pair_cond_initial_projection": build_linear_params(
             l=head.pair_cond_initial_projection
         ),
@@ -1007,14 +1050,20 @@ def build_diffusion_head_params(head: ParameterModule) -> ParamTree:
             build_diffusion_transition_params(transition=head.pair_transition_1),
             "pair_transition_1ffw_",
         ),
-        "single_cond_initial_norm": build_layer_norm_params(
-            l=head.single_cond_initial_norm, use_bias=False
+        "single_cond_initial_norm": build_scale_norm_params(
+            head.single_cond_initial_norm
         ),
         "single_cond_initial_projection": build_linear_params(
-            l=head.single_cond_initial_projection
+            l=head.single_cond_initial_projection,
+            use_bias=head.single_cond_initial_projection.bias is not None,
         ),
-        "noise_embedding_initial_norm": build_layer_norm_params(
-            l=head.noise_embedding_initial_norm, use_bias=False
+        **(
+            {"relpe_projection": build_linear_params(l=head.relpe_projection)}
+            if head.relpe_projection is not None
+            else {}
+        ),
+        "noise_embedding_initial_norm": build_scale_norm_params(
+            head.noise_embedding_initial_norm
         ),
         "noise_embedding_initial_projection": build_linear_params(
             l=head.noise_embedding_initial_projection
@@ -1037,14 +1086,14 @@ def build_diffusion_head_params(head: ParameterModule) -> ParamTree:
             ),
             "diffusion_",
         ),
-        "single_cond_embedding_norm": build_layer_norm_params(
-            l=head.single_cond_embedding_norm, use_bias=False
+        "single_cond_embedding_norm": build_scale_norm_params(
+            head.single_cond_embedding_norm
         ),
         "single_cond_embedding_projection": build_linear_params(
             l=head.single_cond_embedding_projection
         ),
         "transformer": build_diffusion_transformer_params(head.transformer),
-        "output_norm": build_layer_norm_params(l=head.output_norm, use_bias=False),
+        "output_norm": build_scale_norm_params(head.output_norm),
         **cat_params(
             build_atom_cross_att_decoder_params(head.atom_cross_att_decoder),
             "diffusion_",
@@ -1061,6 +1110,54 @@ def build_confidence_head_params(head: ParameterModule) -> ParamTree:
         ]
     )
 
+    if getattr(head, "split_heads", False):
+        re = head.reembedding
+        scope = "~_boltz2_reembed/"
+        stack = "__layer_stack_no_per_layer/confidence_pairformer"
+        linears = (
+            "s_input_to_s",
+            "rel_pos_project",
+            "token_bonds_project",
+            "token_bonds_type_embed",
+            "left_target_feat_project",
+            "right_target_feat_project",
+            "s_to_z_prod_in1",
+            "s_to_z_prod_in2",
+            "s_to_z_prod_out",
+            "distogram_feat_project",
+        )
+        return {
+            **{
+                scope + name: build_layer_norm_params(l=getattr(re, name))
+                for name in ("s_inputs_norm", "s_norm", "z_norm")
+            },
+            **{
+                scope + name: build_linear_params(l=getattr(re, name))
+                for name in linears
+            },
+            **cat_params(
+                build_contact_conditioning_params(re.contact_conditioning), scope
+            ),
+            "contact_encoding_unspecified": Param(
+                re.contact_conditioning.encoding_unspecified
+            ),
+            "contact_encoding_unselected": Param(
+                re.contact_conditioning.encoding_unselected
+            ),
+            stack: pairformer_blocks_params,
+            "left_half_distance_logits": build_linear_params(
+                l=head.left_half_distance_logits
+            ),
+            "inter_half_distance_logits": build_linear_params(
+                l=head.inter_half_distance_logits
+            ),
+            "pae_logits": build_linear_params(l=head.pae_logits),
+            "pae_inter_logits": build_linear_params(l=head.pae_inter_logits),
+            "plddt_logits": build_linear_hma_params(l=head.plddt_logits),
+            "experimentally_resolved_logits": build_linear_hma_params(
+                l=head.experimentally_resolved_logits
+            ),
+        }
     return {
         "~_embed_features/left_target_feat_project": build_linear_params(
             l=head.left_target_feat_project
@@ -1113,8 +1210,26 @@ def build_evoformer_params(evoformer: ParameterModule) -> ParamTree:
             l=evoformer.position_activations
         ),
         "bond_embedding": build_linear_params(l=evoformer.bond_embedding),
-        "template_embedding": build_template_embedding_params(
-            evoformer.template_embedding
+        "template_embedding": (
+            build_fused_template_params(evoformer.template_embedding)
+            if hasattr(evoformer.template_embedding, "tmpl_pairformer")
+            else build_template_embedding_params(evoformer.template_embedding)
+        ),
+        **(
+            {
+                "token_bonds_type_embed": build_linear_params(
+                    l=evoformer.token_bonds_type_embed
+                ),
+                **build_contact_conditioning_params(evoformer.contact_conditioning),
+                "contact_encoding_unspecified": Param(
+                    evoformer.contact_conditioning.encoding_unspecified
+                ),
+                "contact_encoding_unselected": Param(
+                    evoformer.contact_conditioning.encoding_unselected
+                ),
+            }
+            if hasattr(evoformer, "contact_conditioning")
+            else {}
         ),
         "msa_activations": build_linear_params(l=evoformer.msa_activations),
         "extra_msa_target_feat": build_linear_params(l=evoformer.extra_msa_target_feat),
@@ -1140,9 +1255,27 @@ def get_translation_dict(model: ParameterModule) -> ParamTree:
         "evoformer": build_evoformer_params(model.evoformer),
         "~/diffusion_head": build_diffusion_head_params(model.diffusion_head),
         "distogram_head/half_logits": build_linear_params(
-            l=model.distogram_head.half_logits
+            l=model.distogram_head.half_logits,
+            use_bias=model.distogram_head.half_logits.bias is not None,
         ),
         "confidence_head": build_confidence_head_params(model.confidence_head),
+        **(
+            {
+                f"boltz2_{name}": build_linear_params(
+                    l=getattr(model.input_embedder, name)
+                )
+                for name in (
+                    "res_type_encoding",
+                    "msa_profile_encoding",
+                    "mol_type_conditioning",
+                    "cyclic_conditioning",
+                    "method_conditioning",
+                    "modified_conditioning",
+                )
+            }
+            if hasattr(model, "input_embedder")
+            else {}
+        ),
     }
 
 

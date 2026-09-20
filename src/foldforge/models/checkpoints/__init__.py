@@ -31,6 +31,7 @@ DEFAULT_DIR = ROOT / "model_checkpoints"
 #: variant and ESMFold2 is a directory, so neither is listed.
 DEFAULT_FILES = {
     "af3": "af3.bin.zst",
+    "boltz2": "boltz2.bin.zst",
     "intellifold2": "intellifold2.bin.zst",
     "openfold3": "openbind0.bin.zst",
     "openfold3-preview2": "openfold3.bin.zst",

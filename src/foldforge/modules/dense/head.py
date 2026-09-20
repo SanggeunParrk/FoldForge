@@ -17,7 +17,8 @@ import torch.nn as nn
 from foldforge.data.constants import atom_types
 from foldforge.data.features import dense_batch as feat_batch
 from foldforge.modules import ops as fastnn
-from foldforge.modules.dense import atom_layout, pairformer, template
+from foldforge.modules.dense import atom_layout, featurization, pairformer, template
+from foldforge.modules.dense.pair_init import ContactConditioning, token_bond_types
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 
 _CONTACT_THRESHOLD = 8.0
@@ -36,6 +37,7 @@ class DistogramHead(nn.Module):
         num_bins: int = 64,
         first_break: float = 2.3125,
         last_break: float = 21.6875,
+        bias: bool = False,
     ) -> None:
         super().__init__()
 
@@ -44,7 +46,8 @@ class DistogramHead(nn.Module):
         self.first_break = first_break
         self.last_break = last_break
 
-        self.half_logits = nn.Linear(self.c_pair, self.num_bins, bias=False)
+        # A trained bias passes through the symmetrisation below, so it enters twice.
+        self.half_logits = nn.Linear(self.c_pair, self.num_bins, bias=bias)
 
         breaks = torch.linspace(
             self.first_break,
@@ -95,6 +98,76 @@ class DistogramHead(nn.Module):
         }
 
 
+class ConfidenceReembedding(nn.Module):
+    """Rebuild single and pair from the normed trunk outputs before the confidence stack.
+
+    AF3 adds two target-feature projections and a distogram embedding to the trunk
+    pair. This form LayerNorms both trunk outputs and sums nine terms into the pair,
+    among them a product of two single projections and the pair-init terms the trunk
+    itself used (relative positions, bonds, bond orders, contact conditioning).
+    """
+
+    def __init__(self, c_single: int, c_pair: int, c_target_feat: int) -> None:
+        super().__init__()
+        self.s_inputs_norm = fastnn.LayerNorm(c_target_feat)
+        self.s_norm = fastnn.LayerNorm(c_single)
+        self.s_input_to_s = nn.Linear(c_target_feat, c_single, bias=False)
+        self.z_norm = fastnn.LayerNorm(c_pair)
+        self.rel_pos_project = nn.Linear(139, c_pair, bias=False)
+        self.token_bonds_project = nn.Linear(1, c_pair, bias=False)
+        self.token_bonds_type_embed = nn.Linear(7, c_pair, bias=False)
+        self.contact_conditioning = ContactConditioning(c_pair)
+        self.left_target_feat_project = nn.Linear(c_target_feat, c_pair, bias=False)
+        self.right_target_feat_project = nn.Linear(c_target_feat, c_pair, bias=False)
+        self.s_to_z_prod_in1 = nn.Linear(c_target_feat, c_pair, bias=False)
+        self.s_to_z_prod_in2 = nn.Linear(c_target_feat, c_pair, bias=False)
+        self.s_to_z_prod_out = nn.Linear(c_pair, c_pair, bias=False)
+        self.distogram_feat_project = nn.Linear(64, c_pair, bias=False)
+
+    def forward(
+        self,
+        pair: torch.Tensor,
+        single: torch.Tensor,
+        target_feat: torch.Tensor,
+        positions: torch.Tensor,
+        pair_mask: torch.Tensor,
+        batch: feat_batch.Batch,
+        symmetric_bonds: bool,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return the re-embedded (pair, single)."""
+        dtype = pair.dtype
+        inputs = self.s_inputs_norm(target_feat)
+        single = self.s_norm(single) + self.s_input_to_s(inputs)
+
+        bonds = token_bond_types(batch, symmetric=symmetric_bonds)
+        pair = self.z_norm(pair)
+        pair = pair + self.rel_pos_project(
+            featurization.create_relative_encoding(
+                batch.token_features, max_relative_idx=32, max_relative_chain=2
+            ).to(dtype)
+        )
+        pair = pair + self.token_bonds_project((bonds > 0)[..., None].to(dtype))
+        pair = pair + self.token_bonds_type_embed(
+            torch.nn.functional.one_hot(bonds, 7).to(dtype)
+        )
+        pair = pair + self.contact_conditioning(pair.shape[0], pair)
+        # Orientation is load-bearing: the row-indexed term is the RIGHT projection.
+        pair = pair + self.right_target_feat_project(inputs)[:, None]
+        pair = pair + self.left_target_feat_project(inputs)[None]
+        pair = pair + self.s_to_z_prod_out(
+            self.s_to_z_prod_in1(inputs)[:, None] * self.s_to_z_prod_in2(inputs)[None]
+        )
+        distance = (
+            (positions[:, None] - positions[None]).square().sum(-1) + 1e-10
+        ).sqrt()
+        edges = torch.linspace(2.0, 22.0, 63, device=distance.device)
+        distogram = torch.nn.functional.one_hot(
+            (distance[..., None] > edges).sum(-1), 64
+        ).to(dtype)
+        pair = pair + self.distogram_feat_project(distogram * pair_mask[..., None])
+        return pair, single
+
+
 class ConfidenceHead(nn.Module):
     """Implement Algorithm 31 in AF3."""
 
@@ -119,6 +192,10 @@ class ConfidenceHead(nn.Module):
         self.c_single = c_single
         self.c_pair = c_pair
         self.c_target_feat = c_target_feat
+        self.spec = spec
+        #: "boltz2": re-embedded inputs, no norm before any head, and separate
+        #: intra- and inter-chain heads for the distance error and the PAE.
+        self.split_heads = spec.confidence == "boltz2"
 
         self.dgram_features_config = template.DistogramFeaturesConfig()
 
@@ -132,15 +209,18 @@ class ConfidenceHead(nn.Module):
         self.num_atom = atom_types.DENSE_ATOM_NUM
         self.bin_width = 1.0 / self.num_plddt_bins
 
-        self.left_target_feat_project = nn.Linear(
-            self.c_target_feat, self.c_pair, bias=False
-        )
-        self.right_target_feat_project = nn.Linear(
-            self.c_target_feat, self.c_pair, bias=False
-        )
-        self.distogram_feat_project = nn.Linear(
-            self.dgram_features_config.num_bins, self.c_pair, bias=False
-        )
+        if self.split_heads:
+            self.reembedding = ConfidenceReembedding(c_single, c_pair, c_target_feat)
+        else:
+            self.left_target_feat_project = nn.Linear(
+                self.c_target_feat, self.c_pair, bias=False
+            )
+            self.right_target_feat_project = nn.Linear(
+                self.c_target_feat, self.c_pair, bias=False
+            )
+            self.distogram_feat_project = nn.Linear(
+                self.dgram_features_config.num_bins, self.c_pair, bias=False
+            )
 
         self.confidence_pairformer = nn.ModuleList(
             [
@@ -155,10 +235,16 @@ class ConfidenceHead(nn.Module):
             ]
         )
 
-        self.logits_ln = fastnn.LayerNorm(self.c_pair)
+        head_norm = nn.Identity if self.split_heads else fastnn.LayerNorm
+        self.logits_ln = head_norm(self.c_pair)
         self.left_half_distance_logits = nn.Linear(
             self.c_pair, self.num_bins, bias=False
         )
+        if self.split_heads:
+            self.inter_half_distance_logits = nn.Linear(
+                self.c_pair, self.num_bins, bias=False
+            )
+            self.pae_inter_logits = nn.Linear(self.c_pair, 64, bias=False)
 
         self.register_buffer(
             "distance_breaks",
@@ -170,7 +256,7 @@ class ConfidenceHead(nn.Module):
             [self.bin_centers, self.bin_centers[-1:] + self.step], dim=0
         )
 
-        self.pae_logits_ln = fastnn.LayerNorm(self.c_pair)
+        self.pae_logits_ln = head_norm(self.c_pair)
         self.pae_logits = nn.Linear(self.c_pair, self.pae_num_bins, bias=False)
 
         self.register_buffer(
@@ -191,12 +277,12 @@ class ConfidenceHead(nn.Module):
             "plddt_bin_centers", torch.arange(0.5 * self.bin_width, 1.0, self.bin_width)
         )
 
-        self.plddt_logits_ln = fastnn.LayerNorm(self.c_single)
+        self.plddt_logits_ln = head_norm(self.c_single)
         self.plddt_logits = nn.Linear(
             self.c_single, self.num_atom * self.num_plddt_bins, bias=False
         )
 
-        self.experimentally_resolved_ln = fastnn.LayerNorm(self.c_single)
+        self.experimentally_resolved_ln = head_norm(self.c_single)
         self.experimentally_resolved_logits = nn.Linear(
             self.c_single, self.num_atom * 2, bias=False
         )
@@ -235,6 +321,7 @@ class ConfidenceHead(nn.Module):
         seq_mask: torch.Tensor,
         token_atoms_to_pseudo_beta: atom_layout.GatherInfo,
         asym_id: torch.Tensor,
+        batch: feat_batch.Batch | None = None,
     ) -> dict[str, torch.Tensor]:
         """Args:
 
@@ -247,7 +334,9 @@ class ConfidenceHead(nn.Module):
         token_atoms_to_pseudo_beta (atom_layout.GatherInfo): Pseudo beta info for
             atom tokens.
         """
-        dtype = self.left_target_feat_project.weight.dtype
+        dtype = self.left_half_distance_logits.weight.dtype
+        if not self.split_heads:
+            dtype = self.left_target_feat_project.weight.dtype
 
         seq_mask_cast = seq_mask.to(dtype=dtype)
         pair_mask = seq_mask_cast[:, None] * seq_mask_cast[None, :]
@@ -257,9 +346,26 @@ class ConfidenceHead(nn.Module):
         single_act = embeddings["single"].clone().to(dtype=dtype)
         target_feat = embeddings["target_feat"].clone().to(dtype=dtype)
 
-        pair_act += self._embed_features(
-            dense_atom_positions, token_atoms_to_pseudo_beta, pair_mask, target_feat
-        )
+        if self.split_heads:
+            if batch is None:
+                message = "The re-embedding confidence head needs the feature batch"
+                raise ValueError(message)
+            positions = atom_layout.convert(
+                token_atoms_to_pseudo_beta, dense_atom_positions, layout_axes=(-3, -2)
+            )
+            pair_act, single_act = self.reembedding(
+                pair_act,
+                single_act,
+                target_feat,
+                positions.to(dtype),
+                pair_mask,
+                batch,
+                self.spec.symmetric_bonds,
+            )
+        else:
+            pair_act += self._embed_features(
+                dense_atom_positions, token_atoms_to_pseudo_beta, pair_mask, target_feat
+            )
 
         # pairformer stack
         for layer in self.confidence_pairformer:
@@ -271,11 +377,22 @@ class ConfidenceHead(nn.Module):
         # Produce logits to predict a distogram of pairwise distance errors
         # between the input prediction and the ground truth.
 
-        left_distance_logits = self.left_half_distance_logits(self.logits_ln(pair_act))
-        right_distance_logits = left_distance_logits
-        distance_logits = left_distance_logits + torch.transpose(
-            right_distance_logits, -2, -3
-        )
+        same_chain = (asym_id[:, None] == asym_id[None])[..., None].to(pair_act.dtype)
+        if self.split_heads:
+            # Symmetrise FIRST, then route each pair to its chain-relation head.
+            symmetric = pair_act + pair_act.transpose(-2, -3)
+            distance_logits = self.left_half_distance_logits(
+                symmetric
+            ) * same_chain + self.inter_half_distance_logits(symmetric) * (
+                1 - same_chain
+            )
+        else:
+            left_distance_logits = self.left_half_distance_logits(
+                self.logits_ln(pair_act)
+            )
+            distance_logits = left_distance_logits + torch.transpose(
+                left_distance_logits, -2, -3
+            )
 
         distance_probs = torch.softmax(distance_logits, dim=-1)
         pred_distance_error = (
@@ -288,6 +405,10 @@ class ConfidenceHead(nn.Module):
         # Predicted aligned error
         pae_outputs = {}
         pae_logits = self.pae_logits(self.pae_logits_ln(pair_act))
+        if self.split_heads:
+            pae_logits = pae_logits * same_chain + self.pae_inter_logits(pair_act) * (
+                1 - same_chain
+            )
         pae_probs = torch.softmax(pae_logits, dim=-1)
 
         pair_mask_bool = pair_mask.to(dtype=torch.bool)

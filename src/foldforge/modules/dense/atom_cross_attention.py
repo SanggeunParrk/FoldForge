@@ -54,6 +54,7 @@ class AtomCrossAttEncoder(nn.Module):
     ) -> None:
         super().__init__()
 
+        self.spec = spec
         self.key_masked_offsets = spec.key_masked_offsets
         self.with_token_atoms_act = with_token_atoms_act
         self.with_trunk_single_cond = with_trunk_single_cond
@@ -85,6 +86,12 @@ class AtomCrossAttEncoder(nn.Module):
         self.embed_ref_atom_name = nn.Linear(
             self.c_atom_name, self.per_atom_channels, bias=False
         )
+        if spec.atom_features_bias:
+            # The vendor embeds the concatenated atom features with ONE biased
+            # Linear; AF3's per-feature projections are bias-free.
+            self.embed_atom_features_bias = nn.Parameter(
+                torch.zeros(self.per_atom_channels)
+            )
 
         self.single_to_pair_cond_row = nn.Linear(
             self.per_atom_channels, self.per_atom_pair_channels, bias=False
@@ -132,7 +139,7 @@ class AtomCrossAttEncoder(nn.Module):
 
         self.c_query = 128
         self.atom_transformer_encoder = DiffusionCrossAttTransformer(
-            c_query=self.c_query
+            c_query=self.c_query, spec=spec
         )
 
         self.project_atom_features_for_aggr = nn.Linear(
@@ -142,7 +149,8 @@ class AtomCrossAttEncoder(nn.Module):
         if self.with_trunk_single_cond is True:
             self.c_trunk_single_cond = trunk_single_channels
             self.lnorm_trunk_single_cond = fastnn.LayerNorm(
-                self.c_trunk_single_cond, bias=False
+                self.c_trunk_single_cond,
+                bias="lnorm_trunk_single_cond" in spec.affine_norms,
             )
             self.embed_trunk_single_cond = nn.Linear(
                 self.c_trunk_single_cond, self.per_atom_channels, bias=False
@@ -156,7 +164,8 @@ class AtomCrossAttEncoder(nn.Module):
         if self.with_trunk_pair_cond is True:
             self.c_trunk_pair_cond = trunk_pair_channels
             self.lnorm_trunk_pair_cond = fastnn.LayerNorm(
-                self.c_trunk_pair_cond, bias=False
+                self.c_trunk_pair_cond,
+                bias="lnorm_trunk_pair_cond" in spec.affine_norms,
             )
             self.embed_trunk_pair_cond = nn.Linear(
                 self.c_trunk_pair_cond, self.per_atom_pair_channels, bias=False
@@ -182,9 +191,10 @@ class AtomCrossAttEncoder(nn.Module):
                 dtype=self.embed_ref_element.weight.dtype
             )
         )
-        act += self.embed_ref_charge(
-            torch.arcsinh(batch.ref_structure.charge)[:, :, None]
-        )
+        charge = batch.ref_structure.charge
+        if not self.spec.raw_ref_charge:
+            charge = torch.arcsinh(charge)
+        act += self.embed_ref_charge(charge[:, :, None])
 
         # Characters are encoded as ASCII code minus 32, so we need 64 classes,
         # to encode all standard ASCII characters between 32 and 96.
@@ -196,6 +206,8 @@ class AtomCrossAttEncoder(nn.Module):
             atom_name_chars_1hot.reshape(num_token, num_dense, -1)
         )
 
+        if self.spec.atom_features_bias:
+            act = act + self.embed_atom_features_bias
         act *= batch.ref_structure.mask[:, :, None]
 
         # Compute pair conditioning
@@ -264,6 +276,10 @@ class AtomCrossAttEncoder(nn.Module):
             layout_axes=(-2, -1),
         )
 
+        # Some families query on the per-atom features alone and let only the
+        # conditioning see the trunk single.
+        # Cloned: the trunk term below is added in place.
+        query_base = queries_single_cond.clone()
         # If provided, broadcast single conditioning from trunk to all queries
         if trunk_single_cond is not None:
             trunk_single_cond = layernorm_projection(
@@ -277,8 +293,14 @@ class AtomCrossAttEncoder(nn.Module):
                 layout_axes=(-2,),
             )
 
+        if self.key_masked_offsets:
+            queries_single_cond = queries_single_cond * queries_mask[..., None]
+            query_base = query_base * queries_mask[..., None]
+        if not self.spec.pre_trunk_atom_query:
+            query_base = queries_single_cond
+
         if token_atoms_act is None:
-            queries_act = queries_single_cond.clone()
+            queries_act = query_base.clone()
         else:
             # Convert token_atoms_act to queries layout and map to per_atom_channels
             # (num_subsets, num_queries, channels)
@@ -290,7 +312,7 @@ class AtomCrossAttEncoder(nn.Module):
 
             queries_act = self.atom_positions_to_features(queries_act)
             queries_act *= queries_mask[..., None]
-            queries_act += queries_single_cond
+            queries_act += query_base
 
         keys_single_cond = atom_layout.convert(
             batch.atom_cross_att.queries_to_keys,
@@ -437,7 +459,7 @@ class AtomCrossAttEncoder(nn.Module):
 class AtomCrossAttDecoder(nn.Module):
     """Represent atom cross att decoder."""
 
-    def __init__(self) -> None:
+    def __init__(self, spec: DenseSpec = ALPHAFOLD3) -> None:
         super().__init__()
 
         self.per_atom_channels = 128
@@ -447,11 +469,11 @@ class AtomCrossAttDecoder(nn.Module):
         )
 
         self.atom_transformer_decoder = DiffusionCrossAttTransformer(
-            c_query=self.per_atom_channels
+            c_query=self.per_atom_channels, spec=spec
         )
 
         self.atom_features_layer_norm = fastnn.LayerNorm(
-            self.per_atom_channels, bias=False
+            self.per_atom_channels, bias="atom_features_layer_norm" in spec.affine_norms
         )
         self.atom_features_to_position_update = nn.Linear(
             self.per_atom_channels, 3, bias=False

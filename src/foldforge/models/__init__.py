@@ -59,7 +59,12 @@ _REGISTRY = {
         "sequence_atoms",
         "ESMFold2 — biohub/ESMFold2 + ESMC-6B",
     ),
-    "boltz2": Entry(None, None, "Boltz-2 — MIT"),
+    "boltz2": Entry(
+        "foldforge.models.architectures.af3.AlphaFold3",
+        "dense_atoms",
+        "Boltz-2 — Wohlwend et al., MIT",
+        "boltz2",
+    ),
     "chai1": Entry(None, None, "Chai-1 — Chai Discovery"),
 }
 

@@ -62,19 +62,27 @@ class DiffusionHead(nn.Module):
         super().__init__()
 
         pair_channel = spec.diffusion_pair_channel
-        seq_channel = spec.seq_channel
+        seq_channel = spec.diffusion_seq_channel
         trunk_pair_channel = spec.pair_channel
         padded_single_cond = spec.padded_single_cond
         self.padded_single_cond = padded_single_cond
+        affine = spec.affine_norms
 
         self.c_act = 768
         self.pair_channel = pair_channel
         self.seq_channel = seq_channel
 
-        # Trunk pair plus the 139 relative-position features.
-        self.c_pair_cond_initial = trunk_pair_channel + 139
+        # Trunk pair plus the 139 relative-position features, raw or projected.
+        self.relpe_projection = (
+            nn.Linear(139, pair_channel, bias=False)
+            if spec.diffusion_projected_relpos
+            else None
+        )
+        self.c_pair_cond_initial = trunk_pair_channel + (
+            pair_channel if spec.diffusion_projected_relpos else 139
+        )
         self.pair_cond_initial_norm = fastnn.LayerNorm(
-            self.c_pair_cond_initial, bias=False
+            self.c_pair_cond_initial, bias="pair_cond_initial_norm" in affine
         )
         self.pair_cond_initial_projection = nn.Linear(
             self.c_pair_cond_initial, self.pair_channel, bias=False
@@ -87,18 +95,22 @@ class DiffusionHead(nn.Module):
             self.pair_channel, c_single_cond=None
         )
 
-        # Trunk single plus the 447 target features.
-        self.c_single_cond_initial = seq_channel + 447 + 2 * padded_single_cond
+        # Trunk single plus the target features.
+        self.c_single_cond_initial = (
+            spec.seq_channel + spec.target_feat_channel + 2 * padded_single_cond
+        )
         self.single_cond_initial_norm = fastnn.LayerNorm(
-            self.c_single_cond_initial, bias=False
+            self.c_single_cond_initial, bias="single_cond_initial_norm" in affine
         )
         self.single_cond_initial_projection = nn.Linear(
-            self.c_single_cond_initial, self.seq_channel, bias=False
+            self.c_single_cond_initial,
+            self.seq_channel,
+            bias=spec.single_cond_projection_bias,
         )
 
         self.c_noise_embedding = 256
         self.noise_embedding_initial_norm = fastnn.LayerNorm(
-            self.c_noise_embedding, bias=False
+            self.c_noise_embedding, bias="noise_embedding_initial_norm" in affine
         )
         self.noise_embedding_initial_projection = nn.Linear(
             self.c_noise_embedding, self.seq_channel, bias=False
@@ -117,11 +129,13 @@ class DiffusionHead(nn.Module):
             with_trunk_pair_cond=True,
             with_trunk_single_cond=True,
             trunk_pair_channels=pair_channel,
-            trunk_single_channels=seq_channel,
+            trunk_single_channels=spec.seq_channel,
             spec=spec,
         )
 
-        self.single_cond_embedding_norm = fastnn.LayerNorm(self.seq_channel, bias=False)
+        self.single_cond_embedding_norm = fastnn.LayerNorm(
+            self.seq_channel, bias="single_cond_embedding_norm" in affine
+        )
         self.single_cond_embedding_projection = nn.Linear(
             self.seq_channel, self.c_act, bias=False
         )
@@ -130,9 +144,9 @@ class DiffusionHead(nn.Module):
             c_single_cond=seq_channel, c_pair_cond=pair_channel, spec=spec
         )
 
-        self.output_norm = fastnn.LayerNorm(self.c_act, bias=False)
+        self.output_norm = fastnn.LayerNorm(self.c_act, bias="output_norm" in affine)
 
-        self.atom_cross_att_decoder = AtomCrossAttDecoder()
+        self.atom_cross_att_decoder = AtomCrossAttDecoder(spec=spec)
 
         self.fourier_embeddings = FourierEmbeddings(dim=256)
 
@@ -153,6 +167,8 @@ class DiffusionHead(nn.Module):
         rel_features = featurization.create_relative_encoding(
             batch.token_features, max_relative_idx=32, max_relative_chain=2
         ).to(dtype=pair_embedding.dtype)
+        if self.relpe_projection is not None:
+            rel_features = self.relpe_projection(rel_features)
         features_2d = torch.concatenate([pair_embedding, rel_features], dim=-1)
 
         pair_cond = layernorm_projection(

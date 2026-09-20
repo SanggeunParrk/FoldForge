@@ -84,6 +84,7 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         if args.execution.bucketing:
             example, bucket_shape = bucket_af3(example)
             model.evoformer.foldforge_msa_bucketing = True
+        example = dense_conventions.apply_after_bucketing(example, model.spec)
         start = time.monotonic()
         tensors = {
             k: torch.from_numpy(v).to("cuda")

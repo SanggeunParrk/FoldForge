@@ -27,17 +27,31 @@ def test_every_dense_registry_row_names_a_spec_and_the_one_architecture():
         assert (row.family or "alphafold3") in SPECS
 
 
-@pytest.mark.parametrize("family", sorted(SPECS))
-def test_family_is_the_af3_module_tree(family):
-    """Families differ in shapes and declared branches, never in the module tree."""
+@pytest.mark.parametrize("family", ["intellifold2", "openbind0"])
+def test_width_and_convention_families_are_the_af3_module_tree(family):
+    """Widths and forward conventions never change the module tree."""
     reference = {name for name, _ in _meta_model("alphafold3").named_modules()}
-    names = {name for name, _ in _meta_model(family).named_modules()}
-    spec = SPECS[family]
-    if not spec.per_block_pair_layer_norm:
-        assert names == reference
-    else:
-        differing = names ^ reference
-        assert all("diffusion_head.transformer.pair_" in name for name in differing)
+    assert {name for name, _ in _meta_model(family).named_modules()} == reference
+
+
+def test_per_block_pair_norm_changes_only_the_diffusion_transformer():
+    reference = {name for name, _ in _meta_model("openbind0").named_modules()}
+    names = {name for name, _ in _meta_model("openfold3").named_modules()}
+    assert all("diffusion_head.transformer.pair_" in name for name in names ^ reference)
+
+
+def test_boltz2_adds_exactly_its_declared_modules():
+    model = _meta_model("boltz2")
+    assert len(model.evoformer.trunk_pairformer) == 64
+    assert len(model.confidence_head.confidence_pairformer) == 8
+    assert type(model.evoformer.template_embedding).__name__ == "FusedTemplateEmbedding"
+    assert model.confidence_head.split_heads
+    assert model.evoformer.left_single.in_features == 384
+    assert model.evoformer.msa_activations.in_features == 35
+    state = model.state_dict()
+    assert state["diffusion_head.single_cond_initial_projection.bias"].shape == (768,)
+    assert "diffusion_head.transformer.transition_block.0.a_to_b.weight" in state
+    assert "input_embedder.method_conditioning.weight" in state
 
 
 def test_widths_follow_the_spec():

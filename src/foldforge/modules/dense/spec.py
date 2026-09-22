@@ -80,8 +80,12 @@ class DenseSpec:
     relpos: str = "af3"
     relpos_channel: int = 139
     relpos_bias: bool = False
+    #: Which MSA feature stream the weights were trained on.
+    msa_feat_layout: str = "af3"
     #: Columns of the MSA feature when the family does not build AF3's set.
     msa_feat_columns: int | None = None
+    #: The MSA is taken in the order given, query first, and not shuffled.
+    msa_keep_order: bool = False
     #: Value of the appended MSA "is paired" column on the query row; None omits it.
     msa_query_paired: float | None = None
     #: Pair init also embeds token bond orders and contact conditioning.
@@ -387,7 +391,9 @@ CHAI1 = replace(
     ALPHAFOLD3,
     family="chai1",
     input_embedder="chai1",
+    msa_feat_layout="chai1",
     msa_feat_columns=41,
+    msa_keep_order=True,
     relpos="chai1",
     relpos_channel=134,
     distogram_bias=True,

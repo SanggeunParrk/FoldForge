@@ -241,11 +241,13 @@ class Evoformer(nn.Module):
         pair_activations: torch.Tensor,
         pair_mask: torch.Tensor,
         target_feat: torch.Tensor,
+        token_features: features.TokenFeatures,
     ) -> torch.Tensor:
         """Process MSA and returns updated pair activations."""
         dtype = pair_activations.dtype
 
-        msa_batch = featurization.shuffle_msa(msa_batch)
+        if not self.spec.msa_keep_order:
+            msa_batch = featurization.shuffle_msa(msa_batch)
         msa_batch = featurization.truncate_msa_batch(msa_batch, self.num_msa)
         if getattr(self, "foldforge_msa_bucketing", False):
             extent = ceiling(msa_batch.rows.shape[0], MSA_SHAPES, "msa")
@@ -257,7 +259,12 @@ class Evoformer(nn.Module):
             )
 
         msa_mask = msa_batch.mask.to(dtype=dtype)
-        msa_feat = featurization.create_msa_feat(msa_batch).to(dtype=dtype)
+        msa_feat = featurization.create_msa_feat(
+            msa_batch,
+            layout=self.spec.msa_feat_layout,
+            is_ligand=token_features.is_ligand,
+            asym_id=token_features.asym_id,
+        ).to(dtype=dtype)
         if self.spec.msa_query_paired is not None:
             paired = torch.zeros_like(msa_feat[..., :1])
             paired[0] = self.spec.msa_query_paired
@@ -287,6 +294,8 @@ class Evoformer(nn.Module):
         batch: feat_batch.Batch,
         prev: dict[str, Any],
         target_feat: torch.Tensor,
+        *,
+        first_pass: bool = False,
     ) -> dict[str, Any]:
         """Compute the module output."""
         pair_activations, pair_mask = self._seq_pair_embedding(
@@ -304,7 +313,7 @@ class Evoformer(nn.Module):
             pair_init = pair_activations
 
         recycled = prev["pair"]
-        if self.spec.recycle_from_initial and prev.get("recycle_first", False):
+        if self.spec.recycle_from_initial and first_pass:
             # The carry starts at the INITIAL representations rather than zeros,
             # so pass one already adds recycle_proj(norm(z_init)).
             recycled = pair_init if pair_init is not None else pair_activations
@@ -333,6 +342,7 @@ class Evoformer(nn.Module):
             msa_batch=batch.msa,
             pair_activations=pair_activations,
             pair_mask=pair_mask,
+            token_features=batch.token_features,
             target_feat=(
                 prev["single"].to(target_feat.dtype)
                 if self.spec.msa_single_from_recycle
@@ -342,7 +352,7 @@ class Evoformer(nn.Module):
 
         single_activations = self.single_activations(target_feat)
         recycled_single = prev["single"]
-        if self.spec.recycle_from_initial and prev.get("recycle_first", False):
+        if self.spec.recycle_from_initial and first_pass:
             recycled_single = single_activations
         single_activations = single_activations + self.prev_single_embedding(
             self.prev_single_embedding_layer_norm(
@@ -364,7 +374,6 @@ class Evoformer(nn.Module):
             **({"pair_init": pair_init} if pair_init is not None else {}),
             "target_feat": target_feat,
             "structure_target_feat": prev["structure_target_feat"],
-            "recycle_first": False,
         }
 
 
@@ -529,13 +538,15 @@ class AlphaFold3(nn.Module):
             ),
             "target_feat": target_feat,
             "structure_target_feat": structure_feat,
-            "recycle_first": True,
         }
 
         # Recycles are additional trunk passes after the initial pass.
-        for _ in range(self.num_recycles + 1):
+        for pass_index in range(self.num_recycles + 1):
             embeddings = self.evoformer(
-                batch=batch_data, prev=embeddings, target_feat=target_feat
+                batch=batch_data,
+                prev=embeddings,
+                target_feat=target_feat,
+                first_pass=pass_index == 0,
             )
             if self.reference_precision:
                 embeddings["pair"] = embeddings["pair"].float()

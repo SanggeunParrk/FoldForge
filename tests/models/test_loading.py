@@ -226,8 +226,13 @@ def test_af3_recycles_are_additional_trunk_passes(
     calls = []
 
     class Trunk(nn.Module):
-        def forward(self, *, batch, prev, target_feat) -> dict[str, torch.Tensor]:
+        def forward(
+            self, *, batch, prev, target_feat, first_pass
+        ) -> dict[str, torch.Tensor]:
             assert batch.num_res == 2
+            # The first pass is the one the trunk is told about; a family whose
+            # recycle carry starts at its own initial representations needs it.
+            assert first_pass == (len(calls) == 0)
             calls.append(prev["pair"].dtype)
             return {
                 "pair": torch.ones(2, 2, 2, dtype=torch.bfloat16),

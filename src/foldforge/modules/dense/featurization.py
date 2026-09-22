@@ -65,23 +65,70 @@ def gumbel_argsort_sample_idx(
     return torch.argsort(logits + z, dim=-1, descending=True)
 
 
-def create_msa_feat(msa: features.MSA) -> torch.Tensor:
-    """Create and concatenate MSA features."""
-    msa_1hot = torch.nn.functional.one_hot(
-        msa.rows.to(dtype=torch.int64),
-        residue_names.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP + 1,
-    )
+#: Chains the vendor's paired-row feature distinguishes; more than any complex
+#: this runs on.
+_PAIRED_CHAIN_BOUND = 16
+#: Database labels of the vendor's MSA source feature: the query row, then the
+#: rest. A row from a third source is not distinguishable to us.
+_MSA_SOURCE_CLASSES = 6
+_MSA_SOURCE_QUERY = 4
+_MSA_SOURCE_OTHER = 2
+
+
+def create_msa_feat(
+    msa: features.MSA,
+    layout: str = "af3",
+    is_ligand: torch.Tensor | None = None,
+    asym_id: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Create and concatenate MSA features in the layout the weights expect."""
+    classes = residue_names.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP + 1
+    rows = msa.rows.to(dtype=torch.int64)
+    if layout == "chai1" and is_ligand is not None:
+        # A non-polymer token has no MSA, and the vendor does not mark it as a
+        # gap: its QUERY row carries the unknown residue and every other row the
+        # mask class, where AF3 puts a gap on all of them.
+        unknown = residue_names.POLYMER_TYPES_WITH_UNKNOWN_AND_GAP.index(
+            residue_names.UNK
+        )
+        mask_class = residue_names.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP
+        ligand = is_ligand.to(torch.bool)[None, :]
+        query = torch.arange(rows.shape[0], device=rows.device)[:, None] == 0
+        rows = torch.where(ligand, torch.where(query, unknown, mask_class), rows)
+    msa_1hot = torch.nn.functional.one_hot(rows, classes)
     deletion_matrix = msa.deletion_matrix
     has_deletion = torch.clip(deletion_matrix, 0.0, 1.0)[..., None]
     deletion_value = (torch.arctan(deletion_matrix / 3.0) * (2.0 / torch.pi))[..., None]
 
-    msa_feat = [
-        msa_1hot,
-        has_deletion,
-        deletion_value,
-    ]
+    if layout != "chai1":
+        return torch.concatenate([msa_1hot, has_deletion, deletion_value], dim=-1)
 
-    return torch.concatenate(msa_feat, dim=-1)
+    # Alphabetical feature order, and deletion VALUE precedes HAS-deletion --
+    # the opposite of AF3's.
+    dtype = msa_1hot.dtype
+    depth, tokens = msa_1hot.shape[:2]
+    if asym_id is not None:
+        # A row is paired exactly when it covers tokens of more than one chain,
+        # which is what pairing means. Zero throughout for a monomer.
+        chains = torch.nn.functional.one_hot(
+            asym_id.to(torch.int64).clamp(0, _PAIRED_CHAIN_BOUND - 1),
+            _PAIRED_CHAIN_BOUND,
+        ).to(torch.float32)
+        covers = msa.mask.to(torch.float32) @ chains > 0
+        paired = (covers.sum(-1) > 1).to(dtype)
+        is_paired = paired[:, None, None].expand(depth, tokens, 1)
+    else:
+        is_paired = msa_1hot.new_zeros((depth, tokens, 1))
+    source = torch.where(
+        torch.arange(depth, device=rows.device) == 0,
+        _MSA_SOURCE_QUERY,
+        _MSA_SOURCE_OTHER,
+    )
+    source = torch.nn.functional.one_hot(source, _MSA_SOURCE_CLASSES).to(dtype)
+    source = source[:, None, :].expand(depth, tokens, _MSA_SOURCE_CLASSES)
+    return torch.concatenate(
+        [is_paired, source, deletion_value, has_deletion, msa_1hot], dim=-1
+    )
 
 
 def truncate_msa_batch(msa: features.MSA, num_msa: int) -> features.MSA:

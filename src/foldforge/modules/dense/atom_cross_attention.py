@@ -20,7 +20,9 @@ from team_gm.modules.checkpoints.backend_attention import layernorm_projection
 from foldforge.data.features import dense_batch as feat_batch
 from foldforge.modules import ops as fastnn
 from foldforge.modules.dense import atom_layout, utils
-from foldforge.modules.dense.diffusion_transformer import DiffusionCrossAttTransformer
+from foldforge.modules.dense.diffusion_transformer import (
+    DiffusionCrossAttTransformer,
+)
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 
 
@@ -38,6 +40,67 @@ class AtomCrossAttEncoderOutput:
     #: Which query/key atom pairs the attention may open, where the family
     #: restricts them; None lets every atom in the window attend.
     pair_mask: torch.Tensor | None = None
+    #: The rotary tables and the sliding-window mask, carried rather than
+    #: rebuilt: the queries' and the keys' rotations are gathers of the same
+    #: flat atom list, and rebuilding them is where a mismatch would go.
+    rope_q: tuple[torch.Tensor, torch.Tensor] | None = None
+    rope_k: tuple[torch.Tensor, torch.Tensor] | None = None
+
+
+def build_atom_rope(
+    ref_pos: torch.Tensor,
+    ref_space_uid: torch.Tensor,
+    head_dim: int,
+    config: dict[str, float],
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """A 3D rotary from the reference conformer, in whatever layout it is given.
+
+    Three spatial axes times `n_spatial` pairs, plus `n_uid` pairs of the
+    reference space uid. Queries and keys must be built SEPARATELY: they are
+    different subsets of the same flat atom list, so one rotation does not serve
+    both -- passing the query table for the keys rotates them as if they sat at
+    the query positions.
+    """
+
+    def inverse(count: int, base: float) -> torch.Tensor:
+        steps = torch.arange(count, dtype=torch.float32, device=ref_pos.device)
+        return 1.0 / (base ** (steps / count))
+
+    spatial = inverse(int(config["n_spatial"]), config["spatial_base"])
+    uid = inverse(int(config["n_uid"]), config["uid_base"])
+    frequencies = torch.concatenate(
+        [
+            (ref_pos.float()[..., None] * spatial).reshape(*ref_pos.shape[:-1], -1),
+            ref_space_uid.float()[..., None] * uid,
+        ],
+        dim=-1,
+    )
+    half = head_dim // 2
+    if frequencies.shape[-1] < half:
+        pad = frequencies.new_zeros(
+            (*frequencies.shape[:-1], half - frequencies.shape[-1])
+        )
+        frequencies = torch.concatenate([frequencies, pad], dim=-1)
+    return torch.cos(frequencies), torch.sin(frequencies)
+
+
+def sliding_window_mask(
+    queries_mask: torch.Tensor,
+    keys_mask: torch.Tensor,
+    queries_to_keys: atom_layout.GatherInfo,
+    half: int,
+) -> torch.Tensor:
+    """The window of +/- ``half`` by RANK among VALID atoms.
+
+    AF3's key subset is only block-aligned, so this is what actually defines the
+    window; the subset is merely wide enough to contain it.
+    """
+    rank = torch.cumsum(queries_mask.reshape(-1).to(torch.int64), dim=0) - 1
+    rank = rank.reshape(queries_mask.shape)
+    key_rank = atom_layout.convert(queries_to_keys, rank, layout_axes=(-2, -1))
+    window = (rank[:, :, None] - key_rank[:, None, :]).abs() <= half
+    window = window & queries_mask[:, :, None].to(torch.bool)
+    return window & keys_mask[:, None, :].to(torch.bool)
 
 
 class AtomCrossAttEncoder(nn.Module):
@@ -504,6 +567,23 @@ class AtomCrossAttEncoder(nn.Module):
                 batch, token_atoms_mask, queries_mask, keys_mask
             )
 
+        rope_q = rope_k = None
+        if self.spec.atom_rope is not None:
+            head_dim: int = self.atom_transformer_encoder.key_dim_per_head  # pyright: ignore[reportAssignmentType]
+            rope_q = build_atom_rope(
+                queries_ref_pos, queries_ref_space_uid, head_dim, self.spec.atom_rope
+            )
+            rope_k = build_atom_rope(
+                keys_ref_pos, keys_ref_space_uid, head_dim, self.spec.atom_rope
+            )
+        if self.spec.atom_window_half is not None:
+            pair_mask = sliding_window_mask(
+                queries_mask,
+                keys_mask,
+                batch.atom_cross_att.queries_to_keys,
+                self.spec.atom_window_half,
+            )
+
         queries_act = self.atom_transformer_encoder(
             queries_act=queries_act,
             queries_mask=queries_mask,
@@ -513,6 +593,8 @@ class AtomCrossAttEncoder(nn.Module):
             keys_single_cond=keys_single_cond,
             pair_cond=pair_act,
             pair_mask=pair_mask,
+            rope_q=rope_q,
+            rope_k=rope_k,
         )
 
         queries_act *= queries_mask[..., None]
@@ -546,6 +628,8 @@ class AtomCrossAttEncoder(nn.Module):
             keys_single_cond=keys_single_cond,
             pair_cond=pair_act,
             pair_mask=pair_mask,
+            rope_q=rope_q,
+            rope_k=rope_k,
         )
 
     def _same_token_mask(
@@ -654,6 +738,10 @@ class AtomCrossAttDecoder(nn.Module):
                 else self.post_atom_cond_layer_norm(enc.keys_single_cond)
             ),
             pair_cond=enc.pair_cond,
+            # The decoder shares the ENCODER's rotation, not a rebuilt one: the
+            # two are gathers of the same flat atom list.
+            rope_q=enc.rope_q,
+            rope_k=enc.rope_k,
         )
 
         queries_act *= enc.queries_mask[..., None]

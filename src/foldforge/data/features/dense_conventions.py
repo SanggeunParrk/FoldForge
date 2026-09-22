@@ -140,6 +140,34 @@ def drop_atoms(example: dict[str, Any], names: tuple[str, ...]) -> int:
     return len(drop)
 
 
+def widen_key_subset(example: dict[str, Any], keys: int) -> None:
+    """Rebuild the atom-attention gathers with a wider key subset.
+
+    AF3 takes 128 keys per 32-query block, which is wide enough for a window it
+    only block-aligns. A family whose window is an explicit +/-N by atom rank
+    needs a subset that contains it, or the mask reaches past the keys the
+    gather supplies and the window is silently truncated at the block edges.
+    """
+    from alphafold3.model import features  # noqa: PLC0415 - AF3 input dependency
+
+    layout = features._unwrap(example["token_atoms_layout"])  # noqa: SLF001
+    queries = np.asarray(example["token_atoms_to_queries:gather_idxs"])
+    example.update(
+        features.AtomCrossAtt.compute_features(
+            all_token_atoms_layout=layout,  # pyright: ignore[reportArgumentType]
+            queries_subset_size=queries.shape[1],
+            keys_subset_size=keys,
+            padding_shapes=features.PaddingShapes(
+                num_tokens=layout.shape[0],
+                msa_size=0,
+                num_chains=0,
+                num_templates=0,
+                num_atoms=queries.size,
+            ),
+        ).as_data_dict()
+    )
+
+
 def dedupe_self_msa(example: dict[str, Any]) -> None:
     """Keep the query ONCE when every live MSA row is the query.
 
@@ -253,6 +281,8 @@ def apply(example: dict[str, Any], spec: DenseSpec) -> dict[str, Any]:
 
 def apply_after_bucketing(example: dict[str, Any], spec: DenseSpec) -> dict[str, Any]:
     """Conventions that act on the final atom-attention gathers."""
+    if spec.atom_keys_subset != 128:  # noqa: PLR2004 - AF3's own key subset size
+        widen_key_subset(example, spec.atom_keys_subset)
     if spec.atom_key_window != "slide":
         key_window(example, spec.atom_key_window)
         if any(key.startswith("struct/") for key in example):

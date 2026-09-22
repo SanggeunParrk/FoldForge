@@ -34,6 +34,34 @@ from foldforge.modules.dense import atom_layout
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 
 
+def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+    """Rotary embedding with TILED cos and sin -- [c|c], not interleaved.
+
+    The tiling pairs with the split-into-halves rotation below. Interleaving
+    instead reads correlation 0.88 on the atom encoder: high enough to look like
+    noise, low enough to ruin the fold.
+    """
+    width = cos.shape[-1] * 2
+    c = torch.concatenate([cos, cos], dim=-1)[..., None, :]
+    s = torch.concatenate([sin, sin], dim=-1)[..., None, :]
+    a, b = torch.split(x[..., :width], width // 2, dim=-1)
+    rotated = torch.concatenate([-b, a], dim=-1)
+    return torch.concatenate([x[..., :width] * c + rotated * s, x[..., width:]], dim=-1)
+
+
+class RMSNorm(nn.Module):
+    """Affine-free RMSNorm at float32 machine epsilon.
+
+    Not `F.rms_norm(eps=None)`, which uses the eps of the INPUT dtype: under
+    bf16 that is 7.8e-3 rather than 1.2e-7, which is a different function.
+    """
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Compute the module output."""
+        eps = torch.finfo(torch.float32).eps
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + eps)
+
+
 class AdaptiveLayerNorm(nn.Module):
     """Represent adaptive layer norm."""
 
@@ -44,10 +72,17 @@ class AdaptiveLayerNorm(nn.Module):
         use_single_cond: bool = False,
         identity_scale: bool = False,
         eps: float = 1e-5,
+        rms_norm: bool = False,
+        activate_cond: bool = False,
     ) -> None:
 
         super().__init__()
 
+        #: The activation is normalised with an affine-free RMSNorm and the
+        #: conditioning passes through SiLU rather than a LayerNorm. Neither
+        #: carries a parameter, so both are invisible to a tree diff.
+        self.rms_norm = rms_norm
+        self.activate_cond = activate_cond
         self.c_x = c_x
         self.c_single_cond = c_single_cond
         self.use_single_cond = use_single_cond
@@ -60,8 +95,12 @@ class AdaptiveLayerNorm(nn.Module):
             if self.c_single_cond is None:
                 message = "Conditioned layers require a conditioning channel count"
                 raise ValueError(message)
-            self.layer_norm = fastnn.LayerNorm(
-                self.c_x, eps=eps, elementwise_affine=False, bias=False
+            self.layer_norm = (
+                RMSNorm()
+                if rms_norm
+                else fastnn.LayerNorm(
+                    self.c_x, eps=eps, elementwise_affine=False, bias=False
+                )
             )
             if not identity_scale:
                 self.single_cond_layer_norm = fastnn.LayerNorm(
@@ -92,9 +131,11 @@ class AdaLNZero(nn.Module):
         use_single_cond: bool = False,
         project: bool = True,
         zero_bias: bool = True,
+        raw_gate: bool = False,
     ) -> None:
         super().__init__()
 
+        self.raw_gate = raw_gate
         self.c_in = c_in
         self.c_out = c_out
         self.c_single_cond = c_single_cond
@@ -142,7 +183,10 @@ class AdaLNZero(nn.Module):
                 message = "Conditioned layers require a conditioning channel count"
                 raise ValueError(message)
             cond = self.adaptive_zero_cond(single_cond)
-            output = torch.sigmoid(cond) * output
+            # A gate taken RAW, from a conditioning already through SiLU. AF3
+            # squashes it through a sigmoid and offsets it by -2, and no weight
+            # can undo either: a sigmoid does not fold into a linear map.
+            output = (cond if self.raw_gate else torch.sigmoid(cond)) * output
         return output
 
 
@@ -158,6 +202,7 @@ class DiffusionTransition(nn.Module):
         identity_scale: bool = False,
         norm_eps: float = 1e-5,
         zero_bias: bool = True,
+        rms_conditioning: bool = False,
     ) -> None:
         super().__init__()
 
@@ -172,6 +217,8 @@ class DiffusionTransition(nn.Module):
             self.use_single_cond,
             identity_scale=identity_scale,
             eps=norm_eps,
+            rms_norm=rms_conditioning,
+            activate_cond=rms_conditioning,
         )
         self.transition1 = nn.Linear(
             self.c_x, 2 * self.c_x * self.num_intermediate_factor, bias=False
@@ -183,6 +230,7 @@ class DiffusionTransition(nn.Module):
             self.c_single_cond,
             self.use_single_cond,
             zero_bias=zero_bias,
+            raw_gate=rms_conditioning,
         )
 
     def forward(
@@ -498,6 +546,7 @@ class CrossAttention(nn.Module):
         gating_query: bool = True,
         project_output: bool = True,
         zero_bias: bool = True,
+        rms_conditioning: bool = False,
     ) -> None:
         super().__init__()
 
@@ -516,6 +565,7 @@ class CrossAttention(nn.Module):
         self.value_dim_per_head = self.value_dim // self.num_head
 
         self.q_scale = self.key_dim_per_head ** (-0.5)
+        self.rope_norm = RMSNorm()
 
         adaln = {
             "c_x": self.key_dim,
@@ -523,6 +573,8 @@ class CrossAttention(nn.Module):
             "use_single_cond": True,
             "identity_scale": identity_scale,
             "eps": norm_eps,
+            "rms_norm": rms_conditioning,
+            "activate_cond": rms_conditioning,
         }
         self.q_adaptive_layernorm = AdaptiveLayerNorm(**adaln)
         self.k_adaptive_layernorm = AdaptiveLayerNorm(**adaln)
@@ -540,6 +592,7 @@ class CrossAttention(nn.Module):
             use_single_cond=True,
             project=project_output,
             zero_bias=zero_bias,
+            raw_gate=rms_conditioning,
         )
 
     def forward(
@@ -553,6 +606,8 @@ class CrossAttention(nn.Module):
         single_cond_k: torch.Tensor | None = None,
         pair_mask: torch.Tensor | None = None,
         keys_from_queries: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        rope_q: tuple[torch.Tensor, torch.Tensor] | None = None,
+        rope_k: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         """Compute the module output.
 
@@ -604,6 +659,13 @@ class CrossAttention(nn.Module):
         q = torch.reshape(q, (*q.shape[:-1], self.num_head, self.key_dim_per_head))
         k = torch.reshape(k, (*k.shape[:-1], self.num_head, self.key_dim_per_head))
 
+        if rope_q is not None and rope_k is not None:
+            # The family's ENTIRE positional signal, applied after an
+            # affine-free RMSNorm. Queries and keys carry DIFFERENT rotations
+            # because they are different subsets of the same flat atom list.
+            q = apply_rope(self.rope_norm(q.float()), *rope_q)
+            k = apply_rope(self.rope_norm(k.float()), *rope_k)
+
         logits = (
             # GEMM operands follow native projection precision. Keep masking and
             # softmax in FP32, then restore V's dtype for the weighted sum.
@@ -644,6 +706,9 @@ class DiffusionCrossAttTransformer(nn.Module):
 
         self.num_blocks = num_blocks
         self.num_head = num_head
+        #: Per-head width of the atom attention; the rotary tables are built to
+        #: half of it.
+        self.key_dim_per_head = c_query // num_head
 
         self.per_block_pair = spec.per_block_atom_pair_layer_norm
         self.parallel = spec.parallel_attention_transition
@@ -690,6 +755,7 @@ class DiffusionCrossAttTransformer(nn.Module):
                     gating_query=spec.atom_attention_gating_query,
                     project_output=spec.atom_attention_project_output,
                     zero_bias=spec.atom_adaptive_zero_bias,
+                    rms_conditioning=spec.atom_rms_conditioning,
                 )
                 for _ in range(self.num_blocks)
             ]
@@ -704,6 +770,7 @@ class DiffusionCrossAttTransformer(nn.Module):
                     identity_scale=atom_identity,
                     norm_eps=spec.adaptive_norm_eps,
                     zero_bias=spec.atom_adaptive_zero_bias,
+                    rms_conditioning=spec.atom_rms_conditioning,
                 )
                 for _ in range(self.num_blocks)
             ]
@@ -719,6 +786,8 @@ class DiffusionCrossAttTransformer(nn.Module):
         keys_single_cond: torch.Tensor,  # (num_subsets, num_keys, ch)
         pair_cond: torch.Tensor,  # (num_subsets, num_queries, num_keys, ch)
         pair_mask: torch.Tensor | None = None,  # (num_subsets, num_queries, num_keys)
+        rope_q: tuple[torch.Tensor, torch.Tensor] | None = None,
+        rope_k: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         """Compute the module output."""
         if self.per_block_pair:
@@ -762,6 +831,8 @@ class DiffusionCrossAttTransformer(nn.Module):
                         single_cond_k=keys_single_cond,
                         pair_mask=pair_mask,
                         keys_from_queries=chained,
+                        rope_q=rope_q,
+                        rope_k=rope_k,
                     )
                     + self.transition_block[block_idx](queries_act, queries_single_cond)
                 )
@@ -781,6 +852,8 @@ class DiffusionCrossAttTransformer(nn.Module):
                         single_cond_k=keys_single_cond,
                         pair_mask=pair_mask,
                         keys_from_queries=chained,
+                        rope_q=rope_q,
+                        rope_k=rope_k,
                     )
                 ),
                 transition=self.transition_block[block_idx],

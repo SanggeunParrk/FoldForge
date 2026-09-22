@@ -257,6 +257,22 @@ class DenseSpec:
     atom_adaptive_identity_scale: bool | None = None
     #: Whether the ATOM transformer's output gate carries a trained bias.
     atom_adaptive_zero_bias: bool = True
+    #: The ATOM blocks normalise their activation with an affine-free RMSNorm,
+    #: pass the conditioning through SiLU rather than a LayerNorm, and take the
+    #: output gate RAW instead of through a sigmoid. None of the three carries
+    #: a parameter, so a tree diff cannot see any of them.
+    atom_rms_conditioning: bool = False
+    #: The atom attention's ENTIRE positional signal is a 3D rotary built from
+    #: the reference conformer and its space uid, applied after an affine-free
+    #: RMSNorm on the queries and keys. Empty for every other family.
+    atom_rope: dict[str, float] | None = None
+    #: Half-width, by RANK among valid atoms, of the atom attention's sliding
+    #: window. AF3's window is only BLOCK-aligned, so this is a different mask
+    #: at the same width, and the key subset has to be wide enough to hold it.
+    atom_window_half: int | None = None
+    #: Atoms per key subset. AF3 takes 128; a family with a wider window needs
+    #: a subset that covers it.
+    atom_keys_subset: int = 128
     #: Epsilon of the activation LayerNorm inside the diffusion blocks.
     adaptive_norm_eps: float = 1e-5
     #: The diffusion token transformer's attention carries an output gate.
@@ -689,6 +705,14 @@ ESMFOLD2 = replace(
     single_cond_layout="esm",
     atom_adaptive_identity_scale=True,
     atom_adaptive_zero_bias=False,
+    atom_rms_conditioning=True,
+    # 3 axes x 2 spatial pairs + 10 uid pairs = 16, which is head_dim / 2 for
+    # this family's four 32-channel atom heads exactly.
+    atom_rope={"n_spatial": 2, "n_uid": 10, "spatial_base": 20.0, "uid_base": 1e4},
+    atom_window_half=64,
+    # 32 queries plus 2x64 of context needs 160; 192 is the next size AF3's
+    # gather machinery takes.
+    atom_keys_subset=192,
     confidence_row_pool=True,
     affine_norms=frozenset(
         {

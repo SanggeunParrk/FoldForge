@@ -8,7 +8,7 @@ from team_gm.modules.checkpoints.af_family import configure_model
 from team_gm.modules.checkpoints.transformer import AttentionPairBias
 from team_gm.modules.exceptions import ImplementationType
 
-from foldforge.models.config.esmfold2 import AtomAttentionConfig
+from foldforge.models.config.sequence import AtomAttentionConfig
 from foldforge.modules.sequence.atom_encoder import AtomEncoder
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")

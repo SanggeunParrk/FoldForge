@@ -96,7 +96,7 @@ def pair_representation(
     # The tower pulls in a pinned Transformers fork; import it only when a
     # family actually asks for one.
     from foldforge.models import checkpoints  # noqa: PLC0415
-    from foldforge.modules import esmc  # noqa: PLC0415
+    from foldforge.modules import language_model as tower  # noqa: PLC0415
 
     if checkpoint is None:
         message = f"{name}'s shim lives beside the model's weights; none were given"
@@ -111,12 +111,12 @@ def pair_representation(
         )
         raise FileNotFoundError(message)
 
-    tower = esmc.load_esmc(
+    tower = tower.load_esmc(
         str(checkpoints.resolve("esmc-6b")), device=aatype.device, dtype=dtype
     )
     try:
         with torch.no_grad():
-            hidden = esmc.compute_lm_hidden_states(
+            hidden = tower.compute_lm_hidden_states(
                 tower, aatype, asym_id, residue_index, mol_type, mask
             )
     finally:

@@ -30,8 +30,8 @@ from team_gm.modules.exceptions import ImplementationType
 
 from foldforge.data.ccd import CCDDatabase, default_path
 from foldforge.models.architectures.esmfold2 import ESMFold2Model as TeamGMModel
-from foldforge.models.checkpoints import esmfold2 as convert
-from foldforge.models.config.esmfold2 import ESMFold2Config
+from foldforge.models.checkpoints import sequence as convert
+from foldforge.models.config.sequence import ESMFold2Config
 from foldforge.models.sampling import bind_sampling_seed
 from foldforge.modules.sequence.features import ESMFold2InputBuilder, build_input
 from foldforge.modules.sequence.features import model_kwargs as team_gm_kwargs

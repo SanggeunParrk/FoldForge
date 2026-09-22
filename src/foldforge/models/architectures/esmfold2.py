@@ -9,8 +9,11 @@ from team_gm import typecheck
 from team_gm.modules.exceptions import ImplementationType
 from torch import nn
 
-from foldforge.models.config.esmfold2 import ESMFold2Config
-from foldforge.modules.esmc import LanguageModel, compute_lm_hidden_states
+from foldforge.models.config.sequence import ESMFold2Config
+from foldforge.modules.language_model import (
+    LanguageModel,
+    compute_lm_hidden_states,
+)
 from foldforge.modules.sequence.atom_encoder import NUM_RES_TYPES, InputsEmbedder
 from foldforge.modules.sequence.confidence import ConfidenceHead, ConfidenceOutput
 from foldforge.modules.sequence.diffusion import DiffusionStructureHead

@@ -38,7 +38,7 @@ def test_native_precision_preserves_exact_norm_weights():
 def test_diffusion_noise_conditioning_matches_pytorch():
     from team_gm.modules.exceptions import ImplementationType
 
-    from foldforge.models.config.esmfold2 import ESMFold2Config
+    from foldforge.models.config.sequence import ESMFold2Config
     from foldforge.modules.sequence.diffusion import DiffusionConditioning
 
     config = ESMFold2Config()
@@ -63,7 +63,7 @@ def test_esmc_precision_materializes_rope_and_preserves_fallback_math():
     from transformers.models.esmc.configuration_esmc import ESMCConfig
     from transformers.models.esmc.modeling_esmc import ESMCModel
 
-    from foldforge.modules.esmc import _prepare_esmc_norms
+    from foldforge.modules.language_model import _prepare_esmc_norms
 
     model = ESMCModel(ESMCConfig(d_model=64, n_heads=4, n_layers=1)).eval()
     # Match compute_lm_hidden_states: explicit chain IDs also select the

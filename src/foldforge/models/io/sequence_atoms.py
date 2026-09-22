@@ -17,7 +17,10 @@ from foldforge.eval.structure import deposit_ca, score_against_deposit
 from foldforge.models import checkpoints, load
 from foldforge.models.io.output import Decoded
 from foldforge.models.io.runtime import Case, Runtime
-from foldforge.modules.esmc import compute_lm_hidden_states, load_esmc
+from foldforge.modules.language_model import (
+    compute_lm_hidden_states,
+    load_esmc,
+)
 from foldforge.modules.sequence.features import (
     ESMFold2InputBuilder,
     build_input,

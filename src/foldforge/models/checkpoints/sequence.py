@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from torch import Tensor
 
-    from foldforge.models.config.esmfold2 import ESMFold2Config
+    from foldforge.models.config.sequence import ESMFold2Config
 
 StateDict = dict[str, "Tensor"]
 

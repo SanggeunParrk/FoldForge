@@ -20,14 +20,48 @@ from foldforge.data.msa.alignment import MSAPairingEngine, RawMsa
 from foldforge.data.msa.kalign import resolve_kalign_binary
 from foldforge.eval.clash import Clash
 
+#: Every name a file must not be called after. A file named for a model is a
+#: file someone will put model-specific code in, and the point of this port is
+#: that a model is a ROW in a table, not a module.
+_MODEL_NAMES = (
+    "af3",
+    "alphafold",
+    "boltz",
+    "chai1",
+    "esmc",
+    "esmfold",
+    "intellifold",
+    "openbind",
+    "opendde",
+    "openfold",
+    "protenix",
+    "rosettafold",
+)
 
-def test_operational_files_are_named_for_responsibility():
+
+def test_no_file_is_named_after_a_model():
+    """Across the whole package, with one exception.
+
+    `architectures/` holds complete networks, and a network IS one model's
+    topology -- naming those files after their model is what they are for.
+    Nothing else gets to: a configuration, a converter, a constant table or a
+    feature step belongs to a RESPONSIBILITY, and the model it came from is a
+    fact for its docstring.
+
+    Directory names are left alone. A vendored upstream config tree keeps the
+    vendor's own layout so it can be diffed against the source it was taken
+    from, and a provenance record is keyed by the model whose weights it
+    documents.
+    """
     root = Path(foldforge.__file__).parent
-    for scope in ("data", "eval", "training", "modules"):
-        for path in (root / scope).rglob("*.py"):
-            assert not any(
-                name in path.stem for name in ("protenix", "opendde", "esmfold2", "af3")
-            ), path
+    architectures = root / "models" / "architectures"
+    offenders = [
+        path
+        for path in root.rglob("*.py")
+        if architectures not in path.parents
+        and any(name in path.stem.lower() for name in _MODEL_NAMES)
+    ]
+    assert offenders == [], offenders
 
 
 def test_residue_and_structural_tokens_preserve_atom_partition_and_twins():

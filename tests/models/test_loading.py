@@ -68,13 +68,13 @@ def test_flat_checkpoint_uses_strict_native_precision(
 def test_sequence_checkpoint_uses_same_loader(tmp_path, monkeypatch, backend, expected):
     from safetensors.torch import save_file
 
-    from foldforge.models.checkpoints import esmfold2
-    from foldforge.models.config.esmfold2 import ESMFold2Config
+    from foldforge.models.checkpoints import sequence
+    from foldforge.models.config.sequence import ESMFold2Config
 
     reference = TinyModel()
     save_file(reference.state_dict(), tmp_path / "model.safetensors")
     monkeypatch.setattr(ESMFold2Config, "from_json", lambda _: SimpleNamespace())
-    monkeypatch.setattr(esmfold2, "convert_model", lambda state, _config: state)
+    monkeypatch.setattr(sequence, "convert_model", lambda state, _config: state)
     selected = []
 
     def construct(config, implementation) -> TinyModel:

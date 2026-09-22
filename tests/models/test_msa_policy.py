@@ -5,7 +5,7 @@ import torch
 
 from foldforge.models import msa_policy
 from foldforge.models.config import Config, configuration
-from foldforge.models.config.esmfold2 import ESMFold2Config
+from foldforge.models.config.sequence import ESMFold2Config
 from foldforge.models.io.request import Request
 from foldforge.modules.sequence.pair_trunk import sample_msa_rows
 

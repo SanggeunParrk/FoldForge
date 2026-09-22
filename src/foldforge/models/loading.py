@@ -132,8 +132,8 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
             from safetensors.torch import load_file
             from team_gm.modules.exceptions import ImplementationType
 
-            from foldforge.models.checkpoints.esmfold2 import convert_model
-            from foldforge.models.config.esmfold2 import ESMFold2Config
+            from foldforge.models.checkpoints.sequence import convert_model
+            from foldforge.models.config.sequence import ESMFold2Config
 
             configs = (
                 ESMFold2Config.from_json(checkpoint) if configs is None else configs

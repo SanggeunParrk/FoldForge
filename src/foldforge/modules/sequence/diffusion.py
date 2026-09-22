@@ -42,7 +42,7 @@ from team_gm.modules.exceptions import ImplementationType
 from team_gm.modules.primitives import LayerNorm, Linear
 from torch import nn
 
-from foldforge.models.config.esmfold2 import ESMFold2Config
+from foldforge.models.config.sequence import ESMFold2Config
 from foldforge.modules.sequence.atom_encoder import XYZ_DIMS, AtomEncoder, AtomStatics
 from foldforge.modules.sequence.atom_transformer import SWAAtomTransformer
 from foldforge.modules.sequence.tokens import gather_token_to_atom

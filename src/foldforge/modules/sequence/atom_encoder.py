@@ -25,7 +25,7 @@ from team_gm.modules.exceptions import ImplementationType
 from team_gm.modules.primitives import LayerNorm, Linear
 from torch import nn
 
-from foldforge.models.config.esmfold2 import AtomAttentionConfig, ESMFold2Config
+from foldforge.models.config.sequence import AtomAttentionConfig, ESMFold2Config
 from foldforge.modules.sequence.atom_transformer import SWAAtomTransformer
 from foldforge.modules.sequence.tokens import scatter_mean_to_token
 

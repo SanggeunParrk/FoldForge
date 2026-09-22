@@ -22,7 +22,7 @@ from team_gm.modules.exceptions import ImplementationType
 from team_gm.modules.primitives import Linear
 from torch import nn
 
-from foldforge.models.config.esmfold2 import ESMFold2Config
+from foldforge.models.config.sequence import ESMFold2Config
 from foldforge.modules.sequence.embeddings import RowAttentionPooling
 from foldforge.modules.sequence.tokens import (
     categorical_mean,

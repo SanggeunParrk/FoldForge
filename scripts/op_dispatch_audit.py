@@ -31,8 +31,8 @@ from team_gm.modules.exceptions import ImplementationType
 
 from foldforge.data.ccd import CCDDatabase, default_path
 from foldforge.models.architectures.esmfold2 import ESMFold2Model as Model
-from foldforge.models.checkpoints import esmfold2 as convert
-from foldforge.models.config.esmfold2 import ESMFold2Config
+from foldforge.models.checkpoints import sequence as convert
+from foldforge.models.config.sequence import ESMFold2Config
 from foldforge.modules.sequence.features import (
     ESMFold2InputBuilder,
     build_input,

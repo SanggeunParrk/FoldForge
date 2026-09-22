@@ -168,7 +168,9 @@ def key_window(example: dict[str, Any], policy: str) -> None:
     the ends. AF3 ("slide") shifts an out-of-range window back inside the real
     atoms. "pad" clips and masks, so edge blocks see fewer neighbours at different
     key slots. "slide_qblock" slides against the atom count rounded up to a whole
-    query block. Runs after bucketing, which rebuilds the window AF3's way.
+    query block. "circular" wraps the window modulo the real atom count, so the
+    first block's leading keys are the last atoms. Runs after bucketing, which
+    rebuilds the window AF3's way.
     """
     query_mask = np.asarray(example["token_atoms_to_queries:gather_mask"])
     subsets, query_size = query_mask.shape
@@ -177,16 +179,22 @@ def key_window(example: dict[str, Any], policy: str) -> None:
     key_size = np.asarray(example[name]).shape[1]
     starts = np.arange(subsets) * query_size + (query_size - key_size) // 2
     flat_mask = query_mask.reshape(-1)
+    real = max(int(flat_mask.sum()), 1)
     if policy == "slide_qblock":
-        bound = -(-int(flat_mask.sum()) // query_size) * query_size
+        bound = -(-real // query_size) * query_size
         starts = np.clip(starts, 0, max(bound - key_size, 0))
-    elif policy != "pad":
+    elif policy not in ("pad", "circular"):
         message = f"unknown key-window policy {policy!r}"
         raise ValueError(message)
     window = starts[:, None] + np.arange(key_size)[None]
-    inside = (window >= 0) & (window < padded)
-    window = np.clip(window, 0, padded - 1)
-    keep = inside & flat_mask[window]
+    if policy == "circular":
+        # Modulo the REAL atom count, so no slot is padding and the ends wrap.
+        window = np.mod(window, real)
+        keep = np.ones_like(window, dtype=bool)
+    else:
+        inside = (window >= 0) & (window < padded)
+        window = np.clip(window, 0, padded - 1)
+        keep = inside & flat_mask[window]
     example[name] = window.astype(np.asarray(example[name]).dtype)
     example["queries_to_keys:gather_mask"] = keep
     tokens = np.asarray(example["tokens_to_queries:gather_idxs"]).reshape(-1)

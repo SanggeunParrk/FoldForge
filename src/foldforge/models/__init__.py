@@ -71,7 +71,12 @@ _REGISTRY = {
         "Boltz-2 — Wohlwend et al., MIT",
         "boltz2",
     ),
-    "chai1": Entry(None, None, "Chai-1 — Chai Discovery"),
+    "chai1": Entry(
+        "foldforge.models.architectures.af3.AlphaFold3",
+        "dense_atoms",
+        "Chai-1 — Chai Discovery; its token stream is mostly ESM2-3B",
+        "chai1",
+    ),
 }
 
 

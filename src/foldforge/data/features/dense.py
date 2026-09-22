@@ -145,6 +145,10 @@ class TokenFeatures:
     is_nonstandard_polymer_chain: torch.Tensor
     is_water: torch.Tensor
 
+    #: Per-token protein language-model embeddings, where the input carries
+    #: them. A family that reads none stays byte-identical when this is absent.
+    lm_embeddings: torch.Tensor | None = None
+
     @classmethod
     def from_data_dict(cls, batch: BatchDict) -> Self:
         """Construct from data dict."""
@@ -163,6 +167,7 @@ class TokenFeatures:
             is_ligand=batch["is_ligand"],
             is_nonstandard_polymer_chain=batch["is_nonstandard_polymer_chain"],
             is_water=batch["is_water"],
+            lm_embeddings=batch.get("lm_embeddings"),
         )
 
     def as_data_dict(self) -> BatchDict:
@@ -182,6 +187,11 @@ class TokenFeatures:
             "is_ligand": self.is_ligand,
             "is_nonstandard_polymer_chain": self.is_nonstandard_polymer_chain,
             "is_water": self.is_water,
+            **(
+                {"lm_embeddings": self.lm_embeddings}
+                if self.lm_embeddings is not None
+                else {}
+            ),
         }
 
 

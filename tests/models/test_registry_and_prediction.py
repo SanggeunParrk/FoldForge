@@ -1,9 +1,18 @@
 """The two seams every predictor has to pass through."""
 
+from unittest import mock
+
 import pytest
 import torch
 
-from foldforge.models import describe, get_model, known_models, registered_models
+from foldforge.models import (
+    _REGISTRY,
+    Entry,
+    describe,
+    get_model,
+    known_models,
+    registered_models,
+)
 from foldforge.prediction import Prediction
 
 
@@ -35,8 +44,18 @@ def test_registered_is_only_what_is_actually_ported():
 
 
 def test_planned_model_fails_at_lookup_not_mid_forward():
-    with pytest.raises(NotImplementedError, match="not ported yet"):
-        get_model("chai1")
+    """A name in the plan but not yet loadable is refused before any forward.
+
+    Every known model is ported, so the contract is checked against a registry
+    row rather than a real one; this fails at lookup the moment a new planned
+    name is added and left unimplemented.
+    """
+    planned = Entry(None, None, "planned")
+    with (
+        mock.patch.dict(_REGISTRY, {"planned-model": planned}),
+        pytest.raises(NotImplementedError, match="not ported yet"),
+    ):
+        get_model("planned-model")
 
 
 def test_unknown_model_names_the_known_ones():

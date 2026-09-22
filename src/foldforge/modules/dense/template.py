@@ -160,6 +160,7 @@ class SingleTemplateEmbedding(nn.Module):
     def __init__(self, spec: DenseSpec = ALPHAFOLD3) -> None:
         super().__init__()
 
+        self.spec = spec
         self.num_channels = spec.template_channel
         pair_channel = spec.pair_channel
         self.template_stack_num_layer = 2
@@ -200,6 +201,26 @@ class SingleTemplateEmbedding(nn.Module):
 
         self.output_layer_norm = fastnn.LayerNorm(self.num_channels)
 
+    def _masked_class_distogram(
+        self, positions: torch.Tensor, covered: torch.Tensor
+    ) -> torch.Tensor:
+        """Distance classes whose last is reserved for an uncovered pair.
+
+        AF3 instead multiplies its distogram by the coverage mask, feeding an
+        all-zero row there, so its top class is never once activated.
+        """
+        config = self.dgram_features_config
+        classes = config.num_bins - 1
+        edges = torch.linspace(
+            config.min_bin, config.max_bin, classes - 1, device=positions.device
+        )
+        distance = (
+            (positions[:, None] - positions[None]).square().sum(-1) + 1e-10
+        ).sqrt()
+        index = (distance[..., None] > edges).sum(-1)
+        index = torch.where(covered.bool(), index, classes)
+        return torch.nn.functional.one_hot(index, classes + 1)
+
     def construct_input(
         self, query_embedding, templates: features.Templates, multichain_mask_2d
     ) -> torch.Tensor:
@@ -219,12 +240,25 @@ class SingleTemplateEmbedding(nn.Module):
         )
         pseudo_beta_mask_2d = pseudo_beta_mask[:, None] * pseudo_beta_mask[None, :]
         pseudo_beta_mask_2d *= multichain_mask_2d
-        dgram = dgram_from_positions(pseudo_beta_positions, self.dgram_features_config)
-        dgram *= pseudo_beta_mask_2d[..., None]
-        dgram = dgram.to(dtype=dtype)
+        if self.spec.template_mask_class:
+            dgram = self._masked_class_distogram(
+                pseudo_beta_positions, pseudo_beta_mask_2d
+            ).to(dtype=dtype)
+        else:
+            dgram = dgram_from_positions(
+                pseudo_beta_positions, self.dgram_features_config
+            )
+            dgram *= pseudo_beta_mask_2d[..., None]
+            dgram = dgram.to(dtype=dtype)
         pseudo_beta_mask_2d = pseudo_beta_mask_2d.to(dtype=dtype)
         to_concat = [(dgram, 1), (pseudo_beta_mask_2d, 0)]
 
+        if self.spec.template_gap_uncovered:
+            # A residue the template does not COVER is the gap restype, not the
+            # query's own: telling the embedder an identity for a position with
+            # no structure is a different input from saying there is none.
+            covered = dense_atom_mask.sum(-1) > 0
+            aatype = torch.where(covered, aatype, aatype.new_full((), 21))
         aatype = torch.nn.functional.one_hot(
             aatype.to(dtype=torch.int64),
             residue_names.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP,

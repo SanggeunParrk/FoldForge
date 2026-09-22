@@ -12,6 +12,7 @@
 from collections.abc import Sequence
 
 import torch
+import torch.nn.functional as F
 
 from foldforge.data.constants import residue_names
 from foldforge.data.features import dense as features
@@ -224,3 +225,40 @@ def shuffle_msa(msa: features.MSA) -> features.MSA:
     index_order = gumbel_argsort_sample_idx(logits)
 
     return msa.index_msa_rows(index_order)
+
+
+def chai_relative_encoding(
+    token_features: features.TokenFeatures, dtype: torch.dtype
+) -> torch.Tensor:
+    """Two separation one-hots, the vendor's own, in place of AF3's four blocks.
+
+    Sequence separation is a searchsorted over bins -32..32, which collapses to
+    ``clip(rel + 33, 0, 65)`` -- so +32 and anything beyond SHARE the top class --
+    with a class of its own for an inter-chain pair. Token separation is over the
+    TOKEN index rather than the residue index, and takes that same out-of-range
+    class wherever the pair is not in one residue of one chain, so on a plain
+    protein everything off the diagonal lands there.
+
+    The rest of the vendor's token-pair stream is constant for a fold and the
+    converter folds it into this projection's bias.
+    """
+    classes = 67
+    outside = classes - 1
+    residue = token_features.residue_index.to(torch.int64)
+    token = token_features.token_index.to(torch.int64)
+    same_chain = token_features.asym_id[:, None] == token_features.asym_id[None, :]
+
+    separation = torch.clamp(residue[:, None] - residue[None, :] + 33, 0, 65)
+    separation = torch.where(same_chain, separation, outside)
+
+    same_residue = (residue[:, None] == residue[None, :]) & same_chain
+    token_separation = torch.clamp(token[:, None] - token[None, :] + 32, 0, 65)
+    token_separation = torch.where(same_residue, token_separation, outside)
+
+    return torch.cat(
+        [
+            F.one_hot(separation, classes),
+            F.one_hot(token_separation, classes),
+        ],
+        dim=-1,
+    ).to(dtype)

@@ -32,6 +32,7 @@ DEFAULT_DIR = ROOT / "model_checkpoints"
 DEFAULT_FILES = {
     "af3": "af3.bin.zst",
     "boltz2": "boltz2.bin.zst",
+    "chai1": "chai1.bin.zst",
     "intellifold2": "intellifold2.bin.zst",
     "openfold3": "openbind0.bin.zst",
     "openfold3-preview2": "openfold3.bin.zst",

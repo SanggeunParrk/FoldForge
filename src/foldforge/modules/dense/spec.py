@@ -76,6 +76,8 @@ class DenseSpec:
     input_embedder: str = "af3"
     #: Columns of the relative-position feature. A family that folds constant
     #: members of its token-pair stream into this projection carries a bias.
+    #: Which relative-position encoding the weights were trained with.
+    relpos: str = "af3"
     relpos_channel: int = 139
     relpos_bias: bool = False
     #: Columns of the MSA feature when the family does not build AF3's set.
@@ -386,6 +388,7 @@ CHAI1 = replace(
     family="chai1",
     input_embedder="chai1",
     msa_feat_columns=41,
+    relpos="chai1",
     relpos_channel=134,
     distogram_bias=True,
     distogram_hidden=True,

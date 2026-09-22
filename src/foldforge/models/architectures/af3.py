@@ -126,14 +126,18 @@ class Evoformer(nn.Module):
         max_relative_idx = 32
         max_relative_chain = 2
 
-        rel_feat = featurization.create_relative_encoding(
-            batch.token_features,
-            max_relative_idx,
-            max_relative_chain,
-        ).to(dtype=pair_activations.dtype)
+        if self.spec.relpos == "chai1":
+            rel_feat = featurization.chai_relative_encoding(
+                batch.token_features, pair_activations.dtype
+            )
+        else:
+            rel_feat = featurization.create_relative_encoding(
+                batch.token_features,
+                max_relative_idx,
+                max_relative_chain,
+            ).to(dtype=pair_activations.dtype)
 
-        pair_activations += self.position_activations(rel_feat)
-        return pair_activations
+        return pair_activations + self.position_activations(rel_feat)
 
     def _seq_pair_embedding(
         self, token_features: features.TokenFeatures, target_feat: torch.Tensor
@@ -439,8 +443,9 @@ class AlphaFold3(nn.Module):
             summed = self.input_embedder(batch, enc.token_act).to(dtype)
             return summed, summed
         if self.spec.input_embedder == "chai1":
-            lm = getattr(batch.token_features, "lm_embeddings", None)
-            trunk, structure = self.input_embedder(batch, enc.token_act, lm)
+            trunk, structure = self.input_embedder(
+                batch, enc.token_act, batch.token_features.lm_embeddings
+            )
             return trunk.to(dtype), structure.to(dtype)
         both = torch.concatenate([target_feat, enc.token_act], dim=-1).to(dtype)
         return both, both

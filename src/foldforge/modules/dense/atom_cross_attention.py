@@ -35,6 +35,9 @@ class AtomCrossAttEncoderOutput:
     keys_mask: torch.Tensor  # (num_subsets, num_keys)
     keys_single_cond: torch.Tensor  # (num_subsets, num_keys, ch)
     pair_cond: torch.Tensor  # (num_subsets, num_queries, num_keys, ch)
+    #: Which query/key atom pairs the attention may open, where the family
+    #: restricts them; None lets every atom in the window attend.
+    pair_mask: torch.Tensor | None = None
 
 
 class AtomCrossAttEncoder(nn.Module):
@@ -326,6 +329,16 @@ class AtomCrossAttEncoder(nn.Module):
                 layout_axes=(-2,),
             )
 
+        if self.spec.atom_cond_norm:
+            # Normalise the conditioning SUM. It carries no parameters, so no
+            # blob names it and no shape check can miss it -- but every adaptive
+            # norm in the atom stacks scales by (s + 1) off this vector, so
+            # without it the atom representation runs away rather than being
+            # merely a little off.
+            queries_single_cond = F.layer_norm(
+                queries_single_cond, queries_single_cond.shape[-1:]
+            )
+
         if self.key_masked_offsets:
             queries_single_cond = queries_single_cond * queries_mask[..., None]
             query_base = query_base * queries_mask[..., None]
@@ -476,6 +489,12 @@ class AtomCrossAttEncoder(nn.Module):
             pair_act2 = self.pair_mlp_2(torch.relu(pair_act2))
             pair_act += self.pair_mlp_3(torch.relu(pair_act2))
 
+        pair_mask = None
+        if self.spec.same_token_atom_attention:
+            pair_mask = self._same_token_mask(
+                batch, token_atoms_mask, queries_mask, keys_mask
+            )
+
         queries_act = self.atom_transformer_encoder(
             queries_act=queries_act,
             queries_mask=queries_mask,
@@ -484,6 +503,7 @@ class AtomCrossAttEncoder(nn.Module):
             queries_single_cond=queries_single_cond,
             keys_single_cond=keys_single_cond,
             pair_cond=pair_act,
+            pair_mask=pair_mask,
         )
 
         queries_act *= queries_mask[..., None]
@@ -516,6 +536,35 @@ class AtomCrossAttEncoder(nn.Module):
             keys_mask=keys_mask,
             keys_single_cond=keys_single_cond,
             pair_cond=pair_act,
+            pair_mask=pair_mask,
+        )
+
+    def _same_token_mask(
+        self,
+        batch: feat_batch.Batch,
+        token_atoms_mask: torch.Tensor,
+        queries_mask: torch.Tensor,
+        keys_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        """Query/key atom pairs of one token, both atoms real.
+
+        Built from the gathers the layouts already use: a dense per-atom token
+        index into the queries layout, then into the keys layout.
+        """
+        tokens = torch.arange(
+            token_atoms_mask.shape[-2], device=token_atoms_mask.device
+        )
+        dense = tokens[:, None].expand(token_atoms_mask.shape[-2:])
+        queries_token = atom_layout.convert(
+            batch.atom_cross_att.token_atoms_to_queries, dense, layout_axes=(-2, -1)
+        )
+        keys_token = atom_layout.convert(
+            batch.atom_cross_att.queries_to_keys, queries_token, layout_axes=(-2, -1)
+        )
+        return (
+            (queries_token[..., :, None] == keys_token[..., None, :])
+            & queries_mask[..., :, None].to(torch.bool)
+            & keys_mask[..., None, :].to(torch.bool)
         )
 
 
@@ -584,6 +633,7 @@ class AtomCrossAttDecoder(nn.Module):
             queries_mask=enc.queries_mask,
             queries_to_keys=batch.atom_cross_att.queries_to_keys,
             keys_mask=enc.keys_mask,
+            pair_mask=enc.pair_mask,
             queries_single_cond=(
                 enc.queries_single_cond
                 if self.post_atom_cond_layer_norm is None

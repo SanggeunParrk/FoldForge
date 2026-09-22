@@ -130,6 +130,7 @@ class TemplateEmbedding(nn.Module):
         self.pair_channel = spec.pair_channel
         self.num_channels = spec.template_channel
 
+        self.present_denominator = spec.template_present_denominator
         self.single_template_embedding = SingleTemplateEmbedding(spec)
 
         self.output_linear = nn.Linear(self.num_channels, self.pair_channel, bias=False)
@@ -151,6 +152,11 @@ class TemplateEmbedding(nn.Module):
                 *query_embedding.shape[:-1], self.num_channels
             ),
             project=self.output_linear,
+            present=(
+                (lambda index: bool(templates.atom_mask[index].any()))
+                if self.present_denominator
+                else None
+            ),
         )
 
 

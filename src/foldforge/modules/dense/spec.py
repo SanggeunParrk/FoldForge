@@ -149,6 +149,13 @@ class DenseSpec:
     #: separate offset, distance and validity embeddings; its MLP is two
     #: layers rather than three.
     atom_pair_distogram_feature: bool = False
+    #: Atom attention opens only within a token. AF3 lets every atom attend
+    #: across the whole window, spreading the softmax over some eighty keys
+    #: where this opens nine; the damage is intra-residue geometry.
+    same_token_atom_attention: bool = False
+    #: The atom conditioning SUM is normalised, without parameters. No blob
+    #: names it, and every adaptive norm downstream scales by (s + 1) off it.
+    atom_cond_norm: bool = False
     #: The atom decoder conditions on a second, affine norm over the encoder's
     #: atom conditioning rather than reusing it unchanged.
     post_atom_cond_norm: bool = False
@@ -223,9 +230,6 @@ class DenseSpec:
     #: The recycle carry starts at the INITIAL representations rather than zeros,
     #: so pass one already adds `recycle_proj(norm(z_init))`.
     recycle_from_initial: bool = False
-    #: The structure module reads its own projection of the token features
-    #: rather than sharing the trunk's.
-    separate_structure_target_feat: bool = False
     #: The template feature embedding carries a trained bias.
     template_feature_bias: bool = False
     #: The template distogram's top class is a MASK class for pairs the template
@@ -412,6 +416,8 @@ CHAI1 = replace(
     atom_attention_gating_query=False,
     atom_attention_project_output=False,
     atom_pair_distogram_feature=True,
+    same_token_atom_attention=True,
+    atom_cond_norm=True,
     post_atom_cond_norm=True,
     parallel_attention_transition=True,
     relpos_bias=True,
@@ -453,7 +459,6 @@ CHAI1 = replace(
     msa_single_from_recycle=True,
     no_bond_embedding=True,
     recycle_from_initial=True,
-    separate_structure_target_feat=True,
     mask_atom_act_per_block=True,
     resolved_head=False,
     msa_double_add=True,

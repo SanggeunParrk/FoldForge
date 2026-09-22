@@ -529,6 +529,7 @@ class CrossAttention(nn.Module):
         pair_logits: torch.Tensor | None = None,
         single_cond_q: torch.Tensor | None = None,
         single_cond_k: torch.Tensor | None = None,
+        pair_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Compute the module output."""
         if tuple(mask_q.shape) != tuple(x_q.shape[-mask_q.ndim - 1 : -1]):
@@ -551,6 +552,13 @@ class CrossAttention(nn.Module):
                 * mask_q.logical_not()[..., None, :, None]
                 * mask_k.logical_not()[..., None, None, :]
             )
+
+        if pair_mask is not None:
+            # A family may open its atom attention only within a token. AF3 lets
+            # every atom attend across the whole window, which spreads the
+            # softmax over some eighty keys where such a family opens nine --
+            # an attenuated average whose damage is intra-residue geometry.
+            bias = torch.where(pair_mask[..., None, :, :], bias, -1e9)
 
         x_q = self.q_adaptive_layernorm(x_q, single_cond_q)
         x_k = self.k_adaptive_layernorm(x_k, single_cond_k)
@@ -605,6 +613,7 @@ class DiffusionCrossAttTransformer(nn.Module):
 
         self.per_block_pair = spec.per_block_atom_pair_layer_norm
         self.parallel = spec.parallel_attention_transition
+        self.mask_act_per_block = spec.mask_atom_act_per_block
         if self.per_block_pair:
             self.pair_input_layer_norm = nn.ModuleList(
                 [
@@ -667,6 +676,7 @@ class DiffusionCrossAttTransformer(nn.Module):
         queries_single_cond: torch.Tensor,  # (num_subsets, num_queries, ch)
         keys_single_cond: torch.Tensor,  # (num_subsets, num_keys, ch)
         pair_cond: torch.Tensor,  # (num_subsets, num_queries, num_keys, ch)
+        pair_mask: torch.Tensor | None = None,  # (num_subsets, num_queries, num_keys)
     ) -> torch.Tensor:
         """Compute the module output."""
         if self.per_block_pair:
@@ -685,6 +695,13 @@ class DiffusionCrossAttTransformer(nn.Module):
             )
 
         for block_idx in range(self.num_blocks):
+            if self.mask_act_per_block:
+                # Re-pad the atom axis with zeros before the key gather, so a
+                # padded slot cannot carry one block's output into the next
+                # block's keys.
+                queries_act = queries_act * queries_mask[..., None].to(
+                    queries_act.dtype
+                )
             keys_act = atom_layout.convert(
                 queries_to_keys, queries_act, layout_axes=(-3, -2)
             )
@@ -699,6 +716,7 @@ class DiffusionCrossAttTransformer(nn.Module):
                         pair_logits=pair_logits[block_idx],
                         single_cond_q=queries_single_cond,
                         single_cond_k=keys_single_cond,
+                        pair_mask=pair_mask,
                     )
                     + self.transition_block[block_idx](queries_act, queries_single_cond)
                 )
@@ -716,6 +734,7 @@ class DiffusionCrossAttTransformer(nn.Module):
                         pair_logits=pair_logits[block_idx],
                         single_cond_q=queries_single_cond,
                         single_cond_k=keys_single_cond,
+                        pair_mask=pair_mask,
                     )
                 ),
                 transition=self.transition_block[block_idx],

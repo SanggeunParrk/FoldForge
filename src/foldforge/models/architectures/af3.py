@@ -108,8 +108,10 @@ class Evoformer(nn.Module):
                     c_pair=self.pair_channel,
                     c_single=self.seq_channel,
                     n_heads_pair=spec.pair_heads,
+                    num_intermediate_factor=spec.pairformer_transition_factor,
                     with_single=True,
                     spec=spec,
+                    pair_qkv_dim=spec.pair_qkv_dim,
                 )
                 for _ in range(self.pairformer_num_layer)
             ]

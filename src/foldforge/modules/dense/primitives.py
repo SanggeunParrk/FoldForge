@@ -49,6 +49,8 @@ class OuterProductMean(nn.Module):
         num_outer_channel: int = 32,
         bias_after_norm: bool = False,
         projection_bias: bool = False,
+        groups: int = 1,
+        sum_without_norm: bool = False,
     ) -> None:
         super().__init__()
 
@@ -57,19 +59,29 @@ class OuterProductMean(nn.Module):
         self.c_msa = c_msa
         self.num_outer_channel = num_outer_channel
         self.num_output_channel = num_output_channel
+        self.groups = groups
+        self.sum_without_norm = sum_without_norm
         self.epsilon = 1e-3
 
         self.layer_norm_input = fastnn.LayerNorm(self.c_msa)
-        self.left_projection = nn.Linear(
-            self.c_msa, self.num_outer_channel, bias=projection_bias
-        )
-        self.right_projection = nn.Linear(
-            self.c_msa, self.num_outer_channel, bias=projection_bias
-        )
+        width = self.groups * self.num_outer_channel
+        self.left_projection = nn.Linear(self.c_msa, width, bias=projection_bias)
+        self.right_projection = nn.Linear(self.c_msa, width, bias=projection_bias)
 
+        if self.groups > 1:
+            # Grouped: the outer product contracts only the MSA-depth axis and
+            # BROADCASTS the group index, giving G*K*K products where one group
+            # gives K*K. The product norm carries eps 0.1 because the depth axis
+            # is summed and never divided; that norm is what absorbs the scale.
+            self.product_norm = fastnn.LayerNorm(
+                self.groups * self.num_outer_channel**2, eps=0.1
+            )
         self.output_w = nn.Parameter(
             torch.randn(
-                self.num_outer_channel, self.num_outer_channel, self.num_output_channel
+                *((self.groups,) if self.groups > 1 else ()),
+                self.num_outer_channel,
+                self.num_outer_channel,
+                self.num_output_channel,
             )
         )
         self.output_b = nn.Parameter(torch.randn(self.num_output_channel))
@@ -80,6 +92,9 @@ class OuterProductMean(nn.Module):
         msa = self.layer_norm_input(msa)
         left_act = mask * self.left_projection(msa)
         right_act = mask * self.right_projection(msa)
+
+        if self.groups > 1:
+            return self._grouped(left_act, right_act)
 
         from team_gm.modules.blocks.attention_math import af3_outer_product_mean
 
@@ -92,4 +107,20 @@ class OuterProductMean(nn.Module):
             return output.permute(1, 0, 2) / norm.clamp_min(1.0) + self.output_b
         return af3_outer_product_mean(
             left_act, right_act, mask, self.output_w, self.output_b, eps=self.epsilon
+        )
+
+    def _grouped(self, left_act: torch.Tensor, right_act: torch.Tensor) -> torch.Tensor:
+        """Outer products taken WITHIN each group, summed over MSA depth only."""
+        groups, channels = self.groups, self.num_outer_channel
+        left = left_act.unflatten(-1, (groups, channels))
+        right = right_act.unflatten(-1, (groups, channels))
+        product = torch.einsum("sigk,sjgl->ijgkl", left, right)
+        product = self.product_norm(product.flatten(-3))
+        return (
+            torch.einsum(
+                "ijn,nf->ijf",
+                product,
+                self.output_w.reshape(groups * channels**2, self.num_output_channel),
+            )
+            + self.output_b
         )

@@ -141,7 +141,10 @@ class DiffusionHead(nn.Module):
         )
 
         self.transformer = DiffusionTransformer(
-            c_single_cond=seq_channel, c_pair_cond=pair_channel, spec=spec
+            c_single_cond=seq_channel,
+            c_pair_cond=pair_channel,
+            num_blocks=spec.diffusion_blocks,
+            spec=spec,
         )
 
         self.output_norm = fastnn.LayerNorm(self.c_act, bias="output_norm" in affine)

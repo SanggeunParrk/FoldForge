@@ -45,6 +45,22 @@ class DenseSpec:
     #: block; AF3 norms once and projects once per super block.
     per_block_pair_layer_norm: bool = False
     trunk_layers: int = 48
+    #: Expansion factor of the pairformer transitions, in the trunk and the
+    #: confidence head. AF3 is 4; chai-1 halves both.
+    pairformer_transition_factor: int = 4
+    #: Per-head width of the TRUNK pair attention; None is channel / heads.
+    pair_qkv_dim: int | None = None
+    #: Blocks in the diffusion token transformer.
+    diffusion_blocks: int = 24
+    #: Groups of the outer product mean. AF3 takes one C x C outer product over
+    #: `opm_channel` channels a side; chai-1 projects to G groups of K and
+    #: contracts WITHIN each group, giving G*K*K products. AF3 is G = 1.
+    opm_groups: int = 1
+    #: Width of each outer-product projection.
+    opm_channel: int = 32
+    #: chai-1's grouped outer product SUMS the depth axis without dividing, and
+    #: its product LayerNorm carries eps 0.1 to absorb the missing scale.
+    opm_sum_without_norm: bool = False
     confidence_layers: int = 4
     #: Per-head value width of the MSA pair-weighted averaging; None is msa / heads.
     msa_value_dim: int | None = None
@@ -119,6 +135,53 @@ class DenseSpec:
     conformer_embedding_bias: bool = False
     #: The diffusion atom encoder embeds chirality gradients of the noisy coordinates.
     atom_chiral_features: bool = False
+    #: chai-1's pairformer block is PARALLEL: every pair update reads the pair
+    #: entering the block and their results are summed into it, and the single
+    #: attention and transition both read the entering single. AF3 threads each
+    #: update through the running activation.
+    parallel_pairformer_block: bool = False
+    #: chai-1's MSA block is parallel in two stages, and its pair transition
+    #: sits in the FIRST: the two triangle multiplications and the transition
+    #: all read the post-OPM pair and are summed in, then both attention
+    #: directions read that result and are summed in turn.
+    parallel_msa_block: bool = False
+    #: chai-1's two pair-attention directions are one module whose single output
+    #: projection reads them in mixed orientation, so the ending-node direction
+    #: is NOT transposed back before the sum.
+    untransposed_column_pair_output: bool = False
+    #: The confidence head's pair attention carries a per-direction output
+    #: projection pair combined as `kept + transpose(other)`.
+    confidence_dual_output: bool = False
+    #: MSA pair-weighted averaging masks its logits with the TOKEN PAIR mask at
+    #: -10000 and zeroes the value where the MSA mask is false, instead of
+    #: deriving a per-token mask from the MSA rows.
+    msa_pair_mask_logits: bool = False
+    #: The MSA feature embedding carries a trained bias.
+    msa_activations_bias: bool = False
+    #: The MSA stack's single term is the RECYCLED single, not the target feat.
+    msa_single_from_recycle: bool = False
+    #: The token-pair stream carries no bond feature, so no bond embedder runs.
+    no_bond_embedding: bool = False
+    #: The recycle carry starts at the INITIAL representations rather than zeros,
+    #: so pass one already adds `recycle_proj(norm(z_init))`.
+    recycle_from_initial: bool = False
+    #: The structure module reads its own projection of the token features
+    #: rather than sharing the trunk's.
+    separate_structure_target_feat: bool = False
+    #: The template feature embedding carries a trained bias.
+    template_feature_bias: bool = False
+    #: The template distogram's top class is a MASK class for pairs the template
+    #: does not cover, instead of AF3's all-zero row there.
+    template_mask_class: bool = False
+    #: A template residue the template does not COVER is the gap restype, not
+    #: the query's own residue.
+    template_gap_uncovered: bool = False
+    #: Templates are averaged over the PRESENT slots, not over every slot.
+    template_present_denominator: bool = False
+    #: Atom activations are re-masked in every atom-transformer block.
+    mask_atom_act_per_block: bool = False
+    #: Whether the confidence head predicts experimentally-resolved atoms.
+    resolved_head: bool = True
     gamma_0: float = 0.8
     gamma_min: float = 1.0
     noise_scale: float = 1.003
@@ -263,6 +326,59 @@ ROSETTAFOLD3 = replace(
     atom_key_window="pad",
 )
 
+#: Chai-1. Not OpenFold3 lineage: its own pairformer schedule (parallel on both
+#: tracks), grouped outer product, fused two-direction pair attention, sixteen
+#: diffusion blocks and an ESM2-3B token stream. Its token-pair stream carries no
+#: bond feature and its confidence head predicts no resolved atoms.
+CHAI1 = replace(
+    ALPHAFOLD3,
+    family="chai1",
+    pair_channel=256,
+    diffusion_pair_channel=256,
+    pairformer_transition_factor=2,
+    msa_value_dim=32,
+    opm_groups=8,
+    opm_channel=8,
+    opm_sum_without_norm=True,
+    diffusion_blocks=16,
+    template_qkv_dim=32,
+    template_feature_bias=True,
+    template_mask_class=True,
+    template_gap_uncovered=True,
+    template_present_denominator=True,
+    confidence="chai1",
+    confidence_dual_output=True,
+    affine_norms=frozenset(
+        {
+            "pair_cond_initial_norm",
+            "single_cond_initial_norm",
+            "noise_embedding_initial_norm",
+            "output_norm",
+            "lnorm_trunk_single_cond",
+            "lnorm_trunk_pair_cond",
+            "atom_features_layer_norm",
+            "pair_input_layer_norm",
+        }
+    ),
+    parallel_pairformer_block=True,
+    parallel_msa_block=True,
+    untransposed_column_pair_output=True,
+    msa_pair_mask_logits=True,
+    msa_activations_bias=True,
+    msa_single_from_recycle=True,
+    no_bond_embedding=True,
+    recycle_from_initial=True,
+    separate_structure_target_feat=True,
+    mask_atom_act_per_block=True,
+    resolved_head=False,
+    msa_double_add=True,
+    pre_trunk_atom_query=True,
+    raw_ref_charge=True,
+    drop_atoms=("OXT",),
+    atom_key_window="circular",
+    sigma_max=80.0,
+)
+
 SPECS = {
     spec.family: spec
     for spec in (
@@ -272,5 +388,6 @@ SPECS = {
         OPENFOLD3_PREVIEW2,
         BOLTZ2,
         ROSETTAFOLD3,
+        CHAI1,
     )
 }

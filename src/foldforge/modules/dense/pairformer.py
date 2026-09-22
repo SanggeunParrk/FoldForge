@@ -96,7 +96,10 @@ class PairformerBlock(nn.Module):
             self.single_attention_ = SelfAttention(
                 c_x=c_single, num_head=n_heads, use_single_cond=False
             )
-            self.single_transition = Transition(c_x=self.c_single)
+            self.single_transition = Transition(
+                c_x=self.c_single,
+                num_intermediate_factor=self.num_intermediate_factor,
+            )
 
     def forward(
         self,
@@ -160,8 +163,11 @@ class EvoformerBlock(nn.Module):
         self.outer_product_mean = OuterProductMean(
             c_msa=c_msa,
             num_output_channel=c_pair,
+            num_outer_channel=spec.opm_channel,
             bias_after_norm=spec.opm_bias_after_norm,
             projection_bias=spec.opm_projection_bias,
+            groups=spec.opm_groups,
+            sum_without_norm=spec.opm_sum_without_norm,
         )
         self.msa_attention1 = MSAAttention(
             c_msa=c_msa, c_pair=c_pair, value_dim=spec.msa_value_dim

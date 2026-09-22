@@ -255,6 +255,7 @@ class ConfidenceHead(nn.Module):
                     c_single=self.c_single,
                     c_pair=self.c_pair,
                     n_heads_pair=spec.pair_heads,
+                    num_intermediate_factor=spec.pairformer_transition_factor,
                     with_single=True,
                     spec=spec,
                 )

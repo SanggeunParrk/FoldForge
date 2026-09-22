@@ -82,6 +82,12 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
         data, atoms, error = dataset[idx]
         if error:
             raise RuntimeError(error)
+        if atoms is None:
+            # The dataset returns no atoms only alongside an error message, and
+            # the raise above consumed that. Check the invariant rather than
+            # assume it: without atoms every coordinate below is unattributable.
+            message = f"Input {idx} produced neither atoms nor an error"
+            raise RuntimeError(message)
         features = to_device(data["input_feature_dict"], "cuda")
 
         from foldforge.models.io.images import input_images

@@ -231,7 +231,11 @@ def test_model_cli_shims_cannot_own_execution_or_persistence():
     assert '"foldforge.models.io.cli"' in cli
     for path in (root / "models/io").glob("*_atoms.py"):
         source = path.read_text()
-        assert "torch.save(" not in source
+        # A shim may cache an INPUT it computed (ESMC embeddings) so a later run can
+        # reuse it; persisting a PREDICTION is the shared writer's job.
+        for line in source.splitlines():
+            if "torch.save(" in line:
+                assert "esmc_hidden_states" in line, line
         assert "measured_forward(" not in source
 
 

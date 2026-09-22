@@ -138,8 +138,6 @@ def test_af3_diffusion_preserves_random_noise_field():
 
     model = AlphaFold3.__new__(AlphaFold3)
     torch.nn.Module.__init__(model)
-    model.gamma_0, model.gamma_min = 0.8, 1.0
-    model.noise_scale, model.step_scale = 1.003, 1.5
     model.num_samples, model.diffusion_steps = 2, 2
     model.spec = ALPHAFOLD3
     model.diffusion_head = IdentityDenoiser()

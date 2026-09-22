@@ -348,11 +348,6 @@ class AlphaFold3(nn.Module):
         self.num_samples = num_samples
         self.diffusion_steps = diffusion_steps
 
-        self.gamma_0 = spec.gamma_0
-        self.gamma_min = spec.gamma_min
-        self.noise_scale = spec.noise_scale
-        self.step_scale = spec.step_scale
-
         self.evoformer_pair_channel = spec.pair_channel
         self.evoformer_seq_channel = spec.seq_channel
 
@@ -417,10 +412,10 @@ class AlphaFold3(nn.Module):
         )(self.diffusion_steps, device=mask.device)
         sampler = EulerSampler(
             EulerSampler.Config(
-                gamma_0=self.gamma_0,
-                gamma_min=self.gamma_min,
-                noise_scale=self.noise_scale,
-                step_scale=self.step_scale,
+                gamma_0=self.spec.gamma_0,
+                gamma_min=self.spec.gamma_min,
+                noise_scale=self.spec.noise_scale,
+                step_scale=self.spec.step_scale,
             )
         )
 

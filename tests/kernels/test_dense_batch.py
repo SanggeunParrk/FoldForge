@@ -13,6 +13,7 @@ from torch import nn
 
 from foldforge.models.architectures.af3 import AlphaFold3
 from foldforge.modules.dense.diffusion_transformer import CrossAttention, SelfAttention
+from foldforge.modules.dense.spec import ALPHAFOLD3
 
 
 def test_dense_augmentation_has_independent_sample_transforms():
@@ -37,12 +38,7 @@ def test_sampler_calls_one_batched_denoiser_per_step():
     model = AlphaFold3.__new__(AlphaFold3)
     nn.Module.__init__(model)
     model.num_samples, model.diffusion_steps = 5, 3
-    model.gamma_0, model.gamma_min, model.noise_scale, model.step_scale = (
-        0.8,
-        1.0,
-        1.003,
-        1.5,
-    )
+    model.spec = ALPHAFOLD3
     shapes = []
 
     class Denoiser(nn.Module):

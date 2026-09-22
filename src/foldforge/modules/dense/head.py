@@ -241,6 +241,10 @@ class ConfidenceHead(nn.Module):
         #: "boltz2": re-embedded inputs, no norm before any head, and separate
         #: intra- and inter-chain heads for the distance error and the PAE.
         self.split_heads = spec.confidence == "boltz2"
+        #: "protenix2": the trunk single is clamped and normalised before ANY
+        #: use, the distance-error head normalises the SYMMETRISED pair, and a
+        #: raw-distance term rides alongside the binned one.
+        self.protenix_confidence = spec.confidence == "protenix2"
         #: "rf3": trunk inputs normalised over the WHOLE tensor of real tokens, and
         #: the predicted structure embedded as 40 CA-CA distance bins.
         self.global_norm_inputs = spec.confidence == "rf3"
@@ -271,20 +275,7 @@ class ConfidenceHead(nn.Module):
         self.plddt_slots = spec.plddt_atom_slots or self.num_atom
         self.bin_width = 1.0 / self.num_plddt_bins
 
-        if self.split_heads:
-            self.reembedding = ConfidenceReembedding(c_single, c_pair, c_target_feat)
-        else:
-            self.left_target_feat_project = nn.Linear(
-                self.c_target_feat, self.c_pair, bias=False
-            )
-            self.right_target_feat_project = nn.Linear(
-                self.c_target_feat, self.c_pair, bias=False
-            )
-            self.distogram_feat_project = nn.Linear(
-                self.confidence_dgram_bins,
-                self.c_pair,
-                bias=False,
-            )
+        self._build_input_embedding(c_single, c_pair, c_target_feat)
 
         self.confidence_pairformer = nn.ModuleList(
             [
@@ -355,6 +346,29 @@ class ConfidenceHead(nn.Module):
                 self.c_single, self.num_atom * 2, bias=False
             )
 
+    def _build_input_embedding(
+        self, c_single: int, c_pair: int, c_target_feat: int
+    ) -> None:
+        """Projections that put the trunk and the predicted structure on the pair."""
+        if self.split_heads:
+            self.reembedding = ConfidenceReembedding(c_single, c_pair, c_target_feat)
+        else:
+            self.left_target_feat_project = nn.Linear(
+                self.c_target_feat, self.c_pair, bias=False
+            )
+            self.right_target_feat_project = nn.Linear(
+                self.c_target_feat, self.c_pair, bias=False
+            )
+            self.distogram_feat_project = nn.Linear(
+                self.confidence_dgram_bins, self.c_pair, bias=False
+            )
+            if self.protenix_confidence:
+                # Unbinned, so it carries the sub-bin resolution the one-hot
+                # throws away.
+                self.distance_feat_project = nn.Linear(1, self.c_pair, bias=False)
+        if self.protenix_confidence:
+            self.input_single_norm = fastnn.LayerNorm(self.c_single)
+
     def _embed_features(
         self,
         dense_atom_positions: torch.Tensor,
@@ -403,6 +417,13 @@ class ConfidenceHead(nn.Module):
         dgram *= pair_mask[..., None]
 
         out += self.distogram_feat_project(dgram)
+        if self.protenix_confidence:
+            distance = (
+                (positions[:, None] - positions[None]).square().sum(-1) + 1e-10
+            ).sqrt()
+            out = out + self.distance_feat_project(
+                distance[..., None].to(out.dtype)
+            )
 
         return out
 
@@ -445,6 +466,11 @@ class ConfidenceHead(nn.Module):
             # The vendor's input features are 449 wide; the two classes FoldForge's
             # alphabet lacks are zero but still enter its mean and variance.
             target_feat = masked_global_norm(target_feat, real, width=449)
+        if self.protenix_confidence:
+            # Clamped and normalised before ANY use: the confidence pairformer
+            # and every head see the normalised single. AF3 uses it raw, and an
+            # unnormalised trunk single enters this head at std 211.
+            single_act = self.input_single_norm(single_act.clamp(-512.0, 512.0))
 
         if self.split_heads:
             if batch is None:
@@ -485,6 +511,12 @@ class ConfidenceHead(nn.Module):
                 symmetric
             ) * same_chain + self.inter_half_distance_logits(symmetric) * (
                 1 - same_chain
+            )
+        elif self.protenix_confidence:
+            # The symmetrisation is INSIDE the norm rather than outside the
+            # projection, and a LayerNorm is not linear, so the two differ.
+            distance_logits = self.left_half_distance_logits(
+                self.logits_ln(pair_act + pair_act.transpose(-2, -3))
             )
         else:
             left_distance_logits = self.left_half_distance_logits(

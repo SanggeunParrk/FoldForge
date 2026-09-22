@@ -17,6 +17,9 @@ if TYPE_CHECKING:
 
 _NAME_CLASSES = 64
 
+#: Gap class in FoldForge's polymer vocabulary.
+_GAP_RESTYPE = 21
+
 
 def centre_conformers(example: dict[str, Any]) -> None:
     """Subtract each reference conformer's own masked mean from ``ref_pos``.
@@ -206,6 +209,33 @@ def key_window(example: dict[str, Any], policy: str) -> None:
     )
 
 
+def empty_template_gap(example: dict[str, Any], slots: str) -> None:
+    """Fill an ABSENT template's restype with the gap class rather than zero.
+
+    Both pipelines pad the template axis and mask every atom, so the distogram,
+    the unit vector and both masks come out zero either way. The RESTYPE one-hot
+    does not: AF3 fills it with class zero where these vendors fill it with the
+    gap. Applied only when there is no real template anywhere, which is the case
+    they build that way; a batch carrying one is left alone.
+
+    ``slots`` is the vendor's own padding: "first" gives one gap template and
+    zero-pads the rest, "all" makes every slot a gap template.
+    """
+    aatype = example.get("template_aatype")
+    mask = example.get("template_atom_mask")
+    if aatype is None or mask is None:
+        return
+    aatype, mask = np.asarray(aatype), np.asarray(mask)
+    if not aatype.shape[0] or mask.any():
+        return
+    aatype = aatype.copy()
+    if slots == "all":
+        aatype[:] = _GAP_RESTYPE
+    else:
+        aatype[0] = _GAP_RESTYPE
+    example["template_aatype"] = aatype
+
+
 def apply(example: dict[str, Any], spec: DenseSpec) -> dict[str, Any]:
     """Apply ``spec``'s input conventions to one featurised example, in place."""
     if spec.centre_ref_conformers:
@@ -214,6 +244,8 @@ def apply(example: dict[str, Any], spec: DenseSpec) -> dict[str, Any]:
         drop_atoms(example, spec.drop_atoms)
     if spec.dedupe_self_msa:
         dedupe_self_msa(example)
+    if spec.empty_template_gap is not None:
+        empty_template_gap(example, spec.empty_template_gap)
     return example
 
 

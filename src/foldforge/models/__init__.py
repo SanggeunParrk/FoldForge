@@ -55,7 +55,13 @@ _REGISTRY = {
     "protenix": Entry(
         "foldforge.models.architectures.protenix.Protenix",
         "flat_atoms",
-        "Protenix v1 / v2 — ByteDance",
+        "Protenix v1 / v2 — ByteDance; the flat graph, kept as the port's oracle",
+    ),
+    "protenix2": Entry(
+        "foldforge.models.architectures.af3.AlphaFold3",
+        "dense_atoms",
+        "Protenix v2 — ByteDance, as a family of the one AF3 graph",
+        "protenix2",
     ),
     "opendde": Entry(
         "foldforge.models.architectures.opendde.OpenDDE", "flat_atoms", "OpenDDE"

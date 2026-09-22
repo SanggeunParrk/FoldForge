@@ -39,6 +39,73 @@ def _backbone(aatype: torch.Tensor, positions: torch.Tensor, mask: torch.Tensor)
     return picked[:, 0], picked[:, 1], picked[:, 2], picked_mask.prod(dim=1).float()
 
 
+#: AF3 residue index -> the OpenFold3/Protenix 32-class order.
+_AF3_TO_OF3 = (
+    *range(21),
+    31,
+    21,
+    22,
+    23,
+    24,
+    26,
+    27,
+    28,
+    29,
+    25,
+)
+
+
+def protenix2_template_features(
+    aatype: torch.Tensor,
+    positions: torch.Tensor,
+    mask: torch.Tensor,
+    visible: torch.Tensor,
+) -> torch.Tensor:
+    """108 features: CB distogram 39, CB mask, restype 32 x 2, unit vector 3, frame mask.
+
+    The distogram is masked by the chain visibility as well as by coverage. A
+    distogram one-hot is nonzero for EVERY pair, because a distance always lands
+    in some bin, so an unmasked cross-chain entry is not a zero but a confident
+    fabricated inter-chain distance from a template that carries none.
+    """
+    tokens = aatype.shape[0]
+    beta, beta_mask = scoring.pseudo_beta_fn(aatype, positions, mask)
+    c_atom, ca, n_atom, frame_mask = _backbone(aatype, positions, mask)
+    eps = 1e-6
+    first = c_atom - ca
+    first = first / (first.norm(dim=-1, keepdim=True) + eps)
+    second = n_atom - ca
+    second = second - first * (first * second).sum(-1, keepdim=True)
+    second = second / (second.norm(dim=-1, keepdim=True) + eps)
+    rotation = torch.stack([first, second, torch.cross(first, second, dim=-1)], dim=-1)
+    # A real unit vector of (ca_j - ca_i) in residue i's frame.
+    unit = torch.einsum("ilk,ijl->ijk", rotation, ca[None, :, :] - ca[:, None, :])
+    unit = unit / (unit.norm(dim=-1, keepdim=True) + eps)
+
+    squared = (beta[:, None] - beta[None]).square().sum(-1)[..., None]
+    lower = torch.linspace(3.25, 50.75, 39, device=squared.device).square()
+    upper = torch.cat([lower[1:], lower.new_tensor([1e8])])
+    distogram = ((squared > lower) & (squared < upper)).float()
+
+    covered = (beta_mask[:, None] * beta_mask[None] * visible)[..., None].float()
+    framed = (frame_mask[:, None] * frame_mask[None] * visible)[..., None].float()
+    remap = torch.tensor(_AF3_TO_OF3, device=aatype.device, dtype=torch.int64)
+    restype = F.one_hot(remap[aatype.to(torch.int64)], 32).float()
+    return torch.cat(
+        [
+            distogram * covered,
+            covered,
+            # The j-varying block comes FIRST, which is the vendor's own order;
+            # the projection is converted with no column permutation.
+            restype[None, :, :].expand(tokens, tokens, 32),
+            restype[:, None, :].expand(tokens, tokens, 32),
+            unit * framed,
+            framed,
+        ],
+        dim=-1,
+    )
+
+
 def boltz2_template_features(
     aatype: torch.Tensor,
     positions: torch.Tensor,
@@ -115,6 +182,7 @@ def rf3_template_features(
 _FEATURES = {
     "boltz2": (boltz2_template_features, 109),
     "rf3": (rf3_template_features, 66),
+    "protenix2": (protenix2_template_features, 108),
 }
 
 

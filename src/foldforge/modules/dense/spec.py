@@ -35,6 +35,11 @@ class DenseSpec:
     centre_ref_conformers: bool = False
     #: Atom names the vendor's tokenizer never creates on standard residues.
     drop_atoms: tuple[str, ...] = ()
+    #: How a family pads an ABSENT template: "first" gives one gap-restype
+    #: template and zero-pads the rest, "all" makes every slot one. None
+    #: keeps AF3's zero class. Live even with no template supplied, because
+    #: these families' template embedders divide by the padded slot count.
+    empty_template_gap: str | None = None
     #: A chain with no alignments gets a depth-one MSA instead of AF3's two query rows.
     dedupe_self_msa: bool = False
     #: End policy of the atom-attention key window: "slide", "pad" or "slide_qblock".
@@ -112,6 +117,9 @@ class DenseSpec:
     template_visibility_by_coverage: bool = False
     #: Fused templates: the stack input is added once more around the whole stack.
     template_stack_outer_residual: bool = False
+    #: Which NAMES the confidence head's weights were written under. The head
+    #: itself is chosen by `confidence`; this is a rename of its records.
+    confidence_records: str = "af3"
     #: Which confidence embedding and heads the weights were trained with.
     confidence: str = "af3"
     #: The pair entering the trunk is added once more after the MSA stack.
@@ -127,6 +135,14 @@ class DenseSpec:
     #: Diffusion pair conditioning concatenates the trunk pair with PROJECTED
     #: relative-position features.
     diffusion_projected_relpos: bool = False
+    #: Diffusion pair conditioning compresses the trunk pair and the relative
+    #: features SEPARATELY to the pair width and concatenates the two, where
+    #: AF3 projects one concatenation. The joint norm over the wider concat
+    #: couples them, so this is a distinct path and not a reparameterisation.
+    diffusion_split_pair_cond: bool = False
+    #: The pair initialisation reads the single activations rather than the
+    #: target features, so the single is built before the pair.
+    pair_init_from_single: bool = False
     #: Diffusion pair conditioning concatenates the trunk pair with the token
     #: embedder's OWN pair output instead of a relative-position encoding; the
     #: relative features are already inside it.
@@ -489,6 +505,56 @@ CHAI1 = replace(
     sampler_variance_floor=1e-6,
 )
 
+#: Protenix v2. OpenFold3 lineage by its forward conventions, widened to a
+#: 256-channel pair with eight pair heads, and carrying its own fused template
+#: features and two confidence divergences.
+PROTENIX2 = replace(
+    OPENBIND0,
+    family="protenix2",
+    # Protenix indexes OXT per residue and keeps it, where the OpenFold3
+    # releases remove the terminal atoms; inheriting their drop shifts the whole
+    # atom layout against what these weights were trained on.
+    drop_atoms=(),
+    dedupe_self_msa=True,
+    empty_template_gap="first",
+    pair_channel=256,
+    msa_channel=128,
+    diffusion_pair_channel=256,
+    pair_heads=8,
+    msa_value_dim=8,
+    per_block_pair_layer_norm=True,
+    per_block_atom_pair_layer_norm=True,
+    transposed_column_pair_bias=True,
+    key_masked_atom_attention=True,
+    atom_key_window="pad",
+    diffusion_projected_relpos=True,
+    distogram_bias=True,
+    template="protenix2",
+    template_heads=2,
+    confidence="protenix2",
+)
+
+#: OpenDDE. Protenix lineage, widened again to a 384-channel pair with twelve
+#: pair heads, a 96-bin distogram, and its own diffusion pair conditioning: it
+#: compresses the trunk pair and the relative features SEPARATELY before the
+#: joint norm, where AF3 projects one concatenation.
+OPENDDE = replace(
+    PROTENIX2,
+    family="opendde",
+    confidence_records="opendde",
+    dedupe_self_msa=False,
+    empty_template_gap="all",
+    pair_channel=384,
+    diffusion_pair_channel=384,
+    pair_heads=12,
+    distogram_bins=96,
+    msa_update_before_opm=True,
+    diffusion_projected_relpos=False,
+    diffusion_split_pair_cond=True,
+    pair_init_from_single=True,
+    template="af3",
+)
+
 SPECS = {
     spec.family: spec
     for spec in (
@@ -499,5 +565,7 @@ SPECS = {
         BOLTZ2,
         ROSETTAFOLD3,
         CHAI1,
+        PROTENIX2,
+        OPENDDE,
     )
 }

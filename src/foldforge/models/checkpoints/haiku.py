@@ -1253,6 +1253,37 @@ def build_distogram_head_params(head: ParameterModule) -> ParamTree:
     return params
 
 
+def rename_records(tree: ParamTree, names: dict[str, str]) -> ParamTree:
+    """Re-key a record tree into another dialect's names."""
+    return {names.get(key, key): value for key, value in tree.items()}
+
+
+#: Record names of the confidence head, by the dialect its weights were written
+#: in. One family carries the same head under the vendor's own names; the
+#: mapping is a rename, not a different graph, and stating it here keeps the
+#: builder below from having to know which family it is serving.
+CONFIDENCE_RECORDS = {
+    "opendde": {
+        "__layer_stack_no_per_layer/confidence_pairformer": (
+            "pairformer_stack/trunk_pairformer"
+        ),
+        "input_single_norm": "input_strunk_ln",
+        "~_embed_features/left_target_feat_project": "linear_no_bias_s1",
+        "~_embed_features/right_target_feat_project": "linear_no_bias_s2",
+        "~_embed_features/distogram_feat_project": "linear_no_bias_d",
+        "~_embed_features/distance_feat_project": "linear_no_bias_d_wo_onehot",
+        "logits_ln": "pde_ln",
+        "left_half_distance_logits": "linear_no_bias_pde",
+        "pae_logits_ln": "pae_ln",
+        "pae_logits": "linear_no_bias_pae",
+        "plddt_logits_ln": "plddt_ln",
+        "plddt_logits": "plddt_weight",
+        "experimentally_resolved_ln": "resolved_ln",
+        "experimentally_resolved_logits": "resolved_weight",
+    }
+}
+
+
 def build_confidence_head_params(head: ParameterModule) -> ParamTree:
     """Compute confidence head params."""
     pairformer_blocks_params = stacked(
@@ -1326,6 +1357,18 @@ def build_confidence_head_params(head: ParameterModule) -> ParamTree:
         ),
         "~_embed_features/distogram_feat_project": build_linear_params(
             l=head.distogram_feat_project
+        ),
+        **(
+            {
+                "~_embed_features/distance_feat_project": build_linear_params(
+                    l=head.distance_feat_project
+                ),
+                "input_single_norm": build_layer_norm_params(
+                    l=head.input_single_norm
+                ),
+            }
+            if head.protenix_confidence
+            else {}
         ),
         "__layer_stack_no_per_layer/confidence_pairformer": pairformer_blocks_params,
         "logits_ln": build_layer_norm_params(l=head.logits_ln),
@@ -1431,7 +1474,10 @@ def get_translation_dict(model: ParameterModule) -> ParamTree:
                 model.distogram_head
             ).items()
         },
-        "confidence_head": build_confidence_head_params(model.confidence_head),
+        "confidence_head": rename_records(
+            build_confidence_head_params(model.confidence_head),
+            CONFIDENCE_RECORDS.get(model.spec.confidence_records, {}),
+        ),
         **(
             {
                 record: build_linear_params(l=l, use_bias=l.bias is not None)

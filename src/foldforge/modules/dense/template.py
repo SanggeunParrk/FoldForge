@@ -195,7 +195,7 @@ class SingleTemplateEmbedding(nn.Module):
             [
                 pairformer.PairformerBlock(
                     c_pair=self.num_channels,
-                    n_heads_pair=spec.pair_heads,
+                    n_heads_pair=spec.template_heads or spec.pair_heads,
                     num_intermediate_factor=2,
                     spec=spec,
                     with_single=False,

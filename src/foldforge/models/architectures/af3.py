@@ -23,6 +23,7 @@ from foldforge.modules.dense.pair_init import (
 )
 from foldforge.modules.dense.pairformer import EvoformerBlock, PairformerBlock
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
+from foldforge.modules.dense.structural_tokens import StructuralTokenExpander
 from foldforge.modules.dense.template import TemplateEmbedding
 
 # Copyright 2024 DeepMind Technologies Limited
@@ -53,8 +54,14 @@ class Evoformer(nn.Module):
         self.symmetric_bonds = spec.symmetric_bonds
         self.c_target_feat = spec.target_feat_channel
 
-        self.left_single = nn.Linear(self.c_target_feat, self.pair_channel, bias=False)
-        self.right_single = nn.Linear(self.c_target_feat, self.pair_channel, bias=False)
+        # AF3 initialises the pair from the raw target features; the families
+        # that follow Algorithm 1 literally initialise it from the single
+        # projection of those features, so the two read different widths.
+        c_pair_init = (
+            spec.seq_channel if spec.pair_init_from_single else self.c_target_feat
+        )
+        self.left_single = nn.Linear(c_pair_init, self.pair_channel, bias=False)
+        self.right_single = nn.Linear(c_pair_init, self.pair_channel, bias=False)
 
         self.prev_embedding_layer_norm = nn.LayerNorm(self.pair_channel)
         self.prev_embedding = nn.Linear(
@@ -119,6 +126,34 @@ class Evoformer(nn.Module):
                 for _ in range(self.pairformer_num_layer)
             ]
         )
+
+        # The family that folds on structural tokens expands the trunk's output
+        # onto them and refines it with its own stack of the ordinary block.
+        self.structural_token_expander = None
+        if spec.structural_tokens:
+            self.structural_token_expander = StructuralTokenExpander(
+                c_single=self.seq_channel,
+                c_pair=self.pair_channel,
+                c_target_feat=self.c_target_feat,
+            )
+            self.structural_token_refiner = nn.ModuleList(
+                [
+                    PairformerBlock(
+                        c_pair=self.pair_channel,
+                        c_single=self.seq_channel,
+                        n_heads=spec.structural_refiner_heads,
+                        n_heads_pair=spec.pair_heads,
+                        num_intermediate_factor=(
+                            spec.structural_refiner_transition_factor
+                        ),
+                        single_intermediate_factor=(spec.pairformer_transition_factor),
+                        with_single=True,
+                        spec=spec,
+                        pair_qkv_dim=spec.pair_qkv_dim,
+                    )
+                    for _ in range(spec.structural_refiner_layers)
+                ]
+            )
 
     def _relative_encoding(
         self, batch: feat_batch.Batch, pair_activations: torch.Tensor
@@ -298,8 +333,11 @@ class Evoformer(nn.Module):
         first_pass: bool = False,
     ) -> dict[str, Any]:
         """Compute the module output."""
+        # The single projection is needed first where the pair is built from it.
+        single_init = self.single_activations(target_feat)
         pair_activations, pair_mask = self._seq_pair_embedding(
-            batch.token_features, target_feat
+            batch.token_features,
+            single_init if self.spec.pair_init_from_single else target_feat,
         )
 
         pair_init = None
@@ -350,7 +388,7 @@ class Evoformer(nn.Module):
             ),
         )
 
-        single_activations = self.single_activations(target_feat)
+        single_activations = single_init
         recycled_single = prev["single"]
         if self.spec.recycle_from_initial and first_pass:
             recycled_single = single_activations

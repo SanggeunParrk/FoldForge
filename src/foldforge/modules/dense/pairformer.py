@@ -41,6 +41,7 @@ class PairformerBlock(nn.Module):
         c_hidden_mul: int = 128,  # noqa: ARG002 - shared callback or fixture signature
         n_heads_pair: int = 4,
         num_intermediate_factor: int = 4,
+        single_intermediate_factor: int | None = None,
         with_single: bool = True,
         spec: DenseSpec = ALPHAFOLD3,
         pair_qkv_dim: int | None = None,
@@ -106,9 +107,15 @@ class PairformerBlock(nn.Module):
             self.single_attention_ = SelfAttention(
                 c_x=c_single, num_head=n_heads, use_single_cond=False
             )
+            # The single transition normally widens by the same factor as the
+            # pair one. A stack that narrows only its pair transition says so.
             self.single_transition = Transition(
                 c_x=self.c_single,
-                num_intermediate_factor=self.num_intermediate_factor,
+                num_intermediate_factor=(
+                    self.num_intermediate_factor
+                    if single_intermediate_factor is None
+                    else single_intermediate_factor
+                ),
             )
 
     def forward(

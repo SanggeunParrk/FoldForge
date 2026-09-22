@@ -79,7 +79,21 @@ class DiffusionHead(nn.Module):
             else None
         )
         self.pair_init_cond = spec.diffusion_pair_init_cond
-        self.c_pair_cond_initial = trunk_pair_channel + (
+
+        # A family whose denoiser pair is NARROWER than the trunk's compresses
+        # the trunk pair to that width first, rather than norming the whole
+        # concatenation at the trunk's width. The joint norm couples the two
+        # halves, so which width it runs at is a real difference in the path.
+        self.compress_trunk_pair = trunk_pair_channel != pair_channel
+        if self.compress_trunk_pair:
+            self.z_trunk_norm = fastnn.LayerNorm(trunk_pair_channel, bias=False)
+            self.z_trunk_projection = nn.Linear(
+                trunk_pair_channel, pair_channel, bias=False
+            )
+            first = pair_channel
+        else:
+            first = trunk_pair_channel
+        self.c_pair_cond_initial = first + (
             trunk_pair_channel
             if self.pair_init_cond
             else (pair_channel if spec.diffusion_projected_relpos else 139)
@@ -179,6 +193,11 @@ class DiffusionHead(nn.Module):
             embeddings = {name: value.float() for name, value in embeddings.items()}
         single_embedding = use_conditioning * embeddings["single"]
         pair_embedding = use_conditioning * embeddings["pair"]
+
+        if self.compress_trunk_pair:
+            pair_embedding = layernorm_projection(
+                self.z_trunk_norm, self.z_trunk_projection, pair_embedding
+            )
 
         if self.pair_init_cond:
             second = embeddings["pair_init"].to(dtype=pair_embedding.dtype)

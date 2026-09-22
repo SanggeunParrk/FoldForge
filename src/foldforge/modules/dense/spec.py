@@ -104,7 +104,9 @@ class DenseSpec:
     #: Which template embedder the weights were trained with.
     template: str = "af3"
     template_layers: int = 2
-    template_heads: int = 4
+    #: Heads of the template pair attention; None ties it to the trunk's, which
+    #: is what AF3 does and what every family on its template embedder kept.
+    template_heads: int | None = None
     #: Per-head width of the template pair attention; None is channel / heads.
     template_qkv_dim: int | None = None
     #: Width of the template triangle multiplication's projections, where it
@@ -138,11 +140,15 @@ class DenseSpec:
     #: Diffusion pair conditioning concatenates the trunk pair with PROJECTED
     #: relative-position features.
     diffusion_projected_relpos: bool = False
-    #: Diffusion pair conditioning compresses the trunk pair and the relative
-    #: features SEPARATELY to the pair width and concatenates the two, where
-    #: AF3 projects one concatenation. The joint norm over the wider concat
-    #: couples them, so this is a distinct path and not a reparameterisation.
-    diffusion_split_pair_cond: bool = False
+    #: The diffusion and the confidence heads run on STRUCTURAL tokens: each
+    #: residue splits into a backbone and a sidechain token, expanded from the
+    #: residue-level trunk and refined by its own pairformer stack.
+    structural_tokens: bool = False
+    structural_refiner_layers: int = 4
+    #: The refiner stack's single-attention heads and transition factor, where
+    #: the family trained it narrower than the trunk pairformer it reuses.
+    structural_refiner_heads: int = 16
+    structural_refiner_transition_factor: int = 4
     #: The pair initialisation reads the single activations rather than the
     #: target features, so the single is built before the pair.
     pair_init_from_single: bool = False
@@ -365,6 +371,7 @@ BOLTZ2 = replace(
     msa_query_paired=1.0,
     bond_type_and_contact_init=True,
     template="boltz2",
+    template_heads=4,
     template_qkv_dim=32,
     template_transition_factor=4,
     template_visibility_by_coverage=True,
@@ -404,6 +411,7 @@ ROSETTAFOLD3 = replace(
     affine_norms=BOLTZ2.affine_norms,
     msa_query_paired=0.0,
     template="rf3",
+    template_heads=4,
     use_input_templates=False,
     template_qkv_dim=64,
     template_transition_factor=4,
@@ -565,16 +573,20 @@ PROTENIX1 = replace(
 OPENDDE = replace(
     PROTENIX2,
     family="opendde",
+    structural_tokens=True,
     confidence_records="opendde",
     dedupe_self_msa=False,
     empty_template_gap="all",
     pair_channel=384,
-    diffusion_pair_channel=384,
+    #: The trunk is 384 wide but the denoiser conditions on a 128-wide pair,
+    #: which is what makes it compress the trunk pair before concatenating.
+    diffusion_pair_channel=128,
     pair_heads=12,
+    structural_refiner_heads=8,
+    structural_refiner_transition_factor=2,
     distogram_bins=96,
     msa_update_before_opm=True,
-    diffusion_projected_relpos=False,
-    diffusion_split_pair_cond=True,
+    diffusion_projected_relpos=True,
     pair_init_from_single=True,
     template="af3",
 )

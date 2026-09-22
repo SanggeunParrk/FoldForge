@@ -201,7 +201,7 @@ class FusedTemplateEmbedding(nn.Module):
             [
                 pairformer.PairformerBlock(
                     c_pair=channels,
-                    n_heads_pair=spec.template_heads,
+                    n_heads_pair=spec.template_heads or spec.pair_heads,
                     num_intermediate_factor=spec.template_transition_factor,
                     with_single=False,
                     spec=spec,

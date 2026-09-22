@@ -431,6 +431,11 @@ class ParamType(Enum):
         lambda w: w.reshape(*w.shape[:-2], -1).transpose(-1, -2)
     )
     LinearWeightNoTransposeMHA = partial(lambda w: w.reshape(-1, w.shape[-1]))
+    # Per-atom logits written with the ATOM axis first, (atoms, channels, bins),
+    # where the multi-axis form above puts the channels there.
+    atom_major_logits = partial(
+        lambda w: w.permute(1, 0, 2).reshape(w.shape[1], -1).transpose(-1, -2)
+    )
     linear_bias_mha = partial(lambda w: w.reshape(*w.shape[:-2], -1))
     LinearFlat = partial(lambda w: w.unsqueeze(-1))
     Other = partial(lambda w: w)
@@ -1184,6 +1189,14 @@ def build_diffusion_head_params(head: ParameterModule) -> ParamTree:
             if head.relpe_projection is not None
             else {}
         ),
+        **(
+            {
+                "z_trunk_norm": build_scale_norm_params(head.z_trunk_norm),
+                "z_trunk_projection": build_linear_params(l=head.z_trunk_projection),
+            }
+            if head.compress_trunk_pair
+            else {}
+        ),
         "noise_embedding_initial_norm": build_scale_norm_params(
             head.noise_embedding_initial_norm
         ),
@@ -1277,9 +1290,7 @@ CONFIDENCE_RECORDS = {
         "pae_logits_ln": "pae_ln",
         "pae_logits": "linear_no_bias_pae",
         "plddt_logits_ln": "plddt_ln",
-        "plddt_logits": "plddt_weight",
         "experimentally_resolved_ln": "resolved_ln",
-        "experimentally_resolved_logits": "resolved_weight",
     }
 }
 
@@ -1292,15 +1303,25 @@ def build_confidence_head_params(head: ParameterModule) -> ParamTree:
             for b in head.confidence_pairformer
         ]
     )
-    resolved_params = (
-        {
-            "experimentally_resolved_logits": build_linear_hma_params(
-                l=head.experimentally_resolved_logits
-            )
-        }
-        if head.resolved_head
-        else {}
-    )
+    atom_major = head.spec.confidence_records == "opendde"
+    resolved_params: ParamTree = {}
+    if head.resolved_head:
+        resolved_params = (
+            # This dialect writes the per-atom logits as a bare parameter at the
+            # head's own scope, atom axis first.
+            {
+                "resolved_weight": Param(
+                    head.experimentally_resolved_logits.weight,
+                    param_type=ParamType.atom_major_logits,
+                )
+            }
+            if atom_major
+            else {
+                "experimentally_resolved_logits": build_linear_hma_params(
+                    l=head.experimentally_resolved_logits
+                )
+            }
+        )
 
     if getattr(head, "split_heads", False):
         re = head.reembedding
@@ -1376,7 +1397,15 @@ def build_confidence_head_params(head: ParameterModule) -> ParamTree:
         "pae_logits_ln": build_layer_norm_params(l=head.pae_logits_ln),
         "pae_logits": build_linear_params(l=head.pae_logits),
         "plddt_logits_ln": build_layer_norm_params(l=head.plddt_logits_ln),
-        "plddt_logits": build_linear_hma_params(l=head.plddt_logits),
+        **(
+            {
+                "plddt_weight": Param(
+                    head.plddt_logits.weight, param_type=ParamType.atom_major_logits
+                )
+            }
+            if atom_major
+            else {"plddt_logits": build_linear_hma_params(l=head.plddt_logits)}
+        ),
         **(
             {
                 "experimentally_resolved_ln": build_layer_norm_params(
@@ -1387,6 +1416,32 @@ def build_confidence_head_params(head: ParameterModule) -> ParamTree:
             else {}
         ),
         **resolved_params,
+    }
+
+
+def build_structural_expander_params(expander: ParameterModule) -> ParamTree:
+    """Compute structural-token expander params."""
+    return {
+        "single_input_role_embedding": Param(
+            expander.single_input_role_embedding.weight
+        ),
+        "single_role_embedding": Param(expander.single_role_embedding.weight),
+        "single_split_norm": build_layer_norm_params(l=expander.single_split_norm),
+        "single_split_1": build_linear_params(l=expander.single_split_1),
+        "single_split_2": build_linear_params(l=expander.single_split_2),
+        "pair_block_proj": Param(expander.pair_block_proj),
+        "same_parent_embedding": Param(expander.same_parent_embedding.weight),
+        "same_residue_twin_embedding": Param(
+            expander.same_residue_twin_embedding.weight
+        ),
+        "prev_bb_chain_embedding": Param(expander.prev_bb_chain_embedding.weight),
+        "next_bb_chain_embedding": Param(expander.next_bb_chain_embedding.weight),
+        "role_pair_type_embedding": Param(expander.role_pair_type_embedding.weight),
+        "attn_bias_same_parent": Param(expander.attn_bias_same_parent),
+        "attn_bias_same_residue_twin": Param(expander.attn_bias_same_residue_twin),
+        "attn_bias_prev_bb_chain": Param(expander.attn_bias_prev_bb_chain),
+        "attn_bias_next_bb_chain": Param(expander.attn_bias_next_bb_chain),
+        "attn_bias_role_pair_type": Param(expander.attn_bias_role_pair_type),
     }
 
 
@@ -1465,6 +1520,23 @@ def get_translation_dict(model: ParameterModule) -> ParamTree:
             "evoformer_conditioning_",
         ),
         "evoformer": build_evoformer_params(model.evoformer),
+        **(
+            {
+                "structural_token_expander": build_structural_expander_params(
+                    model.evoformer.structural_token_expander
+                ),
+                # The blob keeps the refiner's blocks under the trunk block's own
+                # scope, because they ARE that block.
+                "structural_token_refiner/trunk_pairformer": stacked(
+                    [
+                        build_pairformer_block_params(b=b, with_single=True)
+                        for b in model.evoformer.structural_token_refiner
+                    ]
+                ),
+            }
+            if getattr(model.evoformer, "structural_token_expander", None) is not None
+            else {}
+        ),
         "~/diffusion_head": build_diffusion_head_params(model.diffusion_head),
         **{
             f"distogram_head/{name}": params

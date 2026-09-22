@@ -421,9 +421,7 @@ class ConfidenceHead(nn.Module):
             distance = (
                 (positions[:, None] - positions[None]).square().sum(-1) + 1e-10
             ).sqrt()
-            out = out + self.distance_feat_project(
-                distance[..., None].to(out.dtype)
-            )
+            out = out + self.distance_feat_project(distance[..., None].to(out.dtype))
 
         return out
 

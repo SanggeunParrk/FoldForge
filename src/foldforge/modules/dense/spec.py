@@ -180,6 +180,10 @@ class DenseSpec:
     post_atom_cond_norm: bool = False
     #: A padded key atom is masked from every query, not only from padded queries.
     key_masked_atom_attention: bool = False
+    #: The atom attention CHAINS its two adaptive normalisations: the keys are
+    #: gathered from the already-normed queries rather than from the raw
+    #: activation. Two chained norms are not two parallel ones.
+    chained_atom_key_norm: bool = False
     #: Atom transformers norm and project their pair conditioning in every block.
     per_block_atom_pair_layer_norm: bool = False
     #: Diffusion attentions LayerNorm the projected queries and keys (all heads flat).
@@ -511,6 +515,7 @@ CHAI1 = replace(
 PROTENIX2 = replace(
     OPENBIND0,
     family="protenix2",
+    chained_atom_key_norm=True,
     # Protenix indexes OXT per residue and keeps it, where the OpenFold3
     # releases remove the terminal atoms; inheriting their drop shifts the whole
     # atom layout against what these weights were trained on.

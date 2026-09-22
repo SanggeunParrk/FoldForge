@@ -10,6 +10,8 @@
 # https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md
 
 
+import functools
+from collections.abc import Callable
 from typing import Any
 
 import einops
@@ -530,8 +532,18 @@ class CrossAttention(nn.Module):
         single_cond_q: torch.Tensor | None = None,
         single_cond_k: torch.Tensor | None = None,
         pair_mask: torch.Tensor | None = None,
+        keys_from_queries: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ) -> torch.Tensor:
-        """Compute the module output."""
+        """Compute the module output.
+
+        ``keys_from_queries`` CHAINS the two adaptive normalisations instead of
+        running them in parallel: the keys are gathered from the already-normed
+        queries, so the key norm re-centres and re-scales a tensor whose
+        statistics the query norm has already fixed, and sees its learned scale.
+        Two chained LayerNorms are not one, and they are not two parallel ones.
+        The gather has to happen BETWEEN them, which is why it arrives as a
+        callback rather than a ready-made key tensor.
+        """
         if tuple(mask_q.shape) != tuple(x_q.shape[-mask_q.ndim - 1 : -1]):
             message = f"{mask_q.shape}, {x_q.shape}"
             raise ValueError(message)
@@ -561,6 +573,8 @@ class CrossAttention(nn.Module):
             bias = torch.where(pair_mask[..., None, :, :], bias, -1e9)
 
         x_q = self.q_adaptive_layernorm(x_q, single_cond_q)
+        if keys_from_queries is not None:
+            x_k = keys_from_queries(x_q)
         x_k = self.k_adaptive_layernorm(x_k, single_cond_k)
 
         q = self.q_projection(x_q)
@@ -614,6 +628,7 @@ class DiffusionCrossAttTransformer(nn.Module):
         self.per_block_pair = spec.per_block_atom_pair_layer_norm
         self.parallel = spec.parallel_attention_transition
         self.mask_act_per_block = spec.mask_atom_act_per_block
+        self.chained_key_norm = spec.chained_atom_key_norm
         if self.per_block_pair:
             self.pair_input_layer_norm = nn.ModuleList(
                 [
@@ -702,9 +717,11 @@ class DiffusionCrossAttTransformer(nn.Module):
                 queries_act = queries_act * queries_mask[..., None].to(
                     queries_act.dtype
                 )
-            keys_act = atom_layout.convert(
-                queries_to_keys, queries_act, layout_axes=(-3, -2)
+            gather = functools.partial(
+                atom_layout.convert, queries_to_keys, layout_axes=(-3, -2)
             )
+            keys_act = gather(queries_act)
+            chained = gather if self.chained_key_norm else None
             if self.parallel:
                 queries_act = (
                     queries_act
@@ -717,6 +734,7 @@ class DiffusionCrossAttTransformer(nn.Module):
                         single_cond_q=queries_single_cond,
                         single_cond_k=keys_single_cond,
                         pair_mask=pair_mask,
+                        keys_from_queries=chained,
                     )
                     + self.transition_block[block_idx](queries_act, queries_single_cond)
                 )
@@ -725,7 +743,7 @@ class DiffusionCrossAttTransformer(nn.Module):
             queries_act = conditioned_residual(
                 queries_act,
                 queries_single_cond,
-                attention=lambda value, block_idx=block_idx, keys_act=keys_act: (
+                attention=lambda value, block_idx=block_idx, keys_act=keys_act, chained=chained: (
                     self.cross_attention[block_idx](
                         x_q=value,
                         x_k=keys_act,
@@ -735,6 +753,7 @@ class DiffusionCrossAttTransformer(nn.Module):
                         single_cond_q=queries_single_cond,
                         single_cond_k=keys_single_cond,
                         pair_mask=pair_mask,
+                        keys_from_queries=chained,
                     )
                 ),
                 transition=self.transition_block[block_idx],

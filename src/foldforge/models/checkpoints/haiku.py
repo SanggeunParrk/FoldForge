@@ -1363,9 +1363,7 @@ def build_confidence_head_params(head: ParameterModule) -> ParamTree:
                 "~_embed_features/distance_feat_project": build_linear_params(
                     l=head.distance_feat_project
                 ),
-                "input_single_norm": build_layer_norm_params(
-                    l=head.input_single_norm
-                ),
+                "input_single_norm": build_layer_norm_params(l=head.input_single_norm),
             }
             if head.protenix_confidence
             else {}

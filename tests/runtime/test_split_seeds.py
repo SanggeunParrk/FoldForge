@@ -15,6 +15,7 @@ from torch import nn
 from foldforge.models.config import Config, ExecutionConfig
 from foldforge.models.io.cli import parse
 from foldforge.models.io.request import Request
+from foldforge.models import is_dense
 from foldforge.models.sampling import bind_sampling_seed
 from foldforge.utils.seed import RNGState, conformer_seed, seed_all, seed_context
 
@@ -159,9 +160,13 @@ def test_diffusion_seed_is_independent_of_trunk_and_graph(family, mode):
     def sample(*, generator=None, rollout_seed=None) -> tuple:
         if family == "esmfold2":
             assert generator is not original_trunk_generator
-        if family in {"protenix", "opendde"}:
+        if not is_dense(family) and family != "esmfold2":
+            # Only a flat graph carries a seed in its feature dictionary; a
+            # dense one takes the seed from the host context around the call.
             assert rollout_seed in {19, 20}
             generator = torch.Generator(device="cuda").manual_seed(rollout_seed)
+        else:
+            assert rollout_seed is None
         coords = EulerSampler().sample(
             denoise,
             (5, 8, 3),
@@ -171,10 +176,12 @@ def test_diffusion_seed_is_independent_of_trunk_and_graph(family, mode):
         )
         return coords, (random.random(), np.random.random())
 
+    # Named the way the binder names them, so a family that moves between the
+    # two layouts needs nothing here.
     owner, method = (
         (model.structure_head, "sample")
         if family == "esmfold2"
-        else (model, "_sample_diffusion" if family == "af3" else "sample_diffusion")
+        else (model, "_sample_diffusion" if is_dense(family) else "sample_diffusion")
     )
 
     def run(trunk_seed, diffusion_seed) -> tuple:

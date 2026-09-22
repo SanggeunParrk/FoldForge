@@ -110,6 +110,7 @@ class StructuralTokenExpander(nn.Module):
         ):
             role_pair = torch.where(left[:, None] & right[None, :], value, role_pair)
         return {
+            "role": role,
             "same_parent": same_parent,
             "twin": twin,
             "prev_bb": prev_bb,
@@ -143,12 +144,19 @@ class StructuralTokenExpander(nn.Module):
         """Copy each parent pair, project it by role pair, add the relation terms."""
         parent_pair = pair[parent][:, parent]
         role_pair = features["role_pair_type"]
+        # The 49 projections are indexed by the two tokens' OWN roles, as
+        # `role_i * n_roles + role_j` -- NOT by the eight-class role-pair type,
+        # which is a different quantity that only the embedding below reads.
+        # Using the type here reaches eight of the forty-nine, and reaches them
+        # for the wrong pairs.
+        role = features["role"]
+        block = role[:, None] * N_ROLES + role[None, :]
         delta = torch.zeros_like(parent_pair)
         # Accumulate one role pair at a time. Selecting all of them at once lets
         # the compiler keep every projection of the whole (S, S, c) pair live,
         # which is what makes this the step that runs out of memory.
         for index in range(N_ROLES * N_ROLES):
-            chosen = role_pair == index
+            chosen = block == index
             if not bool(chosen.any()):
                 continue
             masked = torch.where(chosen[..., None], parent_pair, 0.0)

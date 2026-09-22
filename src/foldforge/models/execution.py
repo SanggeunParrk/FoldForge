@@ -45,7 +45,7 @@ class Execution:
         # The flat graph buckets by padding its denoiser; the dense one buckets
         # its own inputs. Keyed on the layout, so a family that moves between
         # them needs nothing here.
-        flat_buckets = config.bucketing and family == "opendde"
+        flat_buckets = config.bucketing and not is_dense(family)
         if flat_buckets:
             if config.scope != "denoiser":
                 msg = "Flat-atom bucketing requires scope=denoiser"

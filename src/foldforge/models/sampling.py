@@ -225,10 +225,11 @@ def bind_sampling_seed(model: torch.nn.Module, family: str, seed: int) -> None:
             if family == "esmfold2":
                 # Do not consume the explicit generator already used by the trunk.
                 kwargs["generator"] = torch.Generator(device=device).manual_seed(seed)
-            elif family == "opendde":
-                # Override an optional seed embedded in the feature dictionary.
-                # Only the flat graph reads one; the dense sampler takes its
-                # seed from the context above.
+            elif not is_dense(family):
+                # The flat graph carries an optional seed in its feature
+                # dictionary; override it. Asked by LAYOUT rather than by name,
+                # because the same family now has a dense graph that takes its
+                # seed from the context above and has no such argument.
                 kwargs["rollout_seed"] = seed
             return original(*args, **kwargs)
 

@@ -43,9 +43,7 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
     from foldforge.models import load
     from foldforge.models.config import configuration
 
-    config = configuration(
-        model_name, args.variant if model_name == "protenix" else None
-    )
+    config = configuration(model_name)
     config.input_json_path = str(args.input.resolve())
     config.dump_dir = str(args.out.resolve())
     if args.guidance is not None:
@@ -59,15 +57,11 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
     config.num_workers = 0
     config.data.ccd_components_file = str(database.config.ccd_db)
     config.data.ccd_components_rdkit_mol_file = str(database.config.ccd_db)
-    from foldforge.data.inputs.dataset import (
-        ResidueInferenceDataset,
-        StructuralInferenceDataset,
-    )
+    from foldforge.data.inputs.dataset import StructuralInferenceDataset
 
-    dataset_type = {
-        "protenix": ResidueInferenceDataset,
-        "opendde": StructuralInferenceDataset,
-    }[model_name]
+    # OpenDDE is the last model on this path; every other predictor reads its
+    # inputs through the dense layout.
+    dataset_type = {"opendde": StructuralInferenceDataset}[model_name]
     dtype = torch.bfloat16 if args.precision == "bf16" else torch.float32
     args.out.mkdir(parents=True, exist_ok=True)
     dataset = dataset_type(config)

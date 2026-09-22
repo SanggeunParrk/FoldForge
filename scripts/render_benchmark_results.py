@@ -14,6 +14,7 @@ mpl.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from foldforge.models import is_dense
 from foldforge.models.msa_policy import RECORD as MSA_POLICY
 
 MODES = {
@@ -54,7 +55,7 @@ def validate(rows: list[dict], target: str = "4yx2") -> dict:
         report, config = row["report"], row["config"]
         reference = mode.endswith("reference")
         expected_precision = (
-            ("af3_default" if model == "af3" else "model_default")
+            ("af3_default" if is_dense(model) else "model_default")
             if reference
             else "bf16"
         )
@@ -66,7 +67,9 @@ def validate(rows: list[dict], target: str = "4yx2") -> dict:
             else "pytorch"
         )
         timings = report["model_seconds_warm"]
-        expected_autocast = reference and model in {"esmfold2", "protenix"}
+        # Only the flat and sequence paths autocast; a dense family stores its
+        # parameters at the released precision and uses none.
+        expected_autocast = reference and not is_dense(model)
         valid = (
             row["status"] == 0
             and row["target"] == target

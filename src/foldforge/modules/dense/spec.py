@@ -107,6 +107,9 @@ class DenseSpec:
     template_heads: int = 4
     #: Per-head width of the template pair attention; None is channel / heads.
     template_qkv_dim: int | None = None
+    #: Width of the template triangle multiplication's projections, where it
+    #: is NOT the channel count AF3 ties it to.
+    template_hidden_dim: int | None = None
     template_transition_factor: int = 2
     #: Whether homolog templates from the input reach the embedder. RoseTTAFold3's
     #: template channel is distance-distribution CONDITIONING with a noise level: a
@@ -539,6 +542,22 @@ PROTENIX2 = replace(
     confidence="protenix2",
 )
 
+#: Protenix v1. The same graph at AlphaFold 3's widths, but its TEMPLATE stack
+#: is uniformly twice as wide as its channel count implies: a 128-wide triangle
+#: multiplication and 4 x 32 attention on a 64-channel template pair.
+PROTENIX1 = replace(
+    PROTENIX2,
+    family="protenix1",
+    pair_channel=128,
+    msa_channel=64,
+    diffusion_pair_channel=128,
+    pair_heads=4,
+    msa_value_dim=None,
+    template_heads=4,
+    template_qkv_dim=32,
+    template_hidden_dim=128,
+)
+
 #: OpenDDE. Protenix lineage, widened again to a 384-channel pair with twelve
 #: pair heads, a 96-bin distogram, and its own diffusion pair conditioning: it
 #: compresses the trunk pair and the relative features SEPARATELY before the
@@ -570,6 +589,7 @@ SPECS = {
         BOLTZ2,
         ROSETTAFOLD3,
         CHAI1,
+        PROTENIX1,
         PROTENIX2,
         OPENDDE,
     )

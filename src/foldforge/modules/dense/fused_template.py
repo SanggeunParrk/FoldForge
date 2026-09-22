@@ -206,6 +206,7 @@ class FusedTemplateEmbedding(nn.Module):
                     with_single=False,
                     spec=spec,
                     pair_qkv_dim=spec.template_qkv_dim,
+                    tri_hidden_dim=spec.template_hidden_dim,
                 )
                 for _ in range(spec.template_layers)
             ]

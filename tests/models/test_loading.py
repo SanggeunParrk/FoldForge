@@ -24,7 +24,9 @@ class TinyModel(nn.Module):
 
 @pytest.mark.parametrize(
     ("name", "container"),
-    [("protenix", "model"), ("opendde", "state_dict"), ("opendde", None)],
+    # OpenDDE is the last model on the flat checkpoint path; everything else
+    # loads through the dense graph.
+    [("opendde", "state_dict"), ("opendde", None)],
 )
 def test_flat_checkpoint_uses_strict_native_precision(
     tmp_path, monkeypatch, name, container
@@ -35,14 +37,11 @@ def test_flat_checkpoint_uses_strict_native_precision(
     state = {"module." + key: value for key, value in reference.state_dict().items()}
     checkpoint = tmp_path / "weights.pt"
     torch.save({container: state} if container else state, checkpoint)
-    constructor = "Protenix" if name == "protenix" else "OpenDDE"
+    constructor = "OpenDDE"
     monkeypatch.setattr(
         loading, "import_module", lambda _: SimpleNamespace(**{constructor: TinyModel})
     )
-    config = SimpleNamespace(
-        model_name="protenix-v2" if name == "protenix" else "opendde_v1",
-        data={"msa": {}},
-    )
+    config = SimpleNamespace(model_name="opendde_v1", data={"msa": {}})
     model = load(name, checkpoint, configs=config, backend="pytorch", device="cpu")
     assert model.projection.weight.dtype == torch.bfloat16
     assert model.norm.weight.dtype == torch.float32

@@ -35,7 +35,6 @@ DEFAULT_FILES = {
     "chai1": "chai1.bin.zst",
     "intellifold2": "intellifold2.bin.zst",
     "openfold3": "openbind0.bin.zst",
-    "protenix2": "protenix2.bin.zst",
     "openfold3-preview2": "openfold3.bin.zst",
     "opendde": "opendde.pt",
     "rosettafold3": "rosettafold3.bin.zst",

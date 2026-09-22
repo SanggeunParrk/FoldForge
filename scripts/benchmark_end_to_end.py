@@ -115,7 +115,11 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
         "miniworld_graph",
     ]
     selected_modes = args.modes or default_modes
-    reference_modes = AF3_REFERENCE_MODES if args.model == "af3" else REFERENCE_MODES
+    # The reference precision is a property of the GRAPH, not of a name: every
+    # dense AF3-family model runs AF3's own policy.
+    from foldforge.models import is_dense
+
+    reference_modes = AF3_REFERENCE_MODES if is_dense(args.model) else REFERENCE_MODES
     scenarios = (
         [(backend, backend, True, True, "bf16") for backend in args.backends]
         if args.backends

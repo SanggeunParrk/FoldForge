@@ -19,7 +19,7 @@ from team_gm.modules.checkpoints.layers import skip_random_init
 
 from foldforge.models import entry
 from foldforge.models.checkpoints import DEFAULT_FILES, resolve
-from foldforge.models.config import VARIANTS, configuration
+from foldforge.models.config import PROTENIX_FAMILIES, VARIANTS, configuration
 from foldforge.models.msa_policy import RECORD, apply_esmfold2, apply_flat
 
 
@@ -67,6 +67,7 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     if variant is not None and name != "protenix":
         message = "variant applies only to Protenix"
         raise ValueError(message)
+    family = spec.family
     if name == "protenix":
         variant = (
             variant
@@ -76,10 +77,13 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         if variant not in VARIANTS:
             message = f"Unsupported Protenix variant {variant!r}; choose {VARIANTS}"
             raise ValueError(message)
+        family = PROTENIX_FAMILIES[variant]
     if checkpoint is None:
-        filename = {**DEFAULT_FILES, "protenix": f"{variant}.pt", "esmfold2": None}[
-            name
-        ]
+        filename = {
+            **DEFAULT_FILES,
+            **({"protenix": f"{variant}.bin.zst"} if name == "protenix" else {}),
+            "esmfold2": None,
+        }[name]
         checkpoint = resolve(name) if filename is None else resolve(name, filename)
     checkpoint = Path(checkpoint)
     package, _, symbol = spec.architecture.rpartition(".")
@@ -90,7 +94,7 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         from foldforge.models.checkpoints.haiku import import_jax_weights_
         from foldforge.modules.dense.spec import SPECS
 
-        dense_spec = SPECS[spec.family or "alphafold3"]
+        dense_spec = SPECS[family or "alphafold3"]
         override = os.environ.get("FOLDFORGE_DENSE_SPEC_OVERRIDE")
         if override:
             # Porting aid: flip forward conventions of a family to price each one.

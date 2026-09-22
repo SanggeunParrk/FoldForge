@@ -72,6 +72,9 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         recycles=args.recycles,
         samples=args.samples,
         steps=args.steps,
+        # One model here publishes several releases, and the release is the
+        # dense family; the rest ignore it.
+        variant=args.variant if args.model == "protenix" else None,
     )
     runtime.bind(model)
 

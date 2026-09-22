@@ -128,9 +128,11 @@ def run(model: str, argv: list[str]) -> int:
     checkpoint = args.checkpoint
     if checkpoint is None and model != "esmfold2":
         from foldforge.models.checkpoints import DEFAULT_FILES, resolve
+        from foldforge.models.config import VARIANTS
 
         checkpoint = (
-            resolve(model, (config.variant or "protenix_base_default_v1.0.0") + ".pt")
+            # Protenix names its blob by release, which --variant picks.
+            resolve(model, f"{config.variant or VARIANTS[0]}.bin.zst")
             if model == "protenix"
             else resolve(model, DEFAULT_FILES[model])
         )

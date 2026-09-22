@@ -42,7 +42,10 @@ class Execution:
         self.bucket_adapter = None
         self.bucket_model = None
         self.initial_graphs = counters["stats"]["unique_graphs"]
-        flat_buckets = config.bucketing and family in {"protenix", "opendde"}
+        # The flat graph buckets by padding its denoiser; the dense one buckets
+        # its own inputs. Keyed on the layout, so a family that moves between
+        # them needs nothing here.
+        flat_buckets = config.bucketing and family == "opendde"
         if flat_buckets:
             if config.scope != "denoiser":
                 msg = "Flat-atom bucketing requires scope=denoiser"

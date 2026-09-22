@@ -53,15 +53,12 @@ _REGISTRY = {
         "rosettafold3",
     ),
     "protenix": Entry(
-        "foldforge.models.architectures.protenix.Protenix",
-        "flat_atoms",
-        "Protenix v1 / v2 — ByteDance; the flat graph, kept as the port's oracle",
-    ),
-    "protenix2": Entry(
         "foldforge.models.architectures.af3.AlphaFold3",
         "dense_atoms",
-        "Protenix v2 — ByteDance, as a family of the one AF3 graph",
-        "protenix2",
+        "Protenix v1 / v2 — ByteDance; --variant picks the release",
+        # The family is the RELEASE, which --variant names, so it is resolved
+        # per call rather than fixed here.
+        None,
     ),
     "opendde": Entry(
         "foldforge.models.architectures.opendde.OpenDDE", "flat_atoms", "OpenDDE"

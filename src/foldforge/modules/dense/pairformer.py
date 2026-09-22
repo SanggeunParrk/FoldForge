@@ -45,6 +45,7 @@ class PairformerBlock(nn.Module):
         spec: DenseSpec = ALPHAFOLD3,
         pair_qkv_dim: int | None = None,
         dual_output: bool = False,
+        tri_hidden_dim: int | None = None,
     ) -> None:
         """Args:
 
@@ -67,11 +68,13 @@ class PairformerBlock(nn.Module):
             c_pair=c_pair,
             _outgoing=True,
             divide_by_length=spec.triangle_mul_divide_by_length,
+            hidden_dim=tri_hidden_dim,
         )
         self.triangle_multiplication_incoming = TriangleMultiplication(
             c_pair=c_pair,
             _outgoing=False,
             divide_by_length=spec.triangle_mul_divide_by_length,
+            hidden_dim=tri_hidden_dim,
         )
         self.pair_attention1 = GridSelfAttention(
             c_pair=c_pair,

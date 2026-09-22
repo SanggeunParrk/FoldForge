@@ -27,6 +27,15 @@ VARIANTS = (
     "protenix-v2",
 )
 
+#: Which dense-graph family each release is. The two v1 releases are the same
+#: graph trained to different cutoffs, so they share a family and differ only in
+#: their blob.
+PROTENIX_FAMILIES = {
+    "protenix_base_default_v1.0.0": "protenix1",
+    "protenix_base_20250630_v1.0.0": "protenix1",
+    "protenix-v2": "protenix2",
+}
+
 
 def configuration(name: str, variant: str | None = None, arguments: str = "") -> Any:
     """Build the released model defaults with explicit caller overrides."""

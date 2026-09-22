@@ -53,6 +53,9 @@ class DenseSpec:
     #: additional ones AF3 counts. Clamped at one either way.
     recycles_are_total: bool = False
     trunk_layers: int = 48
+    #: Blocks of the MSA stack. A family that folds from a language model alone
+    #: has none, and must not BUILD one: its checkpoint carries no weights for it.
+    msa_layers: int = 4
     #: Expansion factor of the pairformer transitions, in the trunk and the
     #: confidence head. AF3 is 4; chai-1 halves both.
     pairformer_transition_factor: int = 4
@@ -591,6 +594,34 @@ OPENDDE = replace(
     template="af3",
 )
 
+#: ESMFold2 folds from ESM-C, not from an MSA: its trunk is PAIR-ONLY at 256
+#: channels, it recycles through a discretised diagonal SSM rather than an
+#: addition, and it closes with a post-loop "coda" of pair blocks.
+ESMFOLD2 = replace(
+    ALPHAFOLD3,
+    family="esmfold2",
+    pair_channel=256,
+    msa_channel=128,
+    diffusion_pair_channel=256,
+    diffusion_seq_channel=768,
+    diffusion_blocks=12,
+    trunk_layers=48,
+    msa_layers=4,
+    template_layers=0,
+    distogram_bins=64,
+    msa_keep_order=True,
+    affine_norms=frozenset(
+        {
+            "pair_cond_initial_norm",
+            "single_cond_initial_norm",
+            "noise_embedding_initial_norm",
+            "single_cond_embedding_norm",
+            "output_norm",
+            "atom_features_layer_norm",
+        }
+    ),
+)
+
 SPECS = {
     spec.family: spec
     for spec in (
@@ -604,5 +635,6 @@ SPECS = {
         PROTENIX1,
         PROTENIX2,
         OPENDDE,
+        ESMFOLD2,
     )
 }

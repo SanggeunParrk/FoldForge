@@ -23,6 +23,33 @@ from foldforge.models.config import PROTENIX_FAMILIES, VARIANTS, configuration
 from foldforge.models.msa_policy import RECORD, apply_esmfold2, apply_flat
 
 
+def resolve_family(
+    name: str, variant: str | None = None, configs: object | None = None
+) -> tuple[str | None, str | None]:
+    """Resolve a model name (and release) to its dense family and variant.
+
+    One model publishes several releases and the release is the family, so the
+    two are resolved together. Callers that need the family BEFORE building the
+    model -- the input adapters, which featurise differently for a family that
+    folds on structural tokens -- ask here rather than loading the checkpoint.
+    """
+    if variant is not None and name != "protenix":
+        message = "variant applies only to Protenix"
+        raise ValueError(message)
+    family = entry(name).family
+    if name == "protenix":
+        variant = (
+            variant
+            or (getattr(configs, "model_name", None) if configs is not None else None)
+            or VARIANTS[0]
+        )
+        if variant not in VARIANTS:
+            message = f"Unsupported Protenix variant {variant!r}; choose {VARIANTS}"
+            raise ValueError(message)
+        family = PROTENIX_FAMILIES[variant]
+    return family, variant
+
+
 def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint lifecycle
     name: str,
     checkpoint: str | Path | None = None,
@@ -64,20 +91,7 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     spec = entry(name)
     if spec.architecture is None:
         raise NotImplementedError(name)
-    if variant is not None and name != "protenix":
-        message = "variant applies only to Protenix"
-        raise ValueError(message)
-    family = spec.family
-    if name == "protenix":
-        variant = (
-            variant
-            or (getattr(configs, "model_name", None) if configs is not None else None)
-            or VARIANTS[0]
-        )
-        if variant not in VARIANTS:
-            message = f"Unsupported Protenix variant {variant!r}; choose {VARIANTS}"
-            raise ValueError(message)
-        family = PROTENIX_FAMILIES[variant]
+    family, variant = resolve_family(name, variant, configs)
     if checkpoint is None:
         filename = {
             **DEFAULT_FILES,

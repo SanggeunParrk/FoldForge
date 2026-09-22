@@ -37,6 +37,30 @@ from foldforge.modules.dense.template import TemplateEmbedding
 # https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md
 
 
+def _to_residue_layout(
+    samples: dict[str, torch.Tensor],
+    batch: dict[str, torch.Tensor],
+    num_res: int,
+) -> dict[str, torch.Tensor]:
+    """Bring a structural-token diffusion result back to the residue layout.
+
+    Exact, not a choice: every residue atom sits in exactly one structural slot,
+    and `residue_atom_gather` names it. Everything downstream -- the confidence
+    head, the mmCIF writer, the whole output path -- reads residues, so this is
+    where the structural token set ends.
+    """
+    gather = batch["structbook/residue_atom_gather"].to(torch.int64)[:num_res]
+    valid = gather >= 0
+    index = torch.where(valid, gather, torch.zeros_like(gather)).reshape(-1)
+    out = {}
+    for key, value in samples.items():
+        flat = value.reshape(value.shape[0], -1, *value.shape[3:])
+        taken = flat[:, index].reshape(value.shape[0], *gather.shape, *value.shape[3:])
+        mask = valid.reshape(1, *gather.shape, *((1,) * (value.ndim - 3)))
+        out[key] = torch.where(mask, taken, torch.zeros_like(taken))
+    return out
+
+
 class Evoformer(nn.Module):
     """Represent evoformer."""
 
@@ -45,7 +69,7 @@ class Evoformer(nn.Module):
 
         self.spec = spec
         self.msa_channel = spec.msa_channel
-        self.msa_stack_num_layer = 4
+        self.msa_stack_num_layer = spec.msa_layers
         self.pairformer_num_layer = spec.trunk_layers
         self.num_msa = 1024
 
@@ -154,6 +178,51 @@ class Evoformer(nn.Module):
                     for _ in range(spec.structural_refiner_layers)
                 ]
             )
+
+    def expand_structural(
+        self,
+        embeddings: dict[str, Any],
+        book: dict[str, torch.Tensor],
+        batch: feat_batch.Batch,
+        asym_id: torch.Tensor,
+    ) -> dict[str, Any]:
+        """Carry the residue trunk's output onto OpenDDE's structural tokens.
+
+        The expander splits each residue's single and pair into its subtokens and
+        states the relationships the pair cannot -- which subtokens share a
+        parent, which are backbone twins, which back onto the next residue in the
+        chain -- as a pair term and an attention bias. Its own refiner stack then
+        lets those relationships propagate before the diffusion reads them.
+
+        ``batch`` is the STRUCTURAL batch, so its mask counts structural tokens.
+        """
+        if self.structural_token_expander is None:
+            message = "This family does not fold on structural tokens"
+            raise RuntimeError(message)
+        target_feat, single, pair, bias = self.structural_token_expander(
+            embeddings["target_feat"],
+            embeddings["single"],
+            embeddings["pair"],
+            book["parent_residue_idx"],
+            book["subtoken_role_id"],
+            asym_id,
+            book["prev_parent_residue_idx"],
+            book["next_parent_residue_idx"],
+        )
+        seq_mask = batch.token_features.mask
+        pair_mask = (seq_mask[:, None] * seq_mask[None, :]).to(pair.dtype)
+        for block in self.structural_token_refiner:
+            pair, single = block(
+                pair, pair_mask, single, seq_mask, extra_pair_bias=bias
+            )
+        return {
+            **embeddings,
+            "single": single,
+            "pair": pair,
+            "target_feat": target_feat,
+            "structure_target_feat": target_feat,
+            "structural_pair_attn_bias": bias,
+        }
 
     def _relative_encoding(
         self, batch: feat_batch.Batch, pair_activations: torch.Tensor
@@ -612,7 +681,35 @@ class AlphaFold3(nn.Module):
                 embeddings["pair"] = embeddings["pair"].float()
                 embeddings["single"] = embeddings["single"].float()
 
-        samples = self._sample_diffusion(batch_data, embeddings)
+        # OpenDDE folds on STRUCTURAL tokens: the trunk stays on residues and
+        # the denoiser runs on each residue's backbone and sidechain subtokens,
+        # built from a second feature set the featurisation attached alongside.
+        # Its confidence head and distogram read the residue branch, so only the
+        # diffusion moves -- and its output comes back to the residue layout,
+        # atom for atom, because the two share an atom axis.
+        diffusion_batch, diffusion_embeddings = batch_data, embeddings
+        if self.spec.structural_tokens:
+            diffusion_batch = feat_batch.Batch.from_data_dict(
+                {
+                    key.removeprefix("struct/"): value
+                    for key, value in batch.items()
+                    if key.startswith("struct/")
+                }
+            )
+            diffusion_embeddings = self.evoformer.expand_structural(
+                embeddings,
+                {
+                    key.removeprefix("structbook/"): value
+                    for key, value in batch.items()
+                    if key.startswith("structbook/")
+                },
+                diffusion_batch,
+                batch_data.token_features.asym_id,
+            )
+
+        samples = self._sample_diffusion(diffusion_batch, diffusion_embeddings)
+        if self.spec.structural_tokens:
+            samples = _to_residue_layout(samples, batch, num_res)
 
         confidence_output_per_sample = []
         confidence_output_per_sample.extend(

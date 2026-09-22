@@ -27,6 +27,8 @@ MODELS = (
     "protenix1",
     "protenix2",
     "opendde",
+    "esmfold2",
+    "esmfold2_fast",
 )
 
 

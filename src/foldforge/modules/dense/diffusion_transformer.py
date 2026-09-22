@@ -417,13 +417,24 @@ class DiffusionTransformer(nn.Module):
         mask: torch.Tensor,
         single_cond: torch.Tensor,
         pair_cond: torch.Tensor,
+        extra_pair_bias: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        """Compute the module output."""
+        """Compute the module output.
+
+        ``extra_pair_bias`` is (N_token, N_token), added to every head's pair
+        logits in every block. Only the structural-token family supplies one:
+        its expander states the token relationships the pair itself cannot,
+        having just been built rather than trained on this token set.
+        """
         if self.per_block_pair:
             for idx in range(self.num_blocks):
                 pair_logits = self.pair_logits_projection[idx](
                     self.pair_input_layer_norm[idx](pair_cond)
                 ).permute(2, 0, 1)
+                if extra_pair_bias is not None:
+                    pair_logits = pair_logits + extra_pair_bias[None].to(
+                        pair_logits.dtype
+                    )
                 if self.parallel:
                     act = (
                         act
@@ -448,6 +459,10 @@ class DiffusionTransformer(nn.Module):
             pair_logits = einops.rearrange(
                 pair_logits, "n s (b h) -> b h n s", h=self.num_head
             )
+            if extra_pair_bias is not None:
+                pair_logits = pair_logits + extra_pair_bias[None, None].to(
+                    pair_logits.dtype
+                )
             for j in range(self.super_block_size):
                 idx = super_block_i * self.super_block_size + j
                 act = conditioned_residual(

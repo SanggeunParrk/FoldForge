@@ -28,6 +28,8 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
 
 
 def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[Case]:  # noqa: PLR0915 - case tensors stay alive through the decode closure
+    import contextlib
+
     import numpy as np
     import torch
     from alphafold3.common import folding_input
@@ -54,14 +56,31 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         json.dumps(payload), json_path=args.input
     )
     ccd = database.af3_ccd(user_ccd=fold_input.user_ccd)
+    from foldforge.data.features import structural_tokens
     from foldforge.models.bucketing import TOKEN_SHAPES, bucket_af3
+    from foldforge.models.loading import resolve_family
+    from foldforge.modules.dense.spec import SPECS
 
-    examples = featurisation.featurise_input(
-        fold_input,
-        ccd,
-        buckets=TOKEN_SHAPES if args.execution.bucketing else None,
-        verbose=True,
+    # A family that folds on structural tokens needs the AtomLayouts the
+    # featurisation keeps to itself, so take them from the one call that
+    # already happens rather than featurising a second time. The family is
+    # resolved without building the model: nothing here needs the weights yet.
+    family, _ = resolve_family(
+        args.model, args.variant if args.model == "protenix" else None
     )
+    with (
+        structural_tokens.capture_layouts()
+        if SPECS[family or "alphafold3"].structural_tokens
+        else contextlib.nullcontext([])
+    ) as captures:
+        examples = list(
+            featurisation.featurise_input(
+                fold_input,
+                ccd,
+                buckets=TOKEN_SHAPES if args.execution.bucketing else None,
+                verbose=True,
+            )
+        )
     dtype = torch.float32 if args.precision == "fp32" else torch.bfloat16
     model = load(
         args.model,
@@ -76,17 +95,24 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         # dense family; the rest ignore it.
         variant=args.variant if args.model == "protenix" else None,
     )
+
     runtime.bind(model)
 
     print("Loaded", model.foldforge_load_report, flush=True)  # noqa: T201
     from foldforge.data.features import dense_conventions
 
-    for seed, raw_example in zip(fold_input.rng_seeds, examples, strict=True):
+    for example_index, (seed, raw_example) in enumerate(
+        zip(fold_input.rng_seeds, examples, strict=True)
+    ):
         example = dense_conventions.apply(raw_example, model.spec)
         bucket_shape = None
         if args.execution.bucketing:
             example, bucket_shape = bucket_af3(example)
             model.evoformer.foldforge_msa_bucketing = True
+        if model.spec.structural_tokens:
+            example = structural_tokens.attach(
+                example, captures[example_index], pad_multiple=32
+            )
         example = dense_conventions.apply_after_bucketing(example, model.spec)
         start = time.monotonic()
         tensors = {

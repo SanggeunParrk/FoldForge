@@ -60,6 +60,9 @@ _REGISTRY = {
         # per call rather than fixed here.
         None,
     ),
+    # The dense graph now carries this family end to end -- expander, refiner,
+    # structural-token diffusion -- but the flat implementation stays the
+    # routed one until a fold has been compared against it.
     "opendde": Entry(
         "foldforge.models.architectures.opendde.OpenDDE", "flat_atoms", "OpenDDE"
     ),

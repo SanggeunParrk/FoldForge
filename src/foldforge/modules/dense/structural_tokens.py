@@ -80,11 +80,16 @@ class StructuralTokenExpander(nn.Module):
         prev_parent: torch.Tensor,
         next_parent: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
-        """The structural relationships both the pair term and the bias read."""
+        """The structural relationships both the pair term and the bias read.
+
+        ``asym_id`` is RESIDUE-level, like everything else the trunk produces; a
+        subtoken's chain is its parent's, so it is gathered here.
+        """
         kind = _pair_kinds(role)
         bb, sc, base = kind["bb"], kind["sc"], kind["base"]
         same_parent = parent[:, None] == parent[None, :]
-        same_chain = asym_id[:, None] == asym_id[None, :]
+        chain = asym_id[parent]
+        same_chain = chain[:, None] == chain[None, :]
         twin = same_parent & (
             (bb[:, None] & (sc[None, :] | base[None, :]))
             | (bb[None, :] & (sc[:, None] | base[:, None]))

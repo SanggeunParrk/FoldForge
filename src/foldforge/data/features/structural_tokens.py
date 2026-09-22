@@ -195,8 +195,10 @@ def build_structural_layout(  # noqa: C901, PLR0912, PLR0915 - one pass over a t
                     if source is not None:
                         row[field][slot] = source[r][k]
             rows.append(row)
-            sources.append((r, list(idxs)))
-            representatives.append((r, _choose(idxs, names, priority)))
+            sources.append((r, [int(k) for k in idxs]))
+            representatives.append(
+                (r, _choose([int(k) for k in idxs], names, priority))
+            )
             parent.append(r)
             role.append(role_id)
 
@@ -366,17 +368,21 @@ def _relabel_atom_cross_att(
         input_shape=np.asarray(source.input_shape),
     )
 
+    # AF3's feature dataclasses reach us without type information, so the
+    # checker cannot see these field names.
     return features.AtomCrossAtt(
-        token_atoms_to_queries=token_atoms_to_queries,
-        tokens_to_queries=tokens_to_queries,
-        tokens_to_keys=tokens_to_keys,
-        queries_to_keys=queries_to_keys,
-        queries_to_token_atoms=queries_to_token_atoms,
+        token_atoms_to_queries=token_atoms_to_queries,  # pyright: ignore[reportCallIssue]
+        tokens_to_queries=tokens_to_queries,  # pyright: ignore[reportCallIssue]
+        tokens_to_keys=tokens_to_keys,  # pyright: ignore[reportCallIssue]
+        queries_to_keys=queries_to_keys,  # pyright: ignore[reportCallIssue]
+        queries_to_token_atoms=queries_to_token_atoms,  # pyright: ignore[reportCallIssue]
     )
 
 
 def build_structural_batch(
     capture: dict[str, Any],
+    residue_atom_cross_att: Any,
+    num_residue_tokens: int,
     *,
     struct_num_tokens: int | None = None,
     pad_multiple: int = 32,
@@ -389,6 +395,10 @@ def build_structural_batch(
     but the atom cross attention is built by AF3's own feature builders, driven
     on the structural layout; the cross attention is relabelled instead, because
     its windows are cut on an atom axis the structural layout does not change.
+
+    ``residue_atom_cross_att`` is the example's CURRENT residue cross attention,
+    not the captured one: bucketing rebuilds those gathers on a different atom
+    bucket, and the relabelling has to follow the axis actually in play.
     """
     from alphafold3.model import features
     from alphafold3.model.atom_layout import atom_layout
@@ -407,15 +417,21 @@ def build_structural_batch(
         message = f"{n_struct} structural tokens do not fit {struct_num_tokens}"
         raise ValueError(message)
     padding = dataclasses.replace(
-        capture["padding_shapes"], num_tokens=struct_num_tokens
+        capture["padding_shapes"],
+        num_tokens=struct_num_tokens,
+        # The padded atom count is the query layout's own size: bucketing may
+        # have rebuilt it at a different one than the capture saw.
+        num_atoms=int(
+            np.asarray(residue_atom_cross_att.token_atoms_to_queries.gather_idxs).size
+        ),
     )
 
     atom_cross_att = _relabel_atom_cross_att(
-        capture["atom_cross_att"],
+        residue_atom_cross_att,
         info["residue_atom_gather"],
         struct_num_tokens=struct_num_tokens,
         max_atoms=max_atoms,
-        num_residue_tokens=int(capture["padding_shapes"].num_tokens),
+        num_residue_tokens=num_residue_tokens,
     )
     token_features = features.TokenFeatures.compute_features(
         all_tokens=struct_tokens, padding_shapes=padding
@@ -432,7 +448,7 @@ def build_structural_batch(
     # We already chose the right representative when the tokens were built, and
     # `struct_tokens` IS that one-atom-per-token layout, so gather from it.
     pseudo_beta_info = features.PseudoBetaInfo(
-        token_atoms_to_pseudo_beta=atom_layout.compute_gather_idxs(
+        token_atoms_to_pseudo_beta=atom_layout.compute_gather_idxs(  # pyright: ignore[reportCallIssue]
             source_layout=struct_atoms,
             target_layout=struct_tokens.copy_and_pad_to((struct_num_tokens,)),
         )
@@ -502,18 +518,22 @@ def attach(
     what it needs. The residue-level keys are untouched: the trunk still runs on
     them.
     """
-    from alphafold3.model import feat_batch
+    from alphafold3.model import feat_batch, features
 
-    built = build_structural_batch(
-        capture, struct_num_tokens=struct_num_tokens, pad_multiple=pad_multiple
-    )
     residue = feat_batch.Batch.from_data_dict(example)
+    built = build_structural_batch(
+        capture,
+        features.AtomCrossAtt.from_data_dict(example),
+        int(np.asarray(example["aatype"]).shape[0]),
+        struct_num_tokens=struct_num_tokens,
+        pad_multiple=pad_multiple,
+    )
     # The diffusion and the confidence heads read only these six; MSA, templates,
     # bonds and the output conversion are never reached on this path, so they
     # carry over untouched rather than being rebuilt on a token set they do not
     # describe.
     structural = dataclasses.replace(
-        residue,
+        residue,  # pyright: ignore[reportArgumentType]
         token_features=built["token_features"],
         ref_structure=built["ref_structure"],
         predicted_structure_info=built["predicted_structure_info"],
@@ -640,11 +660,11 @@ def capture_layouts() -> Iterator[list[dict[str, Any]]]:
         return ref_structure(cls, all_token_atoms_layout, *args, **kwargs)
 
     features.tokenizer = tokenize
-    features.AtomCrossAtt.compute_features = classmethod(build_cross_att)
-    features.RefStructure.compute_features = classmethod(build_ref_structure)
+    features.AtomCrossAtt.compute_features = classmethod(build_cross_att)  # pyright: ignore[reportAttributeAccessIssue]
+    features.RefStructure.compute_features = classmethod(build_ref_structure)  # pyright: ignore[reportAttributeAccessIssue]
     try:
         yield captured
     finally:
         features.tokenizer = tokenizer
-        features.AtomCrossAtt.compute_features = classmethod(cross_att)
-        features.RefStructure.compute_features = classmethod(ref_structure)
+        features.AtomCrossAtt.compute_features = classmethod(cross_att)  # pyright: ignore[reportAttributeAccessIssue]
+        features.RefStructure.compute_features = classmethod(ref_structure)  # pyright: ignore[reportAttributeAccessIssue]

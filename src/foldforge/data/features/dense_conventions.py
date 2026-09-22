@@ -164,7 +164,7 @@ def dedupe_self_msa(example: dict[str, Any]) -> None:
         example["num_alignments"] = np.asarray(count - 1, dtype=count.dtype)
 
 
-def key_window(example: dict[str, Any], policy: str) -> None:
+def key_window(example: dict[str, Any], policy: str, prefix: str = "") -> None:
     """Rewrite the atom-attention key window of a FINISHED example.
 
     Each block of queries takes a key window centred on it; the policies differ at
@@ -175,10 +175,10 @@ def key_window(example: dict[str, Any], policy: str) -> None:
     first block's leading keys are the last atoms. Runs after bucketing, which
     rebuilds the window AF3's way.
     """
-    query_mask = np.asarray(example["token_atoms_to_queries:gather_mask"])
+    query_mask = np.asarray(example[prefix + "token_atoms_to_queries:gather_mask"])
     subsets, query_size = query_mask.shape
     padded = subsets * query_size
-    name = "queries_to_keys:gather_idxs"
+    name = prefix + "queries_to_keys:gather_idxs"
     key_size = np.asarray(example[name]).shape[1]
     starts = np.arange(subsets) * query_size + (query_size - key_size) // 2
     flat_mask = query_mask.reshape(-1)
@@ -199,12 +199,14 @@ def key_window(example: dict[str, Any], policy: str) -> None:
         window = np.clip(window, 0, padded - 1)
         keep = inside & flat_mask[window]
     example[name] = window.astype(np.asarray(example[name]).dtype)
-    example["queries_to_keys:gather_mask"] = keep
-    tokens = np.asarray(example["tokens_to_queries:gather_idxs"]).reshape(-1)
-    target = "tokens_to_keys:gather_idxs"
+    example[prefix + "queries_to_keys:gather_mask"] = keep
+    tokens = np.asarray(example[prefix + "tokens_to_queries:gather_idxs"]).reshape(-1)
+    target = prefix + "tokens_to_keys:gather_idxs"
     example[target] = tokens[window].astype(np.asarray(example[target]).dtype)
-    token_mask = np.asarray(example["tokens_to_queries:gather_mask"]).reshape(-1)
-    example["tokens_to_keys:gather_mask"] = (
+    token_mask = np.asarray(example[prefix + "tokens_to_queries:gather_mask"]).reshape(
+        -1
+    )
+    example[prefix + "tokens_to_keys:gather_mask"] = (
         keep if policy == "pad" else token_mask[window]
     )
 
@@ -253,4 +255,8 @@ def apply_after_bucketing(example: dict[str, Any], spec: DenseSpec) -> dict[str,
     """Conventions that act on the final atom-attention gathers."""
     if spec.atom_key_window != "slide":
         key_window(example, spec.atom_key_window)
+        if any(key.startswith("struct/") for key in example):
+            # The structural layout has its own atom windows, and it is the one
+            # the diffusion runs on, so both need the convention.
+            key_window(example, spec.atom_key_window, prefix="struct/")
     return example

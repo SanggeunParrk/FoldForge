@@ -309,6 +309,9 @@ class DiffusionHead(nn.Module):
             single_cond=trunk_single_cond,
             mask=sequence_mask,
             pair_cond=trunk_pair_cond,
+            # Present only on the structural-token path: the expander's own
+            # statement of which token pairs belong together.
+            extra_pair_bias=embeddings.get("structural_pair_attn_bias"),
         )
         act = self.output_norm(act)
 

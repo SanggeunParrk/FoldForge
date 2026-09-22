@@ -124,6 +124,7 @@ class PairformerBlock(nn.Module):
         pair_mask: torch.Tensor,
         single: torch.Tensor | None = None,
         seq_mask: torch.Tensor | None = None,
+        extra_pair_bias: torch.Tensor | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """Forward pass of the PairformerBlock.
 
@@ -132,6 +133,9 @@ class PairformerBlock(nn.Module):
             pair_mask (torch.Tensor): [..., N_token, N_token]
             single (torch.Tensor, optional): [..., N_token, c_single]
             seq_mask (torch.Tensor, optional): [..., N_token]
+            extra_pair_bias (torch.Tensor, optional): [..., N_token, N_token],
+                added to the single attention's pair logits on every head. Only
+                the structural-token refiner supplies one.
 
         Returns:
             tuple[torch.Tensor, Optional[torch.Tensor]]: pair, single
@@ -168,6 +172,8 @@ class PairformerBlock(nn.Module):
             )
 
             pair_logits = pair_logits.permute(2, 0, 1)
+            if extra_pair_bias is not None:
+                pair_logits = pair_logits + extra_pair_bias[None].to(pair_logits.dtype)
 
             attention_update: torch.Tensor = self.single_attention_(
                 single, seq_mask, pair_logits=pair_logits

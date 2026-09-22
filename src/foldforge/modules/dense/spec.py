@@ -270,6 +270,9 @@ class DenseSpec:
     #: window. AF3's window is only BLOCK-aligned, so this is a different mask
     #: at the same width, and the key subset has to be wide enough to hold it.
     atom_window_half: int | None = None
+    #: The sampler rigid-aligns the noisy coordinates onto the denoised
+    #: prediction before each Euler step.
+    realign_sampler: bool = False
     #: Atoms per key subset. AF3 takes 128; a family with a wider window needs
     #: a subset that covers it.
     atom_keys_subset: int = 128
@@ -713,6 +716,7 @@ ESMFOLD2 = replace(
     # 32 queries plus 2x64 of context needs 160; 192 is the next size AF3's
     # gather machinery takes.
     atom_keys_subset=192,
+    realign_sampler=True,
     confidence_row_pool=True,
     affine_norms=frozenset(
         {

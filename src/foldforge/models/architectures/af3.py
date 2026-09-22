@@ -37,6 +37,25 @@ from foldforge.modules.dense.template import TemplateEmbedding
 # https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md
 
 
+def weighted_rigid_align(
+    mobile: torch.Tensor, reference: torch.Tensor, weight: torch.Tensor
+) -> torch.Tensor:
+    """Kabsch-align ``mobile`` onto ``reference`` over the dense atom layout."""
+    w = weight[..., None].to(mobile.dtype)
+    total = w.sum((-3, -2), keepdim=True)
+    centre_m = (mobile * w).sum((-3, -2), keepdim=True) / total
+    centre_r = (reference * w).sum((-3, -2), keepdim=True) / total
+    a = (mobile - centre_m).reshape(-1, 3)
+    b = (reference - centre_r).reshape(-1, 3)
+    u, _, vt = torch.linalg.svd((a * w.reshape(-1, 1)).T.float() @ b.float())
+    # Reflections are not rotations: flip the least significant axis when the
+    # determinant says the naive product is one.
+    sign = torch.sign(torch.linalg.det(u @ vt))
+    flip = torch.diag(torch.stack([torch.ones_like(sign), torch.ones_like(sign), sign]))
+    rotation = (u @ flip @ vt).to(mobile.dtype)
+    return (a @ rotation).reshape(mobile.shape) + centre_r
+
+
 def _to_residue_layout(
     samples: dict[str, torch.Tensor],
     batch: dict[str, torch.Tensor],
@@ -782,6 +801,18 @@ class AlphaFold3(nn.Module):
             """Compute augment."""
             return masked_dense_rigid_motion(coords, mask)
 
+        def realign(noisy: torch.Tensor, denoised: torch.Tensor) -> torch.Tensor:
+            """Rigid-align the noisy coordinates onto the denoised prediction.
+
+            This family augments the state -- rotates and translates it -- every
+            step, and its denoiser is NOT equivariant: it reads a fixed
+            reference conformer through rotary position embeddings, so the
+            prediction comes back in its own frame. Differencing across the two
+            frames would make the Euler gradient a rotation as much as a
+            gradient.
+            """
+            return weighted_rigid_align(noisy, denoised, mask)
+
         positions = sampler.sample(
             denoise,
             (self.num_samples, *mask.shape, 3),
@@ -791,6 +822,7 @@ class AlphaFold3(nn.Module):
             chunk_size=None,
             initialize_all=True,
             augment=augment,
+            align=realign if self.spec.realign_sampler else None,
         )
         if not isinstance(positions, torch.Tensor):
             message = "Sampling without trajectories must return a Tensor"

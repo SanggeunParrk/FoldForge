@@ -309,3 +309,38 @@ def chai_relative_encoding(
         ],
         dim=-1,
     ).to(dtype)
+
+
+#: AF3's polymer classes: 20 residues, UNK, the gap, then the nucleic acids.
+_AF3_POLYMER_CLASSES = 31
+#: ESMFold2's: slot 0 unused, 1 the gap, 2..22 the residues and UNK, 23..31 the
+#: nucleic acids, 32 the unknown deoxyribonucleotide AF3's block does not carry.
+_ESM_POLYMER_CLASSES = 33
+
+
+def widen_to_esm_classes(features: torch.Tensor) -> torch.Tensor:
+    """Re-lay a 31-class restype and profile pair out over ESMFold2's 33.
+
+    The widening is a PERMUTATION, not a shift: ESMFold2 puts the gap at class
+    one, BELOW the residues, where AF3 puts it at 21 between UNK and the nucleic
+    acids. Padding with two leading zeros instead puts AF3's gap column on the
+    first NUCLEIC class and shifts every nucleic class down one -- which no
+    single-sequence protein fold can see, since both the gap column and the
+    nucleic columns are then identically zero.
+
+    ``features`` is (..., 447): restype, profile, deletion mean, token act.
+    """
+    n = _AF3_POLYMER_CLASSES
+    zero = torch.zeros_like(features[..., :1])
+
+    def widen(block: torch.Tensor) -> list[torch.Tensor]:
+        return [zero, block[..., 21:22], block[..., :21], block[..., 22:n], zero]
+
+    return torch.concatenate(
+        [
+            *widen(features[..., :n]),
+            *widen(features[..., n : 2 * n]),
+            features[..., 2 * n :],
+        ],
+        dim=-1,
+    )

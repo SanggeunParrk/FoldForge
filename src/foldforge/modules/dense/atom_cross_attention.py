@@ -100,6 +100,11 @@ class AtomCrossAttEncoder(nn.Module):
             self.conformer_embedding_bias = nn.Parameter(
                 torch.zeros(self.per_atom_channels)
             )
+        self.atom_features_norm = (
+            fastnn.LayerNorm(self.per_atom_channels, bias=True)
+            if spec.normed_atom_features
+            else None
+        )
         if spec.atom_features_bias:
             # The vendor embeds the concatenated atom features with ONE biased
             # Linear; AF3's per-feature projections are bias-free.
@@ -243,6 +248,10 @@ class AtomCrossAttEncoder(nn.Module):
             act = act + self.embed_atom_features_bias
         if self.spec.conformer_embedding_bias:
             act = act + self.conformer_embedding_bias
+        if self.atom_features_norm is not None:
+            # AF3 sums bias-free per-feature projections and leaves the result
+            # unnormalised; ESMFold2 norms the sum.
+            act = self.atom_features_norm(act)
         act *= batch.ref_structure.mask[:, :, None]
 
         # Compute pair conditioning

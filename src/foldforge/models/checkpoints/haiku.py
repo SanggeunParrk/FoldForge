@@ -585,7 +585,8 @@ def build_ada_ln_zero_params(
         d.update(
             {
                 "adaptive_zero_cond": build_linear_params(
-                    l=ada_ln_zero.adaptive_zero_cond, use_bias=True
+                    l=ada_ln_zero.adaptive_zero_cond,
+                    use_bias=ada_ln_zero.adaptive_zero_cond.bias is not None,
                 ),
             }
         )
@@ -937,6 +938,8 @@ def build_atom_cross_att_encoder_params(
         ),
     }
 
+    if encoder.atom_features_norm is not None:
+        d["atom_features_norm"] = build_layer_norm_params(l=encoder.atom_features_norm)
     if hasattr(encoder, "embed_atom_features_bias"):
         d["embed_atom_features_bias"] = Param(encoder.embed_atom_features_bias)
     if hasattr(encoder, "conformer_embedding_bias"):
@@ -1334,7 +1337,7 @@ def build_confidence_head_params(head: ParameterModule) -> ParamTree:
             }
         )
 
-    if getattr(head, "split_heads", False):
+    if getattr(head, "reembed_pair", False):
         re = head.reembedding
         scope = "~_boltz2_reembed/"
         stack = "__layer_stack_no_per_layer/confidence_pairformer"
@@ -1368,16 +1371,53 @@ def build_confidence_head_params(head: ParameterModule) -> ParamTree:
             "contact_encoding_unselected": Param(
                 re.contact_conditioning.encoding_unselected
             ),
+            **(
+                {"distogram_boundaries": Param(re.distogram_boundaries)}
+                if re.learned_bins is not None
+                else {}
+            ),
             stack: pairformer_blocks_params,
             "left_half_distance_logits": build_linear_params(
                 l=head.left_half_distance_logits
             ),
-            "inter_half_distance_logits": build_linear_params(
-                l=head.inter_half_distance_logits
-            ),
             "pae_logits": build_linear_params(l=head.pae_logits),
-            "pae_inter_logits": build_linear_params(l=head.pae_inter_logits),
             "plddt_logits": build_linear_hma_params(l=head.plddt_logits),
+            **(
+                {
+                    "row_pool_attn": build_linear_params(l=head.row_pool_attn),
+                    "row_pool_out": build_linear_params(l=head.row_pool_out),
+                }
+                if head.row_pool_attn is not None
+                else {}
+            ),
+            **(
+                {
+                    "inter_half_distance_logits": build_linear_params(
+                        l=head.inter_half_distance_logits
+                    ),
+                    "pae_inter_logits": build_linear_params(l=head.pae_inter_logits),
+                }
+                if head.split_heads
+                else {}
+            ),
+            **(
+                {
+                    "logits_ln": build_layer_norm_params(l=head.logits_ln),
+                    "pae_logits_ln": build_layer_norm_params(l=head.pae_logits_ln),
+                    "plddt_logits_ln": build_layer_norm_params(l=head.plddt_logits_ln),
+                    **(
+                        {
+                            "experimentally_resolved_ln": build_layer_norm_params(
+                                l=head.experimentally_resolved_ln
+                            )
+                        }
+                        if hasattr(head, "experimentally_resolved_ln")
+                        else {}
+                    ),
+                }
+                if head.spec.confidence_head_norms
+                else {}
+            ),
             **resolved_params,
         }
     return {
@@ -1483,6 +1523,40 @@ def build_evoformer_params(evoformer: ParameterModule) -> ParamTree:
         **(
             {"bond_embedding": build_linear_params(l=evoformer.bond_embedding)}
             if hasattr(evoformer, "bond_embedding")
+            else {}
+        ),
+        **(
+            {"recycle_decay": Param(evoformer.recycle_decay)}
+            if hasattr(evoformer, "recycle_decay")
+            else {}
+        ),
+        **(
+            {
+                "parcae_readout": build_linear_params(l=evoformer.parcae_readout),
+                **cat_params(
+                    stacked(
+                        [
+                            build_pairformer_block_params(b=b, with_single=False)
+                            for b in evoformer.trunk_coda
+                        ]
+                    ),
+                    "__layer_stack_no_per_layer_2/trunk_coda/",
+                ),
+            }
+            if evoformer.parcae_readout is not None
+            else {}
+        ),
+        **(
+            cat_params(
+                stacked(
+                    [
+                        build_pairformer_block_params(b=b, with_single=False)
+                        for b in evoformer.lm_encoder
+                    ]
+                ),
+                "~_embed_lm_pair/__layer_stack_no_per_layer/lm_encoder/",
+            )
+            if evoformer.lm_encoder is not None
             else {}
         ),
         **(

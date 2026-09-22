@@ -156,6 +156,28 @@ class DenseSpec:
     confidence_records: str = "af3"
     #: Which confidence embedding and heads the weights were trained with.
     confidence: str = "af3"
+    #: Layout of the per-token features the DIFFUSION conditioning and the
+    #: confidence re-embedding read. "af3" is the trunk's own 447. "esm"
+    #: widens the restype and profile blocks from 31 classes to 33: the extra
+    #: columns cannot be dropped from the weights the way a zero input column
+    #: can be dropped from a bias-free Linear, because the LayerNorm after them
+    #: divides by the width and subtracts the mean over it, so normalising 447
+    #: channels instead of 451 rescales the ENTIRE conditioning.
+    single_cond_layout: str = "af3"
+    #: Separate intra- and inter-chain heads for the distance error and the PAE.
+    #: Boltz-2 established the re-embedded pair; a family can take that path
+    #: without splitting its heads, so the two are stated apart.
+    confidence_split_heads: bool = False
+    #: Whether the four heads norm their input. Boltz-2 dropped every one of
+    #: them; the families that reuse its re-embedding did not all follow.
+    confidence_head_norms: bool = True
+    #: Distance classes the confidence re-embedding bins the prediction into,
+    #: with its OWN trained boundaries rather than a constant range. The class
+    #: count is one more than the boundary count and has to be static.
+    confidence_learned_bins: int | None = None
+    #: A trained attention pooling over each token's pair ROW, projected back
+    #: onto the single before the per-token heads read it.
+    confidence_row_pool: bool = False
     #: The pair entering the trunk is added once more after the MSA stack.
     msa_double_add: bool = False
     #: An MSA block updates the MSA before its outer product mean reads it.
@@ -229,6 +251,12 @@ class DenseSpec:
     #: Diffusion conditioning uses the identity-centred (s + 1) scale rather than
     #: sigmoid(s), and leaves the conditioning unnormalised.
     adaptive_identity_scale: bool = False
+    #: The same, for the ATOM transformer alone; None follows the token one. A
+    #: family whose atom attention is conditioned differently from its token
+    #: attention says so here rather than by widening the field above.
+    atom_adaptive_identity_scale: bool | None = None
+    #: Whether the ATOM transformer's output gate carries a trained bias.
+    atom_adaptive_zero_bias: bool = True
     #: Epsilon of the activation LayerNorm inside the diffusion blocks.
     adaptive_norm_eps: float = 1e-5
     #: The diffusion token transformer's attention carries an output gate.
@@ -330,6 +358,14 @@ class DenseSpec:
         return 447 if self.input_embedder == "af3" else self.seq_channel
 
     @property
+    def single_cond_channel(self) -> int:
+        """Width of the per-token features the diffusion and confidence read."""
+        if self.single_cond_layout == "esm":
+            # Two extra classes in each of the restype and profile blocks.
+            return self.target_feat_channel + 4
+        return self.target_feat_channel
+
+    @property
     def msa_feat_channel(self) -> int:
         """Restype one-hot, has-deletion, deletion value and the optional paired flag."""
         if self.msa_feat_columns is not None:
@@ -379,6 +415,8 @@ OPENFOLD3_PREVIEW2 = replace(
 BOLTZ2 = replace(
     OPENFOLD3_PREVIEW2,
     family="boltz2",
+    confidence_split_heads=True,
+    confidence_head_norms=False,
     padded_single_cond=False,
     trunk_layers=64,
     confidence_layers=8,
@@ -647,6 +685,11 @@ ESMFOLD2 = replace(
     msa_keep_order=True,
     language_model="esmc",
     confidence="boltz2",
+    confidence_learned_bins=39,
+    single_cond_layout="esm",
+    atom_adaptive_identity_scale=True,
+    atom_adaptive_zero_bias=False,
+    confidence_row_pool=True,
     affine_norms=frozenset(
         {
             "pair_cond_initial_norm",

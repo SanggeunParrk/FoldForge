@@ -91,6 +91,7 @@ class AdaLNZero(nn.Module):
         c_single_cond: int | None,
         use_single_cond: bool = False,
         project: bool = True,
+        zero_bias: bool = True,
     ) -> None:
         super().__init__()
 
@@ -109,7 +110,7 @@ class AdaLNZero(nn.Module):
                 message = "Conditioned layers require a conditioning channel count"
                 raise ValueError(message)
             self.adaptive_zero_cond = nn.Linear(
-                self.c_single_cond, self.c_out, bias=True
+                self.c_single_cond, self.c_out, bias=zero_bias
             )
 
     def forward(
@@ -156,6 +157,7 @@ class DiffusionTransition(nn.Module):
         use_single_cond: bool = False,
         identity_scale: bool = False,
         norm_eps: float = 1e-5,
+        zero_bias: bool = True,
     ) -> None:
         super().__init__()
 
@@ -180,6 +182,7 @@ class DiffusionTransition(nn.Module):
             self.c_x,
             self.c_single_cond,
             self.use_single_cond,
+            zero_bias=zero_bias,
         )
 
     def forward(
@@ -494,6 +497,7 @@ class CrossAttention(nn.Module):
         norm_eps: float = 1e-5,
         gating_query: bool = True,
         project_output: bool = True,
+        zero_bias: bool = True,
     ) -> None:
         super().__init__()
 
@@ -535,6 +539,7 @@ class CrossAttention(nn.Module):
             self.key_dim,
             use_single_cond=True,
             project=project_output,
+            zero_bias=zero_bias,
         )
 
     def forward(
@@ -669,16 +674,22 @@ class DiffusionCrossAttTransformer(nn.Module):
                 self.c_pair_cond, self.num_blocks * self.num_head, bias=False
             )
 
+        atom_identity = (
+            spec.adaptive_identity_scale
+            if spec.atom_adaptive_identity_scale is None
+            else spec.atom_adaptive_identity_scale
+        )
         self.cross_attention = nn.ModuleList(
             [
                 CrossAttention(
                     num_head=self.num_head,
                     key_masked=spec.key_masked_atom_attention,
                     kq_norm=spec.attention_kq_norm,
-                    identity_scale=spec.adaptive_identity_scale,
+                    identity_scale=atom_identity,
                     norm_eps=spec.adaptive_norm_eps,
                     gating_query=spec.atom_attention_gating_query,
                     project_output=spec.atom_attention_project_output,
+                    zero_bias=spec.atom_adaptive_zero_bias,
                 )
                 for _ in range(self.num_blocks)
             ]
@@ -690,8 +701,9 @@ class DiffusionCrossAttTransformer(nn.Module):
                     c_x=self.c_query,
                     c_single_cond=self.c_single_cond,
                     use_single_cond=True,
-                    identity_scale=spec.adaptive_identity_scale,
+                    identity_scale=atom_identity,
                     norm_eps=spec.adaptive_norm_eps,
+                    zero_bias=spec.atom_adaptive_zero_bias,
                 )
                 for _ in range(self.num_blocks)
             ]

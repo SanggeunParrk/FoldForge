@@ -157,6 +157,34 @@ class Evoformer(nn.Module):
             ]
         )
 
+        # ESMFold2 recycles through a discretised diagonal SSM rather than an
+        # addition. Same two modules as AF3's recycling, applied to the OTHER
+        # operand, plus this per-channel decay.
+        if spec.ssm_recycle:
+            self.recycle_decay = nn.Parameter(torch.ones(self.pair_channel))
+
+        # A readout projection and a short "coda" of pair blocks AFTER the
+        # recycle loop. AF3 has no post-trunk pair stage, so nothing in the
+        # parameter tree asks for these -- a tree diff compares what the graph
+        # WANTS against what the checkpoint supplies, and a stage the graph
+        # never builds is invisible to it. The reference found it by folding.
+        self.parcae_readout = None
+        if spec.coda_layers:
+            self.parcae_readout = nn.Linear(
+                self.pair_channel, self.pair_channel, bias=False
+            )
+            self.trunk_coda = nn.ModuleList(
+                [self._pair_only_block(spec) for _ in range(spec.coda_layers)]
+            )
+
+        # Four pair-only blocks refining the language model's pair before it
+        # joins the injection.
+        self.lm_encoder = None
+        if spec.lm_encoder_layers:
+            self.lm_encoder = nn.ModuleList(
+                [self._pair_only_block(spec) for _ in range(spec.lm_encoder_layers)]
+            )
+
         # The family that folds on structural tokens expands the trunk's output
         # onto them and refines it with its own stack of the ordinary block.
         self.structural_token_expander = None
@@ -184,6 +212,46 @@ class Evoformer(nn.Module):
                     for _ in range(spec.structural_refiner_layers)
                 ]
             )
+
+    def _pair_only_block(self, spec: DenseSpec) -> PairformerBlock:
+        """Build one trunk block with neither a single track nor pair attentions."""
+        return PairformerBlock(
+            c_pair=self.pair_channel,
+            c_single=self.seq_channel,
+            n_heads_pair=spec.pair_heads,
+            num_intermediate_factor=spec.pairformer_transition_factor,
+            with_single=False,
+            with_pair_attention=spec.pair_attention,
+            spec=spec,
+            pair_qkv_dim=spec.pair_qkv_dim,
+        )
+
+    def _embed_lm_pair(
+        self,
+        batch: feat_batch.Batch,
+        pair_activations: torch.Tensor,
+        pair_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        """Add the language model's pair representation to the injection.
+
+        The shim that turns ESM-C's hidden states into this tensor is a separate
+        graph and hands its output in on the batch. What is left is the encoder,
+        four pair-only blocks, and the dropout -- which this family keeps at
+        INFERENCE and resamples every recycle pass, so it cannot move outside
+        the loop.
+        """
+        lm = getattr(batch, "lm_pair", None)
+        if lm is None:
+            return pair_activations
+        lm = lm.to(dtype=pair_activations.dtype)
+        rate = self.spec.lm_pair_dropout
+        if rate:
+            keep = torch.rand_like(lm) >= rate
+            lm = lm * keep.to(lm.dtype) / (1.0 - rate)
+        if self.lm_encoder is not None:
+            for block in self.lm_encoder:
+                lm = block(lm, pair_mask)
+        return pair_activations + lm
 
     def expand_structural(
         self,
@@ -401,6 +469,60 @@ class Evoformer(nn.Module):
             pair_activations = pair_activations + pair_input
         return pair_activations
 
+    def _pair_only_trunk(
+        self,
+        *,
+        prev: dict[str, Any],
+        pair_activations: torch.Tensor,
+        pair_mask: torch.Tensor,
+        single_init: torch.Tensor,
+        target_feat: torch.Tensor,
+        first_pass: bool,
+        last_pass: bool,
+    ) -> dict[str, Any]:
+        """Run the trunk of a family with no single track, given its injection.
+
+        The single is still projected from the target features and still
+        recycled -- the checkpoint carries both projections -- it is simply
+        never updated, because no block here has a single track to update it.
+        """
+        # The recycle carries the PRE-CODA tensor: feeding the coda's output
+        # back would recycle a differently scaled representation through a
+        # projection on every pass.
+        recycled = prev.get("pair_pre_coda", prev["pair"]).to(
+            dtype=pair_activations.dtype
+        )
+        if self.spec.recycle_from_initial and first_pass:
+            recycled = pair_activations
+        projected = self.prev_embedding(
+            self.prev_embedding_layer_norm(pair_activations)
+        )
+        pair_activations = (
+            self.recycle_decay.to(projected.dtype) * recycled + projected
+            if self.spec.ssm_recycle
+            else recycled + projected
+        )
+
+        single_activations = single_init + self.prev_single_embedding(
+            self.prev_single_embedding_layer_norm(prev["single"].to(single_init.dtype))
+        )
+        for block in self.trunk_pairformer:
+            pair_activations = block(pair_activations, pair_mask)
+
+        pair_pre_coda = pair_activations
+        if self.parcae_readout is not None and last_pass:
+            pair_activations = self.parcae_readout(pair_activations)
+            for block in self.trunk_coda:
+                pair_activations = block(pair_activations, pair_mask)
+
+        return {
+            "single": single_activations,
+            "pair": pair_activations,
+            "pair_pre_coda": pair_pre_coda,
+            "target_feat": target_feat,
+            "structure_target_feat": prev["structure_target_feat"],
+        }
+
     def forward(
         self,
         batch: feat_batch.Batch,
@@ -408,6 +530,7 @@ class Evoformer(nn.Module):
         target_feat: torch.Tensor,
         *,
         first_pass: bool = False,
+        last_pass: bool = True,
     ) -> dict[str, Any]:
         """Compute the module output."""
         # The single projection is needed first where the pair is built from it.
@@ -426,6 +549,38 @@ class Evoformer(nn.Module):
             # not associative in floating point, and the rest stay bit-identical.
             pair_activations = self._relative_encoding(batch, pair_activations)
             pair_init = pair_activations
+
+        if not self.spec.trunk_single_track:
+            # ESMFold2 assembles the ENTIRE injection -- relative encoding,
+            # bonds, the MSA encoder and the language model's pair -- BEFORE the
+            # recurrence reads it. For an addition that would be the same
+            # function; for the SSM it is not, because the injection is what
+            # gets normalised and projected. Running the MSA encoder afterwards
+            # would feed it the recycled term instead of z_init, and that term
+            # would then be re-injected every pass rather than decaying.
+            pair_activations = self._relative_encoding(batch, pair_activations)
+            if not self.spec.no_bond_embedding:
+                pair_activations = self._embed_bonds(
+                    batch=batch, pair_activations=pair_activations
+                )
+            if self.msa_stack_num_layer:
+                pair_activations = self._embed_process_msa(
+                    msa_batch=batch.msa,
+                    pair_activations=pair_activations,
+                    pair_mask=pair_mask,
+                    token_features=batch.token_features,
+                    target_feat=target_feat,
+                )
+            pair_activations = self._embed_lm_pair(batch, pair_activations, pair_mask)
+            return self._pair_only_trunk(
+                prev=prev,
+                pair_activations=pair_activations,
+                pair_mask=pair_mask,
+                single_init=single_init,
+                target_feat=target_feat,
+                first_pass=first_pass,
+                last_pass=last_pass,
+            )
 
         recycled = prev["pair"]
         if self.spec.recycle_from_initial and first_pass:
@@ -684,6 +839,7 @@ class AlphaFold3(nn.Module):
                 prev=embeddings,
                 target_feat=target_feat,
                 first_pass=pass_index == 0,
+                last_pass=pass_index == passes - 1,
             )
             if self.reference_precision:
                 embeddings["pair"] = embeddings["pair"].float()

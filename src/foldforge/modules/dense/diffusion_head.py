@@ -61,6 +61,7 @@ class DiffusionHead(nn.Module):
     def __init__(self, spec: DenseSpec = ALPHAFOLD3) -> None:
         super().__init__()
 
+        self.spec = spec
         pair_channel = spec.diffusion_pair_channel
         seq_channel = spec.diffusion_seq_channel
         trunk_pair_channel = spec.pair_channel
@@ -116,9 +117,13 @@ class DiffusionHead(nn.Module):
         if self.cond_final_norm:
             self.pair_cond_final_norm = fastnn.LayerNorm(self.pair_channel, bias=True)
 
-        # Trunk single plus the target features.
+        # Trunk single plus the target features -- unless there is no trunk
+        # single at all, in which case the conditioning is the features alone.
+        self.pair_only_trunk = not spec.trunk_single_track
         self.c_single_cond_initial = (
-            spec.seq_channel + spec.target_feat_channel + 2 * padded_single_cond
+            spec.single_cond_channel
+            if self.pair_only_trunk
+            else spec.seq_channel + spec.target_feat_channel + 2 * padded_single_cond
         )
         self.single_cond_initial_norm = fastnn.LayerNorm(
             self.c_single_cond_initial, bias="single_cond_initial_norm" in affine
@@ -221,7 +226,13 @@ class DiffusionHead(nn.Module):
         # The diffusion module takes the structure projection where the family
         # trained one; every other family hands it the same tensor as the trunk.
         target_feat = embeddings.get("structure_target_feat", embeddings["target_feat"])
-        features_1d = torch.concatenate([single_embedding, target_feat], dim=-1)
+        if self.spec.single_cond_layout == "esm":
+            target_feat = featurization.widen_to_esm_classes(target_feat)
+        features_1d = (
+            target_feat
+            if self.pair_only_trunk
+            else torch.concatenate([single_embedding, target_feat], dim=-1)
+        )
         if self.padded_single_cond:
             # One zero column after each 31-class block (restype, then profile).
             pad = torch.zeros_like(features_1d[..., :1])

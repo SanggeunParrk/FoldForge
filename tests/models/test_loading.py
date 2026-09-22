@@ -224,15 +224,20 @@ def test_af3_recycles_are_additional_trunk_passes(
     )
     monkeypatch.setattr(af3.feat_batch.Batch, "from_data_dict", lambda _: batch)
     calls = []
+    expected_passes = recycles + 1
 
     class Trunk(nn.Module):
         def forward(
-            self, *, batch, prev, target_feat, first_pass
+            self, *, batch, prev, target_feat, first_pass, last_pass
         ) -> dict[str, torch.Tensor]:
             assert batch.num_res == 2
             # The first pass is the one the trunk is told about; a family whose
             # recycle carry starts at its own initial representations needs it.
             assert first_pass == (len(calls) == 0)
+            # And the last, for a family with a post-loop stage: running that
+            # stage on every pass would be wasted work, and recycling its
+            # output would feed back a differently scaled representation.
+            assert last_pass == (len(calls) == expected_passes - 1)
             calls.append(prev["pair"].dtype)
             return {
                 "pair": torch.ones(2, 2, 2, dtype=torch.bfloat16),

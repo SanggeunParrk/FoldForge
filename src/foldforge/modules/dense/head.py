@@ -152,8 +152,18 @@ class ConfidenceReembedding(nn.Module):
     itself used (relative positions, bonds, bond orders, contact conditioning).
     """
 
-    def __init__(self, c_single: int, c_pair: int, c_target_feat: int) -> None:
+    def __init__(
+        self,
+        c_single: int,
+        c_pair: int,
+        c_target_feat: int,
+        learned_bins: int | None = None,
+        esm_classes: bool = False,
+    ) -> None:
         super().__init__()
+        self.esm_classes = esm_classes
+        if esm_classes:
+            c_target_feat += 4
         self.s_inputs_norm = fastnn.LayerNorm(c_target_feat)
         self.s_norm = fastnn.LayerNorm(c_single)
         self.s_input_to_s = nn.Linear(c_target_feat, c_single, bias=False)
@@ -167,7 +177,13 @@ class ConfidenceReembedding(nn.Module):
         self.s_to_z_prod_in1 = nn.Linear(c_target_feat, c_pair, bias=False)
         self.s_to_z_prod_in2 = nn.Linear(c_target_feat, c_pair, bias=False)
         self.s_to_z_prod_out = nn.Linear(c_pair, c_pair, bias=False)
-        self.distogram_feat_project = nn.Linear(64, c_pair, bias=False)
+        # A family that trained its OWN boundaries bins the prediction with
+        # them; the constant 2..22 A over 63 edges is Boltz-2's.
+        self.learned_bins = learned_bins
+        bins = learned_bins or 64
+        if learned_bins is not None:
+            self.distogram_boundaries = nn.Parameter(torch.zeros(bins - 1))
+        self.distogram_feat_project = nn.Linear(bins, c_pair, bias=False)
 
     def forward(
         self,
@@ -181,6 +197,8 @@ class ConfidenceReembedding(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Return the re-embedded (pair, single)."""
         dtype = pair.dtype
+        if self.esm_classes:
+            target_feat = featurization.widen_to_esm_classes(target_feat)
         inputs = self.s_inputs_norm(target_feat)
         single = self.s_norm(single) + self.s_input_to_s(inputs)
 
@@ -205,9 +223,13 @@ class ConfidenceReembedding(nn.Module):
         distance = (
             (positions[:, None] - positions[None]).square().sum(-1) + 1e-10
         ).sqrt()
-        edges = torch.linspace(2.0, 22.0, 63, device=distance.device)
+        edges = (
+            self.distogram_boundaries.to(distance.dtype)
+            if self.learned_bins is not None
+            else torch.linspace(2.0, 22.0, 63, device=distance.device)
+        )
         distogram = torch.nn.functional.one_hot(
-            (distance[..., None] > edges).sum(-1), 64
+            (distance[..., None] > edges).sum(-1), self.learned_bins or 64
         ).to(dtype)
         pair = pair + self.distogram_feat_project(distogram * pair_mask[..., None])
         return pair, single
@@ -238,9 +260,12 @@ class ConfidenceHead(nn.Module):
         self.c_pair = c_pair
         self.c_target_feat = c_target_feat
         self.spec = spec
-        #: "boltz2": re-embedded inputs, no norm before any head, and separate
-        #: intra- and inter-chain heads for the distance error and the PAE.
-        self.split_heads = spec.confidence == "boltz2"
+        #: "boltz2": the pair is RE-EMBEDDED from the inputs rather than read
+        #: from the trunk. Whether the heads then split by chain and whether
+        #: they norm their input are stated separately: ESMFold2 takes this
+        #: embedding and does neither.
+        self.reembed_pair = spec.confidence == "boltz2"
+        self.split_heads = spec.confidence_split_heads
         #: "protenix2": the trunk single is clamped and normalised before ANY
         #: use, the distance-error head normalises the SYMMETRISED pair, and a
         #: raw-distance term rides alongside the binned one.
@@ -277,6 +302,11 @@ class ConfidenceHead(nn.Module):
 
         self._build_input_embedding(c_single, c_pair, c_target_feat)
 
+        self.row_pool_attn = None
+        if spec.confidence_row_pool:
+            self.row_pool_attn = nn.Linear(self.c_pair, 1, bias=False)
+            self.row_pool_out = nn.Linear(self.c_pair, self.c_single, bias=False)
+
         self.confidence_pairformer = nn.ModuleList(
             [
                 pairformer.PairformerBlock(
@@ -293,7 +323,7 @@ class ConfidenceHead(nn.Module):
             ]
         )
 
-        head_norm = nn.Identity if self.split_heads else fastnn.LayerNorm
+        head_norm = fastnn.LayerNorm if spec.confidence_head_norms else nn.Identity
         self.logits_ln = head_norm(self.c_pair)
         self.left_half_distance_logits = nn.Linear(
             self.c_pair, self.num_bins, bias=False
@@ -351,8 +381,14 @@ class ConfidenceHead(nn.Module):
         self, c_single: int, c_pair: int, c_target_feat: int
     ) -> None:
         """Projections that put the trunk and the predicted structure on the pair."""
-        if self.split_heads:
-            self.reembedding = ConfidenceReembedding(c_single, c_pair, c_target_feat)
+        if self.reembed_pair:
+            self.reembedding = ConfidenceReembedding(
+                c_single,
+                c_pair,
+                c_target_feat,
+                learned_bins=self.spec.confidence_learned_bins,
+                esm_classes=self.spec.single_cond_layout == "esm",
+            )
         else:
             self.left_target_feat_project = nn.Linear(
                 self.c_target_feat, self.c_pair, bias=False
@@ -447,7 +483,7 @@ class ConfidenceHead(nn.Module):
             atom tokens.
         """
         dtype = self.left_half_distance_logits.weight.dtype
-        if not self.split_heads:
+        if not self.reembed_pair:
             dtype = self.left_target_feat_project.weight.dtype
 
         seq_mask_cast = seq_mask.to(dtype=dtype)
@@ -471,7 +507,7 @@ class ConfidenceHead(nn.Module):
             # unnormalised trunk single enters this head at std 211.
             single_act = self.input_single_norm(single_act.clamp(-512.0, 512.0))
 
-        if self.split_heads:
+        if self.reembed_pair:
             if batch is None:
                 message = "The re-embedding confidence head needs the feature batch"
                 raise ValueError(message)
@@ -495,6 +531,21 @@ class ConfidenceHead(nn.Module):
         # pairformer stack
         for layer in self.confidence_pairformer:
             pair_act, single_act = layer(pair_act, pair_mask, single_act, seq_mask)
+
+        if self.row_pool_attn is not None:
+            # The single is pooled FROM THE PAIR, and after the stack, not
+            # before it. Pooling the pre-stack pair leaves every pair-derived
+            # output close and every PER-ATOM one uncorrelated, because pLDDT
+            # and experimentally-resolved are the only heads reading the single.
+            scores = self.row_pool_attn(pair_act)[..., 0]
+            scores = torch.where(
+                seq_mask.to(torch.bool)[None, :],
+                scores,
+                torch.full_like(scores, -1e9),
+            )
+            single_act = self.row_pool_out(
+                torch.einsum("nm,nmd->nd", torch.softmax(scores, dim=-1), pair_act)
+            )
 
         pair_act = pair_act.to(self.left_half_distance_logits.weight.dtype)
         single_act = single_act.to(self.plddt_logits.weight.dtype)

@@ -1119,10 +1119,15 @@ def build_pairformer_block_params(
         "triangle_multiplication_incoming": build_tri_mul_params(
             b.triangle_multiplication_incoming
         ),
-        "pair_attention1": build_grid_self_attention_params(b.pair_attention1),
-        "pair_attention2": build_grid_self_attention_params(b.pair_attention2),
         "pair_transition": build_transition_params(b.pair_transition),
     }
+    if b.with_pair_attention:
+        d.update(
+            {
+                "pair_attention1": build_grid_self_attention_params(b.pair_attention1),
+                "pair_attention2": build_grid_self_attention_params(b.pair_attention2),
+            }
+        )
 
     if with_single is True:
         d.update(
@@ -1156,8 +1161,14 @@ def build_evoformer_block_params(b: ParameterModule) -> ParamTree:
         "triangle_multiplication_incoming": build_tri_mul_params(
             b.triangle_multiplication_incoming
         ),
-        "pair_attention1": build_grid_self_attention_params(b.pair_attention1),
-        "pair_attention2": build_grid_self_attention_params(b.pair_attention2),
+        **(
+            {
+                "pair_attention1": build_grid_self_attention_params(b.pair_attention1),
+                "pair_attention2": build_grid_self_attention_params(b.pair_attention2),
+            }
+            if b.with_pair_attention
+            else {}
+        ),
         "pair_transition": build_transition_params(b.pair_transition),
     }
 
@@ -1453,7 +1464,7 @@ def build_evoformer_params(evoformer: ParameterModule) -> ParamTree:
 
     trunk_pairformer_params = stacked(
         [
-            build_pairformer_block_params(b=b, with_single=True)
+            build_pairformer_block_params(b=b, with_single=b.with_single)
             for b in evoformer.trunk_pairformer
         ]
     )
@@ -1474,10 +1485,16 @@ def build_evoformer_params(evoformer: ParameterModule) -> ParamTree:
             if hasattr(evoformer, "bond_embedding")
             else {}
         ),
-        "template_embedding": (
-            build_fused_template_params(evoformer.template_embedding)
-            if hasattr(evoformer.template_embedding, "tmpl_pairformer")
-            else build_template_embedding_params(evoformer.template_embedding)
+        **(
+            {
+                "template_embedding": (
+                    build_fused_template_params(evoformer.template_embedding)
+                    if hasattr(evoformer.template_embedding, "tmpl_pairformer")
+                    else build_template_embedding_params(evoformer.template_embedding)
+                )
+            }
+            if evoformer.template_embedding is not None
+            else {}
         ),
         **(
             {

@@ -43,6 +43,7 @@ class PairformerBlock(nn.Module):
         num_intermediate_factor: int = 4,
         single_intermediate_factor: int | None = None,
         with_single: bool = True,
+        with_pair_attention: bool = True,
         spec: DenseSpec = ALPHAFOLD3,
         pair_qkv_dim: int | None = None,
         dual_output: bool = False,
@@ -77,22 +78,27 @@ class PairformerBlock(nn.Module):
             divide_by_length=spec.triangle_mul_divide_by_length,
             hidden_dim=tri_hidden_dim,
         )
-        self.pair_attention1 = GridSelfAttention(
-            c_pair=c_pair,
-            num_head=n_heads_pair,
-            transpose=False,
-            spec=spec,
-            qkv_dim=pair_qkv_dim,
-            dual_output=dual_output,
-        )
-        self.pair_attention2 = GridSelfAttention(
-            c_pair=c_pair,
-            num_head=n_heads_pair,
-            transpose=True,
-            spec=spec,
-            qkv_dim=pair_qkv_dim,
-            dual_output=dual_output,
-        )
+        # A family that folds from a language model keeps only the triangle
+        # multiplications: building the attentions anyway would leave them at
+        # random init, and its checkpoint carries no weights for them.
+        self.with_pair_attention = with_pair_attention
+        if with_pair_attention:
+            self.pair_attention1 = GridSelfAttention(
+                c_pair=c_pair,
+                num_head=n_heads_pair,
+                transpose=False,
+                spec=spec,
+                qkv_dim=pair_qkv_dim,
+                dual_output=dual_output,
+            )
+            self.pair_attention2 = GridSelfAttention(
+                c_pair=c_pair,
+                num_head=n_heads_pair,
+                transpose=True,
+                spec=spec,
+                qkv_dim=pair_qkv_dim,
+                dual_output=dual_output,
+            )
         self.pair_transition = Transition(
             c_x=c_pair, num_intermediate_factor=self.num_intermediate_factor
         )
@@ -145,13 +151,16 @@ class PairformerBlock(nn.Module):
             # which is the schedule this family does not use; call the modules
             # for their deltas instead.
             pair_in = pair
-            pair = pair_in + (
-                self.triangle_multiplication_outgoing(pair_in, pair_mask)
-                + self.triangle_multiplication_incoming(pair_in, pair_mask)
-                + self.pair_attention1(pair_in, mask=pair_mask)
-                + self.pair_attention2(pair_in, mask=pair_mask)
-                + self.pair_transition(pair_in)
-            )
+            updates = self.triangle_multiplication_outgoing(
+                pair_in, pair_mask
+            ) + self.triangle_multiplication_incoming(pair_in, pair_mask)
+            if self.with_pair_attention:
+                updates = (
+                    updates
+                    + self.pair_attention1(pair_in, mask=pair_mask)
+                    + self.pair_attention2(pair_in, mask=pair_mask)
+                )
+            pair = pair_in + updates + self.pair_transition(pair_in)
         else:
             pair = triangle_residual(
                 self.triangle_multiplication_outgoing, pair, pair_mask
@@ -159,8 +168,9 @@ class PairformerBlock(nn.Module):
             pair = triangle_residual(
                 self.triangle_multiplication_incoming, pair, pair_mask
             )
-            pair += self.pair_attention1(pair, mask=pair_mask)
-            pair += self.pair_attention2(pair, mask=pair_mask)
+            if self.with_pair_attention:
+                pair += self.pair_attention1(pair, mask=pair_mask)
+                pair += self.pair_attention2(pair, mask=pair_mask)
             pair = transition_residual(self.pair_transition, pair)
 
         if self.with_single is True:
@@ -230,12 +240,14 @@ class EvoformerBlock(nn.Module):
             _outgoing=False,
             divide_by_length=spec.triangle_mul_divide_by_length,
         )
-        self.pair_attention1 = GridSelfAttention(
-            c_pair=c_pair, num_head=n_heads_pair, transpose=False, spec=spec
-        )
-        self.pair_attention2 = GridSelfAttention(
-            c_pair=c_pair, num_head=n_heads_pair, transpose=True, spec=spec
-        )
+        self.with_pair_attention = spec.pair_attention
+        if self.with_pair_attention:
+            self.pair_attention1 = GridSelfAttention(
+                c_pair=c_pair, num_head=n_heads_pair, transpose=False, spec=spec
+            )
+            self.pair_attention2 = GridSelfAttention(
+                c_pair=c_pair, num_head=n_heads_pair, transpose=True, spec=spec
+            )
         self.pair_transition = Transition(c_x=c_pair)
         #: Two parallel stages: the two triangle multiplications and the
         #: transition all read the post-outer-product pair and are summed into
@@ -273,6 +285,8 @@ class EvoformerBlock(nn.Module):
                     + self.triangle_multiplication_incoming(value, pair_mask)
                     + self.pair_transition(value)
                 )
+                if not self.with_pair_attention:
+                    return value
                 return value + (
                     self.pair_attention1(value, mask=pair_mask)
                     + self.pair_attention2(value, mask=pair_mask)
@@ -283,8 +297,9 @@ class EvoformerBlock(nn.Module):
             value = triangle_residual(
                 self.triangle_multiplication_incoming, value, pair_mask
             )
-            value = value + self.pair_attention1(value, mask=pair_mask)
-            value = value + self.pair_attention2(value, mask=pair_mask)
+            if self.with_pair_attention:
+                value = value + self.pair_attention1(value, mask=pair_mask)
+                value = value + self.pair_attention2(value, mask=pair_mask)
             return transition_residual(self.pair_transition, value)
 
         updated_msa, updated_pair = msa_pair_update(

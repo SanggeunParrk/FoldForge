@@ -103,11 +103,16 @@ class Evoformer(nn.Module):
             self.token_bonds_type_embed = nn.Linear(7, self.pair_channel, bias=False)
             self.contact_conditioning = ContactConditioning(self.pair_channel)
 
-        self.template_embedding = (
-            TemplateEmbedding(spec)
-            if spec.template == "af3"
-            else FusedTemplateEmbedding(spec)
-        )
+        # A family with no template stack must not BUILD one: its checkpoint
+        # carries no weights for it, and a template embedder left at random
+        # init would add noise to the pair on every input that has a template.
+        self.template_embedding = None
+        if spec.template_layers:
+            self.template_embedding = (
+                TemplateEmbedding(spec)
+                if spec.template == "af3"
+                else FusedTemplateEmbedding(spec)
+            )
 
         self.msa_activations = nn.Linear(
             spec.msa_feat_channel, self.msa_channel, bias=spec.msa_activations_bias
@@ -143,7 +148,8 @@ class Evoformer(nn.Module):
                     c_single=self.seq_channel,
                     n_heads_pair=spec.pair_heads,
                     num_intermediate_factor=spec.pairformer_transition_factor,
-                    with_single=True,
+                    with_single=spec.trunk_single_track,
+                    with_pair_attention=spec.pair_attention,
                     spec=spec,
                     pair_qkv_dim=spec.pair_qkv_dim,
                 )
@@ -324,6 +330,8 @@ class Evoformer(nn.Module):
         pair_mask: torch.Tensor,
     ) -> torch.Tensor:
         """Embeds Templates and merges into pair activations."""
+        if self.template_embedding is None:
+            return pair_activations
         templates = batch.templates
         asym_id = batch.token_features.asym_id
 

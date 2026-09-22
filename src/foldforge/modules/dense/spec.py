@@ -53,6 +53,32 @@ class DenseSpec:
     #: additional ones AF3 counts. Clamped at one either way.
     recycles_are_total: bool = False
     trunk_layers: int = 48
+    #: Whether the pairformer blocks carry the two pair-axis ATTENTIONS. A
+    #: family that folds from a language model keeps only the triangle
+    #: multiplications and the transition.
+    pair_attention: bool = True
+    #: Whether the TRUNK carries a single track at all. Without one there is no
+    #: `single` to recycle, to condition the denoiser on, or to hand a head:
+    #: every downstream single is built from the target features instead.
+    trunk_single_track: bool = True
+    #: The trunk recycles through a discretised diagonal SSM rather than an
+    #: addition: `z = decay * z_prev + proj(norm(z_inject))` against AF3's
+    #: `z = z_inject + proj(norm(z_prev))`. The same two modules applied to the
+    #: OTHER operand, plus a per-channel decay; at decay one with the operands
+    #: swapped back it is AF3's own recycling.
+    ssm_recycle: bool = False
+    #: Pair blocks run ONCE after the recycle loop, reading a projection of the
+    #: stack's output. AF3 has no post-trunk stack.
+    coda_layers: int = 0
+    #: Pair blocks over the language model's pair representation, before it is
+    #: added to the trunk pair.
+    lm_encoder_layers: int = 0
+    #: Dropout kept on the language-model pair AT INFERENCE, resampled every
+    #: recycle pass. Not polish: the family trained with it.
+    lm_pair_dropout: float = 0.0
+    #: The summed per-atom reference features are normalised. AF3 sums bias-free
+    #: per-feature projections and leaves the result unnormalised.
+    normed_atom_features: bool = False
     #: Blocks of the MSA stack. A family that folds from a language model alone
     #: has none, and must not BUILD one: its checkpoint carries no weights for it.
     msa_layers: int = 4
@@ -608,8 +634,19 @@ ESMFOLD2 = replace(
     trunk_layers=48,
     msa_layers=4,
     template_layers=0,
+    coda_layers=2,
+    lm_encoder_layers=4,
+    lm_pair_dropout=0.25,
+    pair_attention=False,
+    trunk_single_track=False,
+    ssm_recycle=True,
+    normed_atom_features=True,
     distogram_bins=64,
+    distogram_bias=True,
+    diffusion_projected_relpos=True,
     msa_keep_order=True,
+    language_model="esmc",
+    confidence="boltz2",
     affine_norms=frozenset(
         {
             "pair_cond_initial_norm",

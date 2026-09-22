@@ -271,21 +271,14 @@ class ConfidenceHead(nn.Module):
         #: embedding and does neither.
         self.reembed_pair = spec.confidence == "boltz2"
         self.split_heads = spec.confidence_split_heads
-        #: "protenix2": the trunk single is clamped and normalised before ANY
-        #: use, the distance-error head normalises the SYMMETRISED pair, and a
-        #: raw-distance term rides alongside the binned one.
-        self.protenix_confidence = spec.confidence == "protenix2"
         self.pde_symmetrise = spec.pde_symmetrise
-        #: "rf3": trunk inputs normalised over the WHOLE tensor of real tokens, and
-        #: the predicted structure embedded as 40 CA-CA distance bins.
-        self.global_norm_inputs = spec.confidence == "rf3"
 
         self.dgram_features_config = template.DistogramFeaturesConfig()
         #: Distance classes the head embeds the predicted structure as.
         self.confidence_dgram = spec.confidence_dgram
         self.confidence_dgram_bins = (
             40
-            if self.global_norm_inputs
+            if self.spec.confidence_centre_dgram
             else (
                 self.confidence_dgram[2]
                 if self.confidence_dgram is not None
@@ -406,11 +399,11 @@ class ConfidenceHead(nn.Module):
             self.distogram_feat_project = nn.Linear(
                 self.confidence_dgram_bins, self.c_pair, bias=False
             )
-            if self.protenix_confidence:
+            if self.spec.confidence_raw_distance:
                 # Unbinned, so it carries the sub-bin resolution the one-hot
                 # throws away.
                 self.distance_feat_project = nn.Linear(1, self.c_pair, bias=False)
-        if self.protenix_confidence:
+        if self.spec.confidence_single_clamp:
             self.input_single_norm = fastnn.LayerNorm(self.c_single)
 
     def _embed_features(
@@ -432,7 +425,7 @@ class ConfidenceHead(nn.Module):
             layout_axes=(-3, -2),
         )
 
-        if self.global_norm_inputs:
+        if self.spec.confidence_centre_dgram:
             # Token-centre (CA, dense atom 1) distances over 39 edges from 3.25 A.
             ca = dense_atom_positions[:, 1, :]
             distance = ((ca[:, None] - ca[None]).square().sum(-1) + 1e-10).sqrt()
@@ -461,7 +454,7 @@ class ConfidenceHead(nn.Module):
         dgram *= pair_mask[..., None]
 
         out += self.distogram_feat_project(dgram)
-        if self.protenix_confidence:
+        if self.spec.confidence_raw_distance:
             distance = (
                 (positions[:, None] - positions[None]).square().sum(-1) + 1e-10
             ).sqrt()
@@ -501,14 +494,14 @@ class ConfidenceHead(nn.Module):
         single_act = embeddings["single"].clone().to(dtype=dtype)
         target_feat = embeddings["target_feat"].clone().to(dtype=dtype)
 
-        if self.global_norm_inputs:
+        if self.spec.confidence_global_norm:
             real = seq_mask.bool()
             pair_act = masked_global_norm(pair_act, real[:, None] & real[None])
             single_act = masked_global_norm(single_act, real)
             # The vendor's input features are 449 wide; the two classes FoldForge's
             # alphabet lacks are zero but still enter its mean and variance.
             target_feat = masked_global_norm(target_feat, real, width=449)
-        if self.protenix_confidence:
+        if self.spec.confidence_single_clamp:
             # Clamped and normalised before ANY use: the confidence pairformer
             # and every head see the normalised single. AF3 uses it raw, and an
             # unnormalised trunk single enters this head at std 211.

@@ -168,8 +168,25 @@ class DenseSpec:
     #: Which NAMES the confidence head's weights were written under. The head
     #: itself is chosen by `confidence`; this is a rename of its records.
     confidence_records: str = "af3"
-    #: Which confidence embedding and heads the weights were trained with.
+    #: Which confidence embedding the weights were trained with. This selects
+    #: a STRUCTURE -- whether the pair is re-embedded from the inputs or read
+    #: from the trunk. Everything a family does on top of that is a field of
+    #: its own below, so the head never branches on a family's name.
     confidence: str = "af3"
+    #: The trunk inputs are normalised over the WHOLE tensor of real tokens
+    #: before the head reads them, rather than per position.
+    confidence_global_norm: bool = False
+    #: The trunk single is clamped and normalised before ANY use, so the
+    #: confidence pairformer and every head see the normalised one. AF3 uses it
+    #: raw, and an unnormalised trunk single enters this head at std 211.
+    confidence_single_clamp: bool = False
+    #: A raw, unbinned distance term rides alongside the binned one, carrying
+    #: the sub-bin resolution the one-hot throws away.
+    confidence_raw_distance: bool = False
+    #: The predicted structure is embedded as forty TOKEN-CENTRE distance
+    #: classes from 3.25 to 50.75 A, masked, rather than from the pseudo-beta
+    #: gather AF3 uses.
+    confidence_centre_dgram: bool = False
     #: Layout of the per-token features the DIFFUSION conditioning and the
     #: confidence re-embedding read. "af3" is the trunk's own 447. "esm"
     #: widens the restype and profile blocks from 31 classes to 33: the extra
@@ -528,6 +545,8 @@ ROSETTAFOLD3 = replace(
     template_qkv_dim=64,
     template_transition_factor=4,
     confidence="rf3",
+    confidence_global_norm=True,
+    confidence_centre_dgram=True,
     opm_bias_after_norm=True,
     opm_clamped_norm=True,
     opm_projection_bias=True,
@@ -662,6 +681,8 @@ PROTENIX2 = replace(
     template_heads=2,
     confidence="protenix2",
     pde_symmetrise="pair",
+    confidence_single_clamp=True,
+    confidence_raw_distance=True,
 )
 
 #: Protenix v1. The same graph at AlphaFold 3's widths, but its TEMPLATE stack

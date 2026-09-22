@@ -501,3 +501,31 @@ def test_a_family_with_no_msa_stack_builds_neither_the_stack_nor_its_inputs():
     # The two releases differ in exactly the trunk depth and the MSA stack.
     assert SPECS["esmfold2-fast"].trunk_layers == 24
     assert SPECS["esmfold2"].trunk_layers == 48
+
+
+def test_the_confidence_head_branches_on_facts_not_on_family_names():
+    """One selector was gating several unrelated behaviours.
+
+    `confidence` now picks a STRUCTURE -- whether the pair is re-embedded from
+    the inputs or read from the trunk -- and everything a family does on top of
+    that is its own field. Membership is asserted because the split has to be
+    behaviour-preserving: these are exactly the families the old strings named.
+    """
+    import pathlib as _pathlib
+
+    named = lambda field: {name for name, spec in SPECS.items() if getattr(spec, field)}
+    protenix = {"protenix1", "protenix2", "opendde"}
+    assert named("confidence_single_clamp") == protenix
+    assert named("confidence_raw_distance") == protenix
+    assert named("confidence_global_norm") == {"rosettafold3"}
+    assert named("confidence_centre_dgram") == {"rosettafold3"}
+
+    # ...and the head no longer decides anything by a family's name, except the
+    # one comparison that genuinely selects which embedding was trained.
+    head = (
+        _pathlib.Path(__file__).resolve().parents[2]
+        / "src/foldforge/modules/dense/head.py"
+    )
+    source = head.read_text()
+    names = [n for n in SPECS if f'== "{n}"' in source]
+    assert names == ["boltz2"]

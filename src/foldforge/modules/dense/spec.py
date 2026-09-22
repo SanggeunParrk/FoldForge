@@ -772,6 +772,15 @@ ESMFOLD2 = replace(
     ),
 )
 
+#: The same family at 24 trunk blocks and no MSA encoder: it folds from the
+#: language model alone, so it must not BUILD an MSA stack it has no weights for.
+ESMFOLD2_FAST = replace(
+    ESMFOLD2,
+    family="esmfold2-fast",
+    trunk_layers=24,
+    msa_layers=0,
+)
+
 SPECS = {
     spec.family: spec
     for spec in (
@@ -786,5 +795,6 @@ SPECS = {
         PROTENIX2,
         OPENDDE,
         ESMFOLD2,
+        ESMFOLD2_FAST,
     )
 }

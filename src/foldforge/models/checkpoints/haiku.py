@@ -1498,9 +1498,30 @@ def build_structural_expander_params(expander: ParameterModule) -> ParamTree:
 
 def build_evoformer_params(evoformer: ParameterModule) -> ParamTree:
     """Compute evoformer params."""
-    msa_stack_params = stacked(
-        [build_evoformer_block_params(b) for b in evoformer.msa_stack]
-    )
+    # Layer-stack scope names are POSITIONAL within their enclosing scope, so
+    # a family with no MSA stack shifts the trunk and the coda down one. The
+    # blob is written that way, and a name is all this is.
+    stack = 0 if evoformer.msa_stack is None else 1
+
+    def suffix(index: int) -> str:
+        """Haiku numbers the first stack in a scope bare, the rest from one."""
+        return "" if index == 0 else f"_{index}"
+
+    msa_params: ParamTree = {}
+    if evoformer.msa_stack is not None:
+        msa_params = {
+            "msa_activations": build_linear_params(
+                l=evoformer.msa_activations,
+                use_bias=evoformer.msa_activations.bias is not None,
+            ),
+            "extra_msa_target_feat": build_linear_params(
+                l=evoformer.extra_msa_target_feat
+            ),
+            **cat_params(
+                stacked([build_evoformer_block_params(b) for b in evoformer.msa_stack]),
+                "__layer_stack_no_per_layer/msa_stack/",
+            ),
+        }
 
     trunk_pairformer_params = stacked(
         [
@@ -1540,7 +1561,7 @@ def build_evoformer_params(evoformer: ParameterModule) -> ParamTree:
                             for b in evoformer.trunk_coda
                         ]
                     ),
-                    "__layer_stack_no_per_layer_2/trunk_coda/",
+                    f"__layer_stack_no_per_layer{suffix(stack + 1)}/trunk_coda/",
                 ),
             }
             if evoformer.parcae_readout is not None
@@ -1586,19 +1607,15 @@ def build_evoformer_params(evoformer: ParameterModule) -> ParamTree:
             if hasattr(evoformer, "contact_conditioning")
             else {}
         ),
-        "msa_activations": build_linear_params(
-            l=evoformer.msa_activations,
-            use_bias=evoformer.msa_activations.bias is not None,
-        ),
-        "extra_msa_target_feat": build_linear_params(l=evoformer.extra_msa_target_feat),
-        **cat_params(msa_stack_params, "__layer_stack_no_per_layer/msa_stack/"),
+        **msa_params,
         "single_activations": build_linear_params(l=evoformer.single_activations),
         "prev_single_embedding_layer_norm": build_layer_norm_params(
             l=evoformer.prev_single_embedding_layer_norm
         ),
         "prev_single_embedding": build_linear_params(l=evoformer.prev_single_embedding),
         **cat_params(
-            trunk_pairformer_params, "__layer_stack_no_per_layer_1/trunk_pairformer/"
+            trunk_pairformer_params,
+            f"__layer_stack_no_per_layer{suffix(stack)}/trunk_pairformer/",
         ),
     }
 

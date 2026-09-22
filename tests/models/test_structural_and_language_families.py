@@ -13,6 +13,12 @@ import torch
 
 from foldforge.modules.dense.spec import SPECS
 
+#: Both releases of the family that folds from a language model. Membership is
+#: stated per FAMILY, not per release: a convention named on one release is a
+#: convention the next release silently loses, which is the mistake one shared
+#: filename already invited here once.
+_LANGUAGE_MODEL_FAMILY = frozenset({"esmfold2", "esmfold2-fast"})
+
 
 def test_esm_class_widening_is_a_permutation_not_a_shift():
     """ESMFold2 puts the gap BELOW the residues; AF3 puts it above them.
@@ -249,12 +255,13 @@ def test_structural_token_families_carry_their_expander_and_refiner():
     assert plain.structural_token_expander is None
 
 
-def test_only_esmfold2_widens_its_key_subset():
+def test_only_the_language_model_family_widens_its_key_subset():
     """A window of +/-64 by rank needs a subset that contains it."""
     wide = {name for name, spec in SPECS.items() if spec.atom_keys_subset != 128}
-    assert wide == {"esmfold2"}
-    assert SPECS["esmfold2"].atom_keys_subset == 192
-    assert SPECS["esmfold2"].atom_window_half == 64
+    assert wide == _LANGUAGE_MODEL_FAMILY
+    for name in _LANGUAGE_MODEL_FAMILY:
+        assert SPECS[name].atom_keys_subset == 192
+        assert SPECS[name].atom_window_half == 64
 
 
 def test_no_spec_field_is_declared_and_never_read():
@@ -363,7 +370,7 @@ def test_the_relative_chain_bucket_flips_every_pair_of_a_monomer():
     families = {n for n, s in SPECS.items() if s.chain_bucket_on_same_chain}
     # Boltz-2 looked like a member until its own checkpoint settled it: its
     # `fix_sym_check` flag IS this convention, and True means AF3's.
-    assert families == {"esmfold2"}
+    assert families == _LANGUAGE_MODEL_FAMILY
 
 
 def test_the_outer_product_divisor_and_its_bias_placement_are_stated_apart():
@@ -421,7 +428,7 @@ def test_every_pde_symmetrisation_is_named():
 
 def test_the_reference_charge_convention_covers_every_family_that_takes_it_raw():
     raw = {name for name, spec in SPECS.items() if spec.raw_ref_charge}
-    assert raw == {"chai1", "boltz2", "rosettafold3", "esmfold2"}
+    assert raw == {"chai1", "boltz2", "rosettafold3"} | _LANGUAGE_MODEL_FAMILY
 
 
 def test_the_reference_geometry_override_replaces_by_atom_name():
@@ -469,3 +476,28 @@ def test_the_language_model_family_takes_every_featurisation_knob_it_needs():
     assert spec.dedupe_self_msa
     assert spec.ref_conformers == "esmfold2"
     assert spec.atom_keys_subset == 192
+
+
+def test_a_family_with_no_msa_stack_builds_neither_the_stack_nor_its_inputs():
+    """Skipping the CALL, not only the blocks, is what keeps the tree clean.
+
+    Layer-stack scope names are POSITIONAL, so dropping the MSA stack also
+    shifts the trunk and the coda down one -- which is a fact about the NAMES,
+    and a blob written one way cannot be read the other.
+    """
+    from foldforge.models.architectures.af3 import Evoformer
+
+    with torch.device("meta"):
+        fast = Evoformer(SPECS["esmfold2-fast"])
+        full = Evoformer(SPECS["esmfold2"])
+
+    assert SPECS["esmfold2-fast"].msa_layers == 0
+    assert fast.msa_stack is None
+    assert not hasattr(fast, "msa_activations")
+    assert not hasattr(fast, "extra_msa_target_feat")
+
+    assert full.msa_stack is not None
+    assert len(full.msa_stack) == SPECS["esmfold2"].msa_layers
+    # The two releases differ in exactly the trunk depth and the MSA stack.
+    assert SPECS["esmfold2-fast"].trunk_layers == 24
+    assert SPECS["esmfold2"].trunk_layers == 48

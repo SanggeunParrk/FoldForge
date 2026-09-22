@@ -133,23 +133,28 @@ class Evoformer(nn.Module):
                 else FusedTemplateEmbedding(spec)
             )
 
-        self.msa_activations = nn.Linear(
-            spec.msa_feat_channel, self.msa_channel, bias=spec.msa_activations_bias
-        )
-        self.extra_msa_target_feat = nn.Linear(
-            self.c_target_feat, self.msa_channel, bias=False
-        )
-        self.msa_stack = nn.ModuleList(
-            [
-                EvoformerBlock(
-                    c_msa=self.msa_channel,
-                    c_pair=self.pair_channel,
-                    n_heads_pair=spec.pair_heads,
-                    spec=spec,
-                )
-                for _ in range(self.msa_stack_num_layer)
-            ]
-        )
+        # A family that folds from a language model alone has no MSA stack, and
+        # skipping the CALL rather than only the blocks is what keeps these two
+        # projections out of a parameter tree that carries no weights for them.
+        self.msa_stack = None
+        if self.msa_stack_num_layer:
+            self.msa_activations = nn.Linear(
+                spec.msa_feat_channel, self.msa_channel, bias=spec.msa_activations_bias
+            )
+            self.extra_msa_target_feat = nn.Linear(
+                self.c_target_feat, self.msa_channel, bias=False
+            )
+            self.msa_stack = nn.ModuleList(
+                [
+                    EvoformerBlock(
+                        c_msa=self.msa_channel,
+                        c_pair=self.pair_channel,
+                        n_heads_pair=spec.pair_heads,
+                        spec=spec,
+                    )
+                    for _ in range(self.msa_stack_num_layer)
+                ]
+            )
 
         self.single_activations = nn.Linear(
             self.c_target_feat, self.seq_channel, bias=False
@@ -451,6 +456,11 @@ class Evoformer(nn.Module):
         token_features: features.TokenFeatures,
     ) -> torch.Tensor:
         """Process MSA and returns updated pair activations."""
+        if self.msa_stack is None:
+            # A family with no MSA stack never reaches here; the callers check
+            # first, and this is the invariant rather than a fallback.
+            message = "This family folds without an MSA stack"
+            raise RuntimeError(message)
         dtype = pair_activations.dtype
 
         policy = self.spec.msa_subsample

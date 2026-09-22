@@ -116,6 +116,11 @@ class DenseSpec:
     #: Which relative-position encoding the weights were trained with.
     relpos: str = "af3"
     relpos_channel: int = 139
+    #: The relative-CHAIN bucket is keyed on same-CHAIN, sending the MATCH to
+    #: the pad class, where AF3 keys on same-ENTITY and sends the MISMATCH
+    #: there. Read by all three call sites -- trunk, diffusion conditioning and
+    #: confidence re-embedding -- because the vendor builds them from one module.
+    chain_bucket_on_same_chain: bool = False
     relpos_bias: bool = False
     #: Which protein language model supplies this family's token stream, if
     #: any. Its embeddings arrive on the batch like any other input.
@@ -169,6 +174,12 @@ class DenseSpec:
     #: divides by the width and subtracts the mean over it, so normalising 447
     #: channels instead of 451 rescales the ENTIRE conditioning.
     single_cond_layout: str = "af3"
+    #: How the distance-error head symmetrises. AF3 projects the pair and
+    #: symmetrises the LOGITS; "pair" symmetrises inside the norm, which a
+    #: LayerNorm makes a different function; "none" does neither, reading the
+    #: pair exactly as its PAE head does. Summing a logit with its transpose
+    #: doubles an expectation, so the wrong one is not a small error.
+    pde_symmetrise: str = "logits"
     #: Separate intra- and inter-chain heads for the distance error and the PAE.
     #: Boltz-2 established the re-embedded pair; a family can take that path
     #: without splitting its heads, so the two are stated apart.
@@ -187,8 +198,13 @@ class DenseSpec:
     msa_double_add: bool = False
     #: An MSA block updates the MSA before its outer product mean reads it.
     msa_update_before_opm: bool = False
-    #: The outer product divides by the pair count clamped at one, then adds its bias.
+    #: The outer product divides BEFORE its output projection's bias, so that
+    #: bias is not scaled by the pair count. Worth bias * (1 - 1/n).
     opm_bias_after_norm: bool = False
+    #: The outer product divides by the pair count clamped at one rather than
+    #: by AF3's 1e-3 + count. A scale, not an offset, and independent of where
+    #: the bias lands: one family takes this without the other.
+    opm_clamped_norm: bool = False
     #: The distogram projection carries a trained bias.
     distogram_bias: bool = False
     #: Conditioned transitions multiply the SwiGLU output by a linear up-gate.
@@ -471,6 +487,7 @@ BOLTZ2 = replace(
     msa_double_add=True,
     msa_update_before_opm=True,
     opm_bias_after_norm=True,
+    opm_clamped_norm=True,
     distogram_bias=True,
     transition_up_gate=True,
     diffusion_projected_relpos=True,
@@ -508,6 +525,7 @@ ROSETTAFOLD3 = replace(
     template_transition_factor=4,
     confidence="rf3",
     opm_bias_after_norm=True,
+    opm_clamped_norm=True,
     opm_projection_bias=True,
     distogram_bias=True,
     distogram_bins=65,
@@ -639,6 +657,7 @@ PROTENIX2 = replace(
     template="protenix2",
     template_heads=2,
     confidence="protenix2",
+    pde_symmetrise="pair",
 )
 
 #: Protenix v1. The same graph at AlphaFold 3's widths, but its TEMPLATE stack
@@ -707,6 +726,10 @@ ESMFOLD2 = replace(
     distogram_bias=True,
     diffusion_projected_relpos=True,
     msa_subsample="keep_query",
+    opm_clamped_norm=True,
+    chain_bucket_on_same_chain=True,
+    pde_symmetrise="none",
+    raw_ref_charge=True,
     language_model="esmc",
     confidence="boltz2",
     confidence_learned_bins=39,

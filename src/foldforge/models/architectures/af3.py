@@ -339,6 +339,7 @@ class Evoformer(nn.Module):
                 batch.token_features,
                 max_relative_idx,
                 max_relative_chain,
+                chain_bucket_on_same_chain=self.spec.chain_bucket_on_same_chain,
             ).to(dtype=pair_activations.dtype)
 
         return pair_activations + self.position_activations(rel_feat)

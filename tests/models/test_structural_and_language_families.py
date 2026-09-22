@@ -321,3 +321,104 @@ def test_the_three_msa_subsampling_policies_are_stated_apart():
     assert policies["chai1"] == "ordered"
     assert policies["esmfold2"] == "keep_query"
     assert set(policies.values()) <= {"shuffle", "ordered", "keep_query"}
+
+
+def test_the_relative_chain_bucket_flips_every_pair_of_a_monomer():
+    """Keyed on same-CHAIN sending the MATCH to the pad class, not AF3's entity.
+
+    Same-chain is universally true on a monomer, so one convention makes the
+    whole one-hot the pad class and the other the zero-offset class. A constant
+    column either way -- but a DIFFERENT one into a trained projection, and the
+    reference measured it at 1.522 -> 0.719 A when it was first found.
+    """
+    from foldforge.data.features import dense as features
+    from foldforge.modules.dense import featurization
+
+    n = 4
+    tokens = features.TokenFeatures(
+        residue_index=torch.arange(n),
+        token_index=torch.arange(n),
+        asym_id=torch.ones(n),
+        entity_id=torch.ones(n),
+        sym_id=torch.zeros(n),
+        aatype=torch.zeros(n, dtype=torch.long),
+        is_protein=torch.ones(n),
+        is_rna=torch.zeros(n),
+        is_dna=torch.zeros(n),
+        is_ligand=torch.zeros(n),
+        is_water=torch.zeros(n),
+        is_nonstandard_polymer_chain=torch.zeros(n),
+        mask=torch.ones(n),
+        seq_length=torch.tensor(n),
+    )
+    entity = featurization.create_relative_encoding(tokens, 32, 2)
+    chain = featurization.create_relative_encoding(
+        tokens, 32, 2, chain_bucket_on_same_chain=True
+    )
+    assert entity.shape[-1] == chain.shape[-1] == 139
+    assert entity[0, 0, -6:].tolist() == [0, 0, 1, 0, 0, 0]
+    assert chain[0, 0, -6:].tolist() == [0, 0, 0, 0, 0, 1]
+    assert bool((entity != chain).any(-1).all())
+
+    families = {n for n, s in SPECS.items() if s.chain_bucket_on_same_chain}
+    # Boltz-2 looked like a member until its own checkpoint settled it: its
+    # `fix_sym_check` flag IS this convention, and True means AF3's.
+    assert families == {"esmfold2"}
+
+
+def test_the_outer_product_divisor_and_its_bias_placement_are_stated_apart():
+    """One family takes the clamped divisor without the bias placement."""
+    from foldforge.modules.dense import primitives
+
+    torch.manual_seed(0)
+    msa, mask = torch.randn(2, 5, 8), torch.ones(2, 5)
+
+    def parts(module: torch.nn.Module) -> tuple[torch.Tensor, torch.Tensor]:
+        x, m = module.layer_norm_input(msa), mask.unsqueeze(-1)
+        outer = torch.einsum(
+            "acb,ade->dceb",
+            (m * module.left_projection(x)).permute(0, 2, 1),
+            m * module.right_projection(x),
+        )
+        return (
+            torch.einsum("dceb,cef->dbf", outer, module.output_w),
+            torch.einsum("abc,adc->bdc", m, m),
+        )
+
+    build = lambda **kw: primitives.OuterProductMean(
+        c_msa=8, num_output_channel=4, num_outer_channel=3, **kw
+    )
+
+    af3 = build()
+    out, count = parts(af3)
+    expected = (out + af3.output_b).permute(1, 0, 2) / (af3.epsilon + count)
+    assert torch.allclose(af3(msa, mask), expected, atol=1e-6)
+
+    clamped = build(clamped_norm=True)
+    out, count = parts(clamped)
+    expected = (out + clamped.output_b).permute(1, 0, 2) / count.clamp_min(1.0)
+    assert torch.allclose(clamped(msa, mask), expected, atol=1e-6)
+
+    both = build(bias_after_norm=True, clamped_norm=True)
+    out, count = parts(both)
+    expected = out.permute(1, 0, 2) / count.clamp_min(1.0) + both.output_b
+    assert torch.allclose(both(msa, mask), expected, atol=1e-6)
+
+    assert SPECS["esmfold2"].opm_clamped_norm
+    assert not SPECS["esmfold2"].opm_bias_after_norm
+    assert SPECS["boltz2"].opm_clamped_norm
+    assert SPECS["boltz2"].opm_bias_after_norm
+
+
+def test_every_pde_symmetrisation_is_named():
+    """Summing a logit with its transpose doubles an expectation."""
+    named = {name: spec.pde_symmetrise for name, spec in SPECS.items()}
+    assert named["alphafold3"] == "logits"
+    assert named["protenix2"] == "pair"
+    assert named["esmfold2"] == "none"
+    assert set(named.values()) <= {"logits", "pair", "none"}
+
+
+def test_the_reference_charge_convention_covers_every_family_that_takes_it_raw():
+    raw = {name for name, spec in SPECS.items() if spec.raw_ref_charge}
+    assert raw == {"chai1", "boltz2", "rosettafold3", "esmfold2"}

@@ -171,7 +171,11 @@ def create_target_feat(
 
 
 def create_relative_encoding(
-    seq_features: features.TokenFeatures, max_relative_idx: int, max_relative_chain: int
+    seq_features: features.TokenFeatures,
+    max_relative_idx: int,
+    max_relative_chain: int,
+    *,
+    chain_bucket_on_same_chain: bool = False,
 ) -> torch.Tensor:
     """Add relative position encodings."""
     rel_feats = []
@@ -243,11 +247,17 @@ def create_relative_encoding(
         rel_sym_id + max_rel_chain, min=0, max=2 * max_rel_chain
     )
 
-    final_rel_chain = torch.where(
-        entity_id_same,
-        clipped_rel_chain,
-        (2 * max_rel_chain + 1) * torch.ones_like(clipped_rel_chain),
-    )
+    pad_class = (2 * max_rel_chain + 1) * torch.ones_like(clipped_rel_chain)
+    if chain_bucket_on_same_chain:
+        # Keyed on same-CHAIN, sending the MATCH to the pad class, where AF3
+        # keys on same-ENTITY and sends the MISMATCH there. On a MONOMER this
+        # flips every pair: same-chain is universally true, so one convention
+        # makes the whole one-hot the pad class and the other the zero-offset
+        # class -- a different constant column into a trained projection.
+        same_chain = left_asym_id == right_asym_id
+        final_rel_chain = torch.where(same_chain, pad_class, clipped_rel_chain)
+    else:
+        final_rel_chain = torch.where(entity_id_same, clipped_rel_chain, pad_class)
     rel_chain = torch.nn.functional.one_hot(
         final_rel_chain.to(dtype=torch.int64), 2 * max_relative_chain + 2
     )

@@ -159,9 +159,11 @@ class ConfidenceReembedding(nn.Module):
         c_target_feat: int,
         learned_bins: int | None = None,
         esm_classes: bool = False,
+        chain_bucket_on_same_chain: bool = False,
     ) -> None:
         super().__init__()
         self.esm_classes = esm_classes
+        self.chain_bucket_on_same_chain = chain_bucket_on_same_chain
         if esm_classes:
             c_target_feat += 4
         self.s_inputs_norm = fastnn.LayerNorm(c_target_feat)
@@ -206,7 +208,10 @@ class ConfidenceReembedding(nn.Module):
         pair = self.z_norm(pair)
         pair = pair + self.rel_pos_project(
             featurization.create_relative_encoding(
-                batch.token_features, max_relative_idx=32, max_relative_chain=2
+                batch.token_features,
+                max_relative_idx=32,
+                max_relative_chain=2,
+                chain_bucket_on_same_chain=self.chain_bucket_on_same_chain,
             ).to(dtype)
         )
         pair = pair + self.token_bonds_project((bonds > 0)[..., None].to(dtype))
@@ -270,6 +275,7 @@ class ConfidenceHead(nn.Module):
         #: use, the distance-error head normalises the SYMMETRISED pair, and a
         #: raw-distance term rides alongside the binned one.
         self.protenix_confidence = spec.confidence == "protenix2"
+        self.pde_symmetrise = spec.pde_symmetrise
         #: "rf3": trunk inputs normalised over the WHOLE tensor of real tokens, and
         #: the predicted structure embedded as 40 CA-CA distance bins.
         self.global_norm_inputs = spec.confidence == "rf3"
@@ -388,6 +394,7 @@ class ConfidenceHead(nn.Module):
                 c_target_feat,
                 learned_bins=self.spec.confidence_learned_bins,
                 esm_classes=self.spec.single_cond_layout == "esm",
+                chain_bucket_on_same_chain=self.spec.chain_bucket_on_same_chain,
             )
         else:
             self.left_target_feat_project = nn.Linear(
@@ -562,12 +569,15 @@ class ConfidenceHead(nn.Module):
             ) * same_chain + self.inter_half_distance_logits(symmetric) * (
                 1 - same_chain
             )
-        elif self.protenix_confidence:
+        elif self.pde_symmetrise == "pair":
             # The symmetrisation is INSIDE the norm rather than outside the
             # projection, and a LayerNorm is not linear, so the two differ.
             distance_logits = self.left_half_distance_logits(
                 self.logits_ln(pair_act + pair_act.transpose(-2, -3))
             )
+        elif self.pde_symmetrise == "none":
+            # Read as it is, exactly as the PAE head reads it.
+            distance_logits = self.left_half_distance_logits(self.logits_ln(pair_act))
         else:
             left_distance_logits = self.left_half_distance_logits(
                 self.logits_ln(pair_act)

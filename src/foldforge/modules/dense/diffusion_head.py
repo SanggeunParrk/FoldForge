@@ -208,7 +208,10 @@ class DiffusionHead(nn.Module):
             second = embeddings["pair_init"].to(dtype=pair_embedding.dtype)
         else:
             second = featurization.create_relative_encoding(
-                batch.token_features, max_relative_idx=32, max_relative_chain=2
+                batch.token_features,
+                max_relative_idx=32,
+                max_relative_chain=2,
+                chain_bucket_on_same_chain=self.spec.chain_bucket_on_same_chain,
             ).to(dtype=pair_embedding.dtype)
             if self.relpe_projection is not None:
                 second = self.relpe_projection(second)

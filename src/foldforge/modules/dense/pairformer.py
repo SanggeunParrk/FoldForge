@@ -218,6 +218,7 @@ class EvoformerBlock(nn.Module):
             num_output_channel=c_pair,
             num_outer_channel=spec.opm_channel,
             bias_after_norm=spec.opm_bias_after_norm,
+            clamped_norm=spec.opm_clamped_norm,
             projection_bias=spec.opm_projection_bias,
             groups=spec.opm_groups,
             sum_without_norm=spec.opm_sum_without_norm,

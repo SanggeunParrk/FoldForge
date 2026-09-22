@@ -759,7 +759,7 @@ def build_diffusion_transformer_params(transformer: ParameterModule) -> ParamTre
         return {
             stack + "pair_input_layer_norm": stacked(
                 [
-                    build_layer_norm_params(l=l, use_bias=False)
+                    build_layer_norm_params(l=l, use_bias=l.bias is not None)
                     for l in transformer.pair_input_layer_norm
                 ]
             ),
@@ -806,7 +806,7 @@ def build_diffusion_cross_att_transformer_params(
         return {
             stack + "pair_input_layer_norm": stacked(
                 [
-                    build_layer_norm_params(l=l, use_bias=False)
+                    build_layer_norm_params(l=l, use_bias=l.bias is not None)
                     for l in transformer.pair_input_layer_norm
                 ]
             ),
@@ -1153,6 +1153,15 @@ def build_confidence_head_params(head: ParameterModule) -> ParamTree:
             for b in head.confidence_pairformer
         ]
     )
+    resolved_params = (
+        {
+            "experimentally_resolved_logits": build_linear_hma_params(
+                l=head.experimentally_resolved_logits
+            )
+        }
+        if head.resolved_head
+        else {}
+    )
 
     if getattr(head, "split_heads", False):
         re = head.reembedding
@@ -1198,9 +1207,7 @@ def build_confidence_head_params(head: ParameterModule) -> ParamTree:
             "pae_logits": build_linear_params(l=head.pae_logits),
             "pae_inter_logits": build_linear_params(l=head.pae_inter_logits),
             "plddt_logits": build_linear_hma_params(l=head.plddt_logits),
-            "experimentally_resolved_logits": build_linear_hma_params(
-                l=head.experimentally_resolved_logits
-            ),
+            **resolved_params,
         }
     return {
         "~_embed_features/left_target_feat_project": build_linear_params(
@@ -1221,12 +1228,16 @@ def build_confidence_head_params(head: ParameterModule) -> ParamTree:
         "pae_logits": build_linear_params(l=head.pae_logits),
         "plddt_logits_ln": build_layer_norm_params(l=head.plddt_logits_ln),
         "plddt_logits": build_linear_hma_params(l=head.plddt_logits),
-        "experimentally_resolved_ln": build_layer_norm_params(
-            l=head.experimentally_resolved_ln
+        **(
+            {
+                "experimentally_resolved_ln": build_layer_norm_params(
+                    l=head.experimentally_resolved_ln
+                ),
+            }
+            if head.resolved_head
+            else {}
         ),
-        "experimentally_resolved_logits": build_linear_hma_params(
-            l=head.experimentally_resolved_logits
-        ),
+        **resolved_params,
     }
 
 
@@ -1253,7 +1264,11 @@ def build_evoformer_params(evoformer: ParameterModule) -> ParamTree:
         "~_relative_encoding/position_activations": build_linear_params(
             l=evoformer.position_activations
         ),
-        "bond_embedding": build_linear_params(l=evoformer.bond_embedding),
+        **(
+            {"bond_embedding": build_linear_params(l=evoformer.bond_embedding)}
+            if hasattr(evoformer, "bond_embedding")
+            else {}
+        ),
         "template_embedding": (
             build_fused_template_params(evoformer.template_embedding)
             if hasattr(evoformer.template_embedding, "tmpl_pairformer")
@@ -1275,7 +1290,10 @@ def build_evoformer_params(evoformer: ParameterModule) -> ParamTree:
             if hasattr(evoformer, "contact_conditioning")
             else {}
         ),
-        "msa_activations": build_linear_params(l=evoformer.msa_activations),
+        "msa_activations": build_linear_params(
+            l=evoformer.msa_activations,
+            use_bias=evoformer.msa_activations.bias is not None,
+        ),
         "extra_msa_target_feat": build_linear_params(l=evoformer.extra_msa_target_feat),
         **cat_params(msa_stack_params, "__layer_stack_no_per_layer/msa_stack/"),
         "single_activations": build_linear_params(l=evoformer.single_activations),
@@ -1305,17 +1323,8 @@ def get_translation_dict(model: ParameterModule) -> ParamTree:
         "confidence_head": build_confidence_head_params(model.confidence_head),
         **(
             {
-                f"boltz2_{name}": build_linear_params(
-                    l=getattr(model.input_embedder, name)
-                )
-                for name in (
-                    "res_type_encoding",
-                    "msa_profile_encoding",
-                    "mol_type_conditioning",
-                    "cyclic_conditioning",
-                    "method_conditioning",
-                    "modified_conditioning",
-                )
+                record: build_linear_params(l=l, use_bias=l.bias is not None)
+                for record, l in model.input_embedder.records().items()
             }
             if hasattr(model, "input_embedder")
             else {}

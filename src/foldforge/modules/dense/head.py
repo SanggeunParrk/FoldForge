@@ -310,10 +310,12 @@ class ConfidenceHead(nn.Module):
             self.c_single, self.num_atom * self.num_plddt_bins, bias=False
         )
 
-        self.experimentally_resolved_ln = head_norm(self.c_single)
-        self.experimentally_resolved_logits = nn.Linear(
-            self.c_single, self.num_atom * 2, bias=False
-        )
+        self.resolved_head = spec.resolved_head
+        if self.resolved_head:
+            self.experimentally_resolved_ln = head_norm(self.c_single)
+            self.experimentally_resolved_logits = nn.Linear(
+                self.c_single, self.num_atom * 2, bias=False
+            )
 
     def _embed_features(
         self,
@@ -494,19 +496,22 @@ class ConfidenceHead(nn.Module):
         )
         predicted_lddt = predicted_lddt * 100.0
 
-        # Experimentally resolved
-        experimentally_resolved_logits = self.experimentally_resolved_logits(
-            self.experimentally_resolved_ln(single_act)
-        )
-        experimentally_resolved_logits = einops.rearrange(
-            experimentally_resolved_logits,
-            "... (n_atom n_bins) -> ... n_atom n_bins",
-            n_bins=2,
-        )
+        # Experimentally resolved. A family that trained no such head reports
+        # nothing rather than a random-init number that would read like one.
+        predicted_experimentally_resolved = None
+        if self.resolved_head:
+            experimentally_resolved_logits = self.experimentally_resolved_logits(
+                self.experimentally_resolved_ln(single_act)
+            )
+            experimentally_resolved_logits = einops.rearrange(
+                experimentally_resolved_logits,
+                "... (n_atom n_bins) -> ... n_atom n_bins",
+                n_bins=2,
+            )
 
-        predicted_experimentally_resolved = torch.softmax(
-            experimentally_resolved_logits, dim=-1
-        )[..., 1]
+            predicted_experimentally_resolved = torch.softmax(
+                experimentally_resolved_logits, dim=-1
+            )[..., 1]
 
         return {
             "predicted_lddt": predicted_lddt,

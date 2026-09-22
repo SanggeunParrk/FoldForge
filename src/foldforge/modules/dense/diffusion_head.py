@@ -181,7 +181,9 @@ class DiffusionHead(nn.Module):
         pair_cond += self.pair_transition_0(pair_cond)
         pair_cond += self.pair_transition_1(pair_cond)
 
-        target_feat = embeddings["target_feat"]
+        # The diffusion module takes the structure projection where the family
+        # trained one; every other family hands it the same tensor as the trunk.
+        target_feat = embeddings.get("structure_target_feat", embeddings["target_feat"])
         features_1d = torch.concatenate([single_embedding, target_feat], dim=-1)
         if self.padded_single_cond:
             # One zero column after each 31-class block (restype, then profile).

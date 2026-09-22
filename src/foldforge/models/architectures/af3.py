@@ -15,6 +15,7 @@ from foldforge.modules.dense import atom_cross_attention, diffusion_head, featur
 from foldforge.modules.dense.fused_template import FusedTemplateEmbedding
 from foldforge.modules.dense.head import ConfidenceHead, DistogramHead
 from foldforge.modules.dense.pair_init import (
+    ChaiTokenEmbedder,
     ContactConditioning,
     SummedInputEmbedder,
     token_bond_types,
@@ -64,7 +65,8 @@ class Evoformer(nn.Module):
             self.c_rel_feat, self.pair_channel, bias=False
         )
 
-        self.bond_embedding = nn.Linear(1, self.pair_channel, bias=False)
+        if not spec.no_bond_embedding:
+            self.bond_embedding = nn.Linear(1, self.pair_channel, bias=False)
         if spec.bond_type_and_contact_init:
             self.token_bonds_type_embed = nn.Linear(7, self.pair_channel, bias=False)
             self.contact_conditioning = ContactConditioning(self.pair_channel)
@@ -76,7 +78,7 @@ class Evoformer(nn.Module):
         )
 
         self.msa_activations = nn.Linear(
-            spec.msa_feat_channel, self.msa_channel, bias=False
+            spec.msa_feat_channel, self.msa_channel, bias=spec.msa_activations_bias
         )
         self.extra_msa_target_feat = nn.Linear(
             self.c_target_feat, self.msa_channel, bias=False
@@ -292,9 +294,13 @@ class Evoformer(nn.Module):
 
         pair_activations = self._relative_encoding(batch, pair_activations)
 
-        pair_activations = self._embed_bonds(
-            batch=batch, pair_activations=pair_activations
-        )
+        if not self.spec.no_bond_embedding:
+            # A family whose token-pair stream carries no bond feature has no
+            # weight here; running it would add a random-init term on every
+            # input that has an intra-ligand bond.
+            pair_activations = self._embed_bonds(
+                batch=batch, pair_activations=pair_activations
+            )
 
         pair_activations = self._embed_template_pair(
             batch=batch,
@@ -328,6 +334,7 @@ class Evoformer(nn.Module):
             "single": single_activations,
             "pair": pair_activations,
             "target_feat": target_feat,
+            "structure_target_feat": prev["structure_target_feat"],
         }
 
 
@@ -361,8 +368,10 @@ class AlphaFold3(nn.Module):
 
         self.diffusion_head = diffusion_head.DiffusionHead(spec)
 
-        if spec.summed_input_embedder:
+        if spec.input_embedder == "summed":
             self.input_embedder = SummedInputEmbedder(spec.seq_channel)
+        elif spec.input_embedder == "chai1":
+            self.input_embedder = ChaiTokenEmbedder(spec.seq_channel)
 
         self.distogram_head = DistogramHead(
             c_pair=spec.pair_channel,
@@ -377,8 +386,14 @@ class AlphaFold3(nn.Module):
             spec=spec,
         )
 
-    def create_target_feat_embedding(self, batch: feat_batch.Batch) -> torch.Tensor:
-        """Create target feat embedding."""
+    def create_target_feat_embedding(
+        self, batch: feat_batch.Batch
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return the trunk and the structure target features.
+
+        They are the same tensor unless the family trained a second projection
+        for the diffusion module.
+        """
         target_feat = featurization.create_target_feat(
             batch,
             append_per_atom_features=False,
@@ -392,9 +407,15 @@ class AlphaFold3(nn.Module):
         )
 
         dtype = self.evoformer.left_single.weight.dtype
-        if self.spec.summed_input_embedder:
-            return self.input_embedder(batch, enc.token_act).to(dtype)
-        return torch.concatenate([target_feat, enc.token_act], dim=-1).to(dtype)
+        if self.spec.input_embedder == "summed":
+            summed = self.input_embedder(batch, enc.token_act).to(dtype)
+            return summed, summed
+        if self.spec.input_embedder == "chai1":
+            lm = getattr(batch.token_features, "lm_embeddings", None)
+            trunk, structure = self.input_embedder(batch, enc.token_act, lm)
+            return trunk.to(dtype), structure.to(dtype)
+        both = torch.concatenate([target_feat, enc.token_act], dim=-1).to(dtype)
+        return both, both
 
     def _sample_diffusion(
         self,
@@ -460,7 +481,7 @@ class AlphaFold3(nn.Module):
         batch_data = feat_batch.Batch.from_data_dict(batch)
         num_res = batch_data.num_res
 
-        target_feat = self.create_target_feat_embedding(batch_data)
+        target_feat, structure_feat = self.create_target_feat_embedding(batch_data)
 
         embeddings = {
             "pair": torch.zeros(
@@ -474,6 +495,7 @@ class AlphaFold3(nn.Module):
                 device=target_feat.device,
             ),
             "target_feat": target_feat,
+            "structure_target_feat": structure_feat,
         }
 
         # Recycles are additional trunk passes after the initial pass.

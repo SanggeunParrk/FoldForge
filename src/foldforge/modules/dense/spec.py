@@ -68,9 +68,14 @@ class DenseSpec:
     diffusion_seq_channel: int = 384
     #: LayerNorms that carry a trained offset where AF3's are scale-only, by name.
     affine_norms: frozenset[str] = frozenset()
-    #: The input embedder SUMS restype, profile and conditioning projections onto the
-    #: atom encoder's token output (one seq_channel vector) where AF3 concatenates.
-    summed_input_embedder: bool = False
+    #: Which form of input embedder the weights were trained with. "af3"
+    #: concatenates the 447 target features with the atom encoder's token output;
+    #: "summed" adds bias-free restype, profile and conditioning projections onto
+    #: that output; "chai1" builds its own token stream and projects the pair
+    #: [token_act, stream] twice. The last two emit one seq_channel vector.
+    input_embedder: str = "af3"
+    #: Columns of the MSA feature when the family does not build AF3's set.
+    msa_feat_columns: int | None = None
     #: Value of the appended MSA "is paired" column on the query row; None omits it.
     msa_query_paired: float | None = None
     #: Pair init also embeds token bond orders and contact conditioning.
@@ -193,11 +198,13 @@ class DenseSpec:
     @property
     def target_feat_channel(self) -> int:
         """Width of the per-token input features that feed every embedder."""
-        return self.seq_channel if self.summed_input_embedder else 447
+        return 447 if self.input_embedder == "af3" else self.seq_channel
 
     @property
     def msa_feat_channel(self) -> int:
         """Restype one-hot, has-deletion, deletion value and the optional paired flag."""
+        if self.msa_feat_columns is not None:
+            return self.msa_feat_columns
         return 34 + (self.msa_query_paired is not None)
 
 
@@ -260,7 +267,7 @@ BOLTZ2 = replace(
             "atom_features_layer_norm",
         }
     ),
-    summed_input_embedder=True,
+    input_embedder="summed",
     msa_query_paired=1.0,
     bond_type_and_contact_init=True,
     template="boltz2",
@@ -333,6 +340,8 @@ ROSETTAFOLD3 = replace(
 CHAI1 = replace(
     ALPHAFOLD3,
     family="chai1",
+    input_embedder="chai1",
+    msa_feat_columns=41,
     pair_channel=256,
     diffusion_pair_channel=256,
     pairformer_transition_factor=2,
@@ -360,6 +369,7 @@ CHAI1 = replace(
             "pair_input_layer_norm",
         }
     ),
+    per_block_pair_layer_norm=True,
     parallel_pairformer_block=True,
     parallel_msa_block=True,
     untransposed_column_pair_output=True,

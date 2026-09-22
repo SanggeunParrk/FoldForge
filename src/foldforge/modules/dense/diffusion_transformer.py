@@ -311,7 +311,10 @@ class DiffusionTransformer(nn.Module):
             # One pair norm and one projection per block, as the vendor trained it.
             self.pair_input_layer_norm = nn.ModuleList(
                 [
-                    fastnn.LayerNorm(self.c_pair_cond, bias=False)
+                    fastnn.LayerNorm(
+                        self.c_pair_cond,
+                        bias="pair_input_layer_norm" in spec.affine_norms,
+                    )
                     for _ in range(self.num_blocks)
                 ]
             )
@@ -540,7 +543,10 @@ class DiffusionCrossAttTransformer(nn.Module):
         if self.per_block_pair:
             self.pair_input_layer_norm = nn.ModuleList(
                 [
-                    fastnn.LayerNorm(self.c_pair_cond, bias=False)
+                    fastnn.LayerNorm(
+                        self.c_pair_cond,
+                        bias="pair_input_layer_norm" in spec.affine_norms,
+                    )
                     for _ in range(self.num_blocks)
                 ]
             )

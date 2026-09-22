@@ -89,6 +89,21 @@ class SummedInputEmbedder(nn.Module):
 
     METHOD_XRAY = 1
 
+    #: Blob record name for each projection, so the importer needs no model list.
+    RECORDS = (
+        "res_type_encoding",
+        "msa_profile_encoding",
+        "mol_type_conditioning",
+        "cyclic_conditioning",
+        "method_conditioning",
+        "modified_conditioning",
+    )
+    RECORD_PREFIX = "boltz2_"
+
+    def records(self) -> dict[str, nn.Linear]:
+        """Map each blob record name onto the projection that holds it."""
+        return {self.RECORD_PREFIX + name: getattr(self, name) for name in self.RECORDS}
+
     def __init__(self, channels: int) -> None:
         super().__init__()
         self.res_type_encoding = nn.Linear(31, channels, bias=False)
@@ -127,3 +142,69 @@ class SummedInputEmbedder(nn.Module):
         out = out + self.method_conditioning(one_hot(method, 12))
         modified = torch.zeros(tokens, dtype=torch.int64, device=out.device)
         return out + self.modified_conditioning(one_hot(modified, 2))
+
+
+class ChaiTokenEmbedder(nn.Module):
+    """Input embedder that builds its own token stream, then projects it twice.
+
+    Where AF3 concatenates 447 target features with the atom encoder's token
+    output, this form builds a ``channels``-wide stream of its own -- restype,
+    MSA profile and, when the input carries them, protein language-model
+    embeddings -- concatenates THAT with the token output and reads the pair
+    through two separate projections. The trunk and the confidence head take the
+    first; the diffusion module takes the second, which is a different vector
+    from the same inputs and is what those weights were trained against.
+
+    The restype projection carries a bias because the rest of the vendor's token
+    stream is constant for a fold and the converter folds it in there.
+    """
+
+    RECORDS = (
+        "token_feature_embedding",
+        "msa_profile_embedding",
+        "esm_embedding",
+        "single_proj_in_trunk",
+        "single_proj_in_structure",
+    )
+    RECORD_PREFIX = "chai1_"
+
+    def records(self) -> dict[str, nn.Linear]:
+        """Map each blob record name onto the projection that holds it."""
+        return {self.RECORD_PREFIX + name: getattr(self, name) for name in self.RECORDS}
+
+    #: Restype classes: the polymer types plus unknown and gap.
+    RESTYPES = 31
+    #: MSA profile columns plus the deletion mean.
+    PROFILE = 32
+
+    def __init__(self, channels: int, lm_channels: int = 2560) -> None:
+        super().__init__()
+        self.token_feature_embedding = nn.Linear(self.RESTYPES, channels, bias=True)
+        self.msa_profile_embedding = nn.Linear(self.PROFILE, channels, bias=False)
+        self.esm_embedding = nn.Linear(lm_channels, channels, bias=False)
+        self.single_proj_in_trunk = nn.Linear(2 * channels, channels, bias=False)
+        self.single_proj_in_structure = nn.Linear(2 * channels, channels, bias=False)
+
+    def forward(
+        self,
+        batch: feat_batch.Batch,
+        token_act: torch.Tensor,
+        lm_embeddings: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return the trunk and the structure projections, in that order."""
+        dtype = self.token_feature_embedding.weight.dtype
+        aatype = batch.token_features.aatype.to(torch.int64)
+        stream = self.token_feature_embedding(
+            F.one_hot(aatype, self.RESTYPES).to(dtype)
+        )
+        profile = torch.cat(
+            [batch.msa.profile.to(dtype), batch.msa.deletion_mean[..., None].to(dtype)],
+            dim=-1,
+        )
+        stream = stream + self.msa_profile_embedding(profile)
+        if lm_embeddings is not None:
+            # Absent, the term is simply not added, which keeps a family that
+            # supplies no language model byte-identical.
+            stream = stream + self.esm_embedding(lm_embeddings.to(dtype))
+        pair = torch.cat([token_act.to(dtype), stream], dim=-1)
+        return self.single_proj_in_trunk(pair), self.single_proj_in_structure(pair)

@@ -36,7 +36,12 @@ class AdaptiveLayerNorm(nn.Module):
     """Represent adaptive layer norm."""
 
     def __init__(
-        self, c_x: int, c_single_cond: int | None, use_single_cond: bool = False
+        self,
+        c_x: int,
+        c_single_cond: int | None,
+        use_single_cond: bool = False,
+        identity_scale: bool = False,
+        eps: float = 1e-5,
     ) -> None:
 
         super().__init__()
@@ -44,21 +49,28 @@ class AdaptiveLayerNorm(nn.Module):
         self.c_x = c_x
         self.c_single_cond = c_single_cond
         self.use_single_cond = use_single_cond
+        #: The (s + 1) form leaves the conditioning unnormalised and its scale
+        #: projection biasless; there is no norm here to map and keeping one at
+        #: unit scale would still re-centre and re-scale.
+        self.identity_scale = identity_scale
 
         if self.use_single_cond is True:
             if self.c_single_cond is None:
                 message = "Conditioned layers require a conditioning channel count"
                 raise ValueError(message)
             self.layer_norm = fastnn.LayerNorm(
-                self.c_x, elementwise_affine=False, bias=False
+                self.c_x, eps=eps, elementwise_affine=False, bias=False
             )
-            self.single_cond_layer_norm = fastnn.LayerNorm(
-                self.c_single_cond, bias=False
+            if not identity_scale:
+                self.single_cond_layer_norm = fastnn.LayerNorm(
+                    self.c_single_cond, bias=False
+                )
+            self.single_cond_scale = nn.Linear(
+                self.c_single_cond, self.c_x, bias=not identity_scale
             )
-            self.single_cond_scale = nn.Linear(self.c_single_cond, self.c_x, bias=True)
             self.single_cond_bias = nn.Linear(self.c_single_cond, self.c_x, bias=False)
         else:
-            self.layer_norm = fastnn.LayerNorm(self.c_x)
+            self.layer_norm = fastnn.LayerNorm(self.c_x, eps=eps)
 
     def forward(
         self, x: torch.Tensor, single_cond: torch.Tensor | None = None
@@ -76,6 +88,7 @@ class AdaLNZero(nn.Module):
         c_out: int,
         c_single_cond: int | None,
         use_single_cond: bool = False,
+        project: bool = True,
     ) -> None:
         super().__init__()
 
@@ -83,8 +96,12 @@ class AdaLNZero(nn.Module):
         self.c_out = c_out
         self.c_single_cond = c_single_cond
         self.use_single_cond = use_single_cond
+        #: Without the projection the raw concatenated heads are multiplied by
+        #: the conditioning gate and that is the whole output.
+        self.project = project
 
-        self.transition2 = nn.Linear(self.c_in, self.c_out, bias=False)
+        if project:
+            self.transition2 = nn.Linear(self.c_in, self.c_out, bias=False)
         if self.use_single_cond is True:
             if self.c_single_cond is None:
                 message = "Conditioned layers require a conditioning channel count"
@@ -107,6 +124,11 @@ class AdaLNZero(nn.Module):
             )
             raise ValueError(message)
 
+        if not self.project:
+            if single_cond is None:
+                message = "A gate-only output needs its conditioning"
+                raise ValueError(message)
+            return torch.sigmoid(self.adaptive_zero_cond(single_cond)) * x
         output = (
             self.transition2(x)
             if gate_logits is None
@@ -130,6 +152,8 @@ class DiffusionTransition(nn.Module):
         c_single_cond: int | None,
         num_intermediate_factor: int = 2,
         use_single_cond: bool = False,
+        identity_scale: bool = False,
+        norm_eps: float = 1e-5,
     ) -> None:
         super().__init__()
 
@@ -139,7 +163,11 @@ class DiffusionTransition(nn.Module):
         self.use_single_cond = use_single_cond
 
         self.adaptive_layernorm = AdaptiveLayerNorm(
-            self.c_x, self.c_single_cond, self.use_single_cond
+            self.c_x,
+            self.c_single_cond,
+            self.use_single_cond,
+            identity_scale=identity_scale,
+            eps=norm_eps,
         )
         self.transition1 = nn.Linear(
             self.c_x, 2 * self.c_x * self.num_intermediate_factor, bias=False
@@ -196,10 +224,15 @@ class SelfAttention(nn.Module):
         num_head: int = 16,
         use_single_cond: bool = False,
         kq_norm: bool = False,
+        identity_scale: bool = False,
+        norm_eps: float = 1e-5,
+        gating_query: bool = True,
+        project_output: bool = True,
     ) -> None:
 
         super().__init__()
         self.kq_norm = kq_norm
+        self.use_gating_query = gating_query
         if kq_norm:
             self.query_layer_norm = fastnn.LayerNorm(c_x)
             self.key_layer_norm = fastnn.LayerNorm(c_x)
@@ -212,17 +245,26 @@ class SelfAttention(nn.Module):
         self.use_single_cond = use_single_cond
 
         self.adaptive_layernorm = AdaptiveLayerNorm(
-            self.c_x, self.c_single_cond, self.use_single_cond
+            self.c_x,
+            self.c_single_cond,
+            self.use_single_cond,
+            identity_scale=identity_scale,
+            eps=norm_eps,
         )
 
         self.q_projection = nn.Linear(self.c_x, self.c_x, bias=True)
         self.k_projection = nn.Linear(self.c_x, self.c_x, bias=False)
         self.v_projection = nn.Linear(self.c_x, self.c_x, bias=False)
 
-        self.gating_query = nn.Linear(self.c_x, self.c_x, bias=False)
+        if self.use_gating_query:
+            self.gating_query = nn.Linear(self.c_x, self.c_x, bias=False)
 
         self.adaptive_zero_init = AdaLNZero(
-            self.c_x, self.c_x, self.c_single_cond, self.use_single_cond
+            self.c_x,
+            self.c_x,
+            self.c_single_cond,
+            self.use_single_cond,
+            project=project_output,
         )
 
     def forward(
@@ -274,7 +316,7 @@ class SelfAttention(nn.Module):
             weighted_avg = weighted_avg.squeeze(0)
         weighted_avg = einops.rearrange(weighted_avg, "... h q c -> ... q (h c)")
 
-        gate_logits = self.gating_query(x)
+        gate_logits = self.gating_query(x) if self.use_gating_query else None
         return self.adaptive_zero_init(
             weighted_avg, single_cond, gate_logits=gate_logits
         )
@@ -325,7 +367,10 @@ class DiffusionTransformer(nn.Module):
                 ]
             )
         else:
-            self.pair_input_layer_norm = fastnn.LayerNorm(self.c_pair_cond)
+            self.pair_input_layer_norm = fastnn.LayerNorm(
+                self.c_pair_cond,
+                bias="pair_input_layer_norm" in spec.affine_norms,
+            )
             self.pair_logits_projection = nn.ModuleList(
                 [
                     nn.Linear(
@@ -344,6 +389,9 @@ class DiffusionTransformer(nn.Module):
                     self.c_single_cond,
                     use_single_cond=True,
                     kq_norm=spec.attention_kq_norm,
+                    identity_scale=spec.adaptive_identity_scale,
+                    norm_eps=spec.adaptive_norm_eps,
+                    gating_query=spec.token_attention_gating_query,
                 )
                 for _ in range(self.num_blocks)
             ]
@@ -351,7 +399,11 @@ class DiffusionTransformer(nn.Module):
         self.transition_block = nn.ModuleList(
             [
                 conditioned_transition(spec)(
-                    self.c_act, self.c_single_cond, use_single_cond=True
+                    self.c_act,
+                    self.c_single_cond,
+                    use_single_cond=True,
+                    identity_scale=spec.adaptive_identity_scale,
+                    norm_eps=spec.adaptive_norm_eps,
                 )
                 for _ in range(self.num_blocks)
             ]
@@ -421,11 +473,16 @@ class CrossAttention(nn.Module):
         num_head: int = 4,
         key_masked: bool = False,
         kq_norm: bool = False,
+        identity_scale: bool = False,
+        norm_eps: float = 1e-5,
+        gating_query: bool = True,
+        project_output: bool = True,
     ) -> None:
         super().__init__()
 
         self.key_masked = key_masked
         self.kq_norm = kq_norm
+        self.use_gating_query = gating_query
         if kq_norm:
             self.query_layer_norm = fastnn.LayerNorm(key_dim)
             self.key_layer_norm = fastnn.LayerNorm(key_dim)
@@ -439,20 +496,28 @@ class CrossAttention(nn.Module):
 
         self.q_scale = self.key_dim_per_head ** (-0.5)
 
-        self.q_adaptive_layernorm = AdaptiveLayerNorm(
-            c_x=self.key_dim, c_single_cond=self.c_single_cond, use_single_cond=True
-        )
-        self.k_adaptive_layernorm = AdaptiveLayerNorm(
-            c_x=self.key_dim, c_single_cond=self.c_single_cond, use_single_cond=True
-        )
+        adaln = {
+            "c_x": self.key_dim,
+            "c_single_cond": self.c_single_cond,
+            "use_single_cond": True,
+            "identity_scale": identity_scale,
+            "eps": norm_eps,
+        }
+        self.q_adaptive_layernorm = AdaptiveLayerNorm(**adaln)
+        self.k_adaptive_layernorm = AdaptiveLayerNorm(**adaln)
 
         self.q_projection = nn.Linear(self.key_dim, self.key_dim, bias=True)
         self.k_projection = nn.Linear(self.key_dim, self.key_dim, bias=False)
         self.v_projection = nn.Linear(self.value_dim, self.value_dim, bias=False)
 
-        self.gating_query = nn.Linear(self.key_dim, self.value_dim, bias=False)
+        if self.use_gating_query:
+            self.gating_query = nn.Linear(self.key_dim, self.value_dim, bias=False)
         self.adaptive_zero_init = AdaLNZero(
-            self.value_dim, self.value_dim, self.key_dim, use_single_cond=True
+            self.value_dim,
+            self.value_dim,
+            self.key_dim,
+            use_single_cond=True,
+            project=project_output,
         )
 
     def forward(
@@ -511,7 +576,7 @@ class CrossAttention(nn.Module):
         weighted_avg = torch.einsum("...hqk,...khc->...qhc", weights.to(v.dtype), v)
         weighted_avg = torch.reshape(weighted_avg, (*weighted_avg.shape[:-2], -1))
 
-        gate_logits = self.gating_query(x_q)
+        gate_logits = self.gating_query(x_q) if self.use_gating_query else None
         return self.adaptive_zero_init(
             weighted_avg, single_cond_q, gate_logits=gate_logits
         )
@@ -557,7 +622,10 @@ class DiffusionCrossAttTransformer(nn.Module):
                 ]
             )
         else:
-            self.pair_input_layer_norm = fastnn.LayerNorm(self.c_pair_cond, bias=False)
+            self.pair_input_layer_norm = fastnn.LayerNorm(
+                self.c_pair_cond,
+                bias="pair_input_layer_norm" in spec.affine_norms,
+            )
             self.pair_logits_projection = nn.Linear(
                 self.c_pair_cond, self.num_blocks * self.num_head, bias=False
             )
@@ -568,6 +636,10 @@ class DiffusionCrossAttTransformer(nn.Module):
                     num_head=self.num_head,
                     key_masked=spec.key_masked_atom_attention,
                     kq_norm=spec.attention_kq_norm,
+                    identity_scale=spec.adaptive_identity_scale,
+                    norm_eps=spec.adaptive_norm_eps,
+                    gating_query=spec.atom_attention_gating_query,
+                    project_output=spec.atom_attention_project_output,
                 )
                 for _ in range(self.num_blocks)
             ]
@@ -579,6 +651,8 @@ class DiffusionCrossAttTransformer(nn.Module):
                     c_x=self.c_query,
                     c_single_cond=self.c_single_cond,
                     use_single_cond=True,
+                    identity_scale=spec.adaptive_identity_scale,
+                    norm_eps=spec.adaptive_norm_eps,
                 )
                 for _ in range(self.num_blocks)
             ]

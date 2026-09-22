@@ -34,14 +34,25 @@ class GridSelfAttention(nn.Module):
         transpose: bool = False,
         spec: DenseSpec = ALPHAFOLD3,
         qkv_dim: int | None = None,
+        dual_output: bool = False,
     ) -> None:
         super().__init__()
+        #: A second output projection per direction, combined as
+        #: ``kept + transpose(other)``. The trunk's single projection is that
+        #: sum already; a head trained with two needs both.
+        self.dual_output = dual_output
         self.c_pair = c_pair
         self.num_head = num_head
         self.qkv_dim = qkv_dim or self.c_pair // self.num_head
         hidden = self.num_head * self.qkv_dim
         self.transpose = transpose
         self.transposed_bias = transpose and spec.transposed_column_pair_bias
+        #: The ending-node direction is NOT turned back: the two directions are
+        #: one module whose single output projection reads them in that mixed
+        #: orientation, so the sum is taken as it stands.
+        self.untransposed_output = (
+            transpose and spec.untransposed_column_pair_output and not dual_output
+        )
 
         self.act_norm = fastnn.LayerNorm(self.c_pair)
         self.pair_bias_projection = nn.Linear(self.c_pair, self.num_head, bias=False)
@@ -56,6 +67,10 @@ class GridSelfAttention(nn.Module):
         self.output_projection = nn.Linear(
             hidden, self.c_pair, bias=spec.triangle_attention_bias
         )
+        if self.dual_output:
+            self.output_projection_transposed = nn.Linear(
+                hidden, self.c_pair, bias=spec.triangle_attention_bias
+            )
 
     def _attention(self, pair: torch.Tensor, mask: torch.Tensor, bias: torch.Tensor):
         q = self.q_projection(pair)
@@ -95,7 +110,13 @@ class GridSelfAttention(nn.Module):
 
         gate_values = self.gating_query(pair)
 
-        return gated_projection(self, self.output_projection, gate_values, weighted_avg)
+        kept = gated_projection(self, self.output_projection, gate_values, weighted_avg)
+        if not self.dual_output:
+            return kept
+        other = gated_projection(
+            self, self.output_projection_transposed, gate_values, weighted_avg
+        )
+        return kept, other
 
     def forward(self, pair: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """Args:
@@ -113,12 +134,19 @@ class GridSelfAttention(nn.Module):
         if self.transpose:
             pair = pair.permute(1, 0, 2)
 
-        pair = self._attention(pair, mask, nonbatched_bias)
+        out = self._attention(pair, mask, nonbatched_bias)
 
-        if self.transpose:
-            pair = pair.permute(1, 0, 2)
+        if isinstance(out, tuple):
+            kept, other = out
+            if self.transpose:
+                kept = kept.permute(1, 0, 2)
+                other = other.permute(1, 0, 2)
+            return kept + other.transpose(-2, -3)
 
-        return pair
+        if self.transpose and not self.untransposed_output:
+            out = out.permute(1, 0, 2)
+
+        return out
 
 
 class MSAAttention(nn.Module):
@@ -130,9 +158,13 @@ class MSAAttention(nn.Module):
         c_pair: int = 128,
         num_head: int = 8,
         value_dim: int | None = None,
+        pair_mask_logits: bool = False,
     ) -> None:
         super().__init__()
 
+        #: Mask the logits with the TOKEN PAIR mask and zero the value where the
+        #: MSA mask is false, instead of deriving a per-token mask from the rows.
+        self.pair_mask_logits = pair_mask_logits
         self.c_msa = c_msa
         self.c_pair = c_pair
         self.num_head = num_head
@@ -149,17 +181,25 @@ class MSAAttention(nn.Module):
         self.gating_query = nn.Linear(self.c_msa, hidden, bias=False)
         self.output_projection = nn.Linear(hidden, self.c_msa, bias=False)
 
-    def forward(self, msa, msa_mask, pair):
+    def forward(self, msa, msa_mask, pair, pair_mask=None):
         """Compute the module output."""
+        raw_mask = msa_mask
         msa = self.act_norm(msa)
         pair = self.pair_norm(pair)
         logits = self.pair_logits(pair)
         logits = logits.permute(2, 0, 1)
 
-        logits += 1e9 * (torch.max(msa_mask, dim=0).values - 1.0)
+        if self.pair_mask_logits and pair_mask is not None:
+            logits = torch.where(pair_mask[None].to(torch.bool), logits, -10000.0)
+        else:
+            logits += 1e9 * (torch.max(msa_mask, dim=0).values - 1.0)
         weights = torch.softmax(logits, dim=-1)
 
         v = self.v_projection(msa)
+        if self.pair_mask_logits:
+            # Zero the value where the MSA mask is false rather than averaging
+            # those positions in.
+            v = v * raw_mask.to(v.dtype)[..., None]
         v = einops.rearrange(v, "b k (h c) -> b k h c", h=self.num_head)
 
         v_avg = torch.einsum("hqk, bkhc -> bqhc", weights.to(v.dtype), v)

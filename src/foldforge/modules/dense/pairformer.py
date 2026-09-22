@@ -44,6 +44,7 @@ class PairformerBlock(nn.Module):
         with_single: bool = True,
         spec: DenseSpec = ALPHAFOLD3,
         pair_qkv_dim: int | None = None,
+        dual_output: bool = False,
     ) -> None:
         """Args:
 
@@ -78,6 +79,7 @@ class PairformerBlock(nn.Module):
             transpose=False,
             spec=spec,
             qkv_dim=pair_qkv_dim,
+            dual_output=dual_output,
         )
         self.pair_attention2 = GridSelfAttention(
             c_pair=c_pair,
@@ -85,11 +87,16 @@ class PairformerBlock(nn.Module):
             transpose=True,
             spec=spec,
             qkv_dim=pair_qkv_dim,
+            dual_output=dual_output,
         )
         self.pair_transition = Transition(
             c_x=c_pair, num_intermediate_factor=self.num_intermediate_factor
         )
         self.c_single = c_single
+        #: Every update reads the representation ENTERING the block and their
+        #: results are summed into it, where AF3 threads each update through the
+        #: running activation.
+        self.parallel = spec.parallel_pairformer_block
         if self.with_single is True:
             self.single_pair_logits_norm = fastnn.LayerNorm(c_pair)
             self.single_pair_logits_projection = nn.Linear(c_pair, n_heads, bias=False)
@@ -119,11 +126,28 @@ class PairformerBlock(nn.Module):
         Returns:
             tuple[torch.Tensor, Optional[torch.Tensor]]: pair, single
         """
-        pair = triangle_residual(self.triangle_multiplication_outgoing, pair, pair_mask)
-        pair = triangle_residual(self.triangle_multiplication_incoming, pair, pair_mask)
-        pair += self.pair_attention1(pair, mask=pair_mask)
-        pair += self.pair_attention2(pair, mask=pair_mask)
-        pair = transition_residual(self.pair_transition, pair)
+        if self.parallel:
+            # The fused residual helpers below add into the running activation,
+            # which is the schedule this family does not use; call the modules
+            # for their deltas instead.
+            pair_in = pair
+            pair = pair_in + (
+                self.triangle_multiplication_outgoing(pair_in, pair_mask)
+                + self.triangle_multiplication_incoming(pair_in, pair_mask)
+                + self.pair_attention1(pair_in, mask=pair_mask)
+                + self.pair_attention2(pair_in, mask=pair_mask)
+                + self.pair_transition(pair_in)
+            )
+        else:
+            pair = triangle_residual(
+                self.triangle_multiplication_outgoing, pair, pair_mask
+            )
+            pair = triangle_residual(
+                self.triangle_multiplication_incoming, pair, pair_mask
+            )
+            pair += self.pair_attention1(pair, mask=pair_mask)
+            pair += self.pair_attention2(pair, mask=pair_mask)
+            pair = transition_residual(self.pair_transition, pair)
 
         if self.with_single is True:
             if single is None or seq_mask is None:
@@ -138,6 +162,9 @@ class PairformerBlock(nn.Module):
             attention_update: torch.Tensor = self.single_attention_(
                 single, seq_mask, pair_logits=pair_logits
             )
+            if self.parallel:
+                # Both single updates read the single entering the block.
+                return pair, single + attention_update + self.single_transition(single)
             single += attention_update
 
             single = transition_residual(self.single_transition, single)
@@ -170,7 +197,10 @@ class EvoformerBlock(nn.Module):
             sum_without_norm=spec.opm_sum_without_norm,
         )
         self.msa_attention1 = MSAAttention(
-            c_msa=c_msa, c_pair=c_pair, value_dim=spec.msa_value_dim
+            c_msa=c_msa,
+            c_pair=c_pair,
+            value_dim=spec.msa_value_dim,
+            pair_mask_logits=spec.msa_pair_mask_logits,
         )
         self.msa_transition = Transition(c_x=c_msa)
 
@@ -191,6 +221,11 @@ class EvoformerBlock(nn.Module):
             c_pair=c_pair, num_head=n_heads_pair, transpose=True, spec=spec
         )
         self.pair_transition = Transition(c_x=c_pair)
+        #: Two parallel stages: the two triangle multiplications and the
+        #: transition all read the post-outer-product pair and are summed into
+        #: it, then both attention directions read that result and are summed in
+        #: turn. AF3 threads all five sequentially.
+        self.parallel = spec.parallel_msa_block
 
     def forward(
         self,
@@ -206,7 +241,9 @@ class EvoformerBlock(nn.Module):
             return msa_row_update(
                 value,
                 updated_pair,
-                attention_delta=lambda m, z: self.msa_attention1(m, msa_mask, z),
+                attention_delta=lambda m, z: self.msa_attention1(
+                    m, msa_mask, z, pair_mask
+                ),
                 transition_residual=lambda m: transition_residual(
                     self.msa_transition, m
                 ),
@@ -214,6 +251,16 @@ class EvoformerBlock(nn.Module):
 
         def update_pair(value):
             """Update pair."""
+            if self.parallel:
+                value = value + (
+                    self.triangle_multiplication_outgoing(value, pair_mask)
+                    + self.triangle_multiplication_incoming(value, pair_mask)
+                    + self.pair_transition(value)
+                )
+                return value + (
+                    self.pair_attention1(value, mask=pair_mask)
+                    + self.pair_attention2(value, mask=pair_mask)
+                )
             value = triangle_residual(
                 self.triangle_multiplication_outgoing, value, pair_mask
             )

@@ -167,6 +167,11 @@ class SingleTemplateEmbedding(nn.Module):
         self.dgram_features_config = DistogramFeaturesConfig()
 
         self.query_embedding_norm = fastnn.LayerNorm(pair_channel)
+        self.template_feature_bias = (
+            nn.Parameter(torch.zeros(self.num_channels))
+            if spec.template_feature_bias
+            else None
+        )
         self.template_pair_embedding_0 = nn.Linear(39, self.num_channels, bias=False)
         self.template_pair_embedding_1 = nn.Linear(1, self.num_channels, bias=False)
         self.template_pair_embedding_2 = nn.Linear(31, self.num_channels, bias=False)
@@ -187,6 +192,7 @@ class SingleTemplateEmbedding(nn.Module):
                     num_intermediate_factor=2,
                     spec=spec,
                     with_single=False,
+                    pair_qkv_dim=spec.template_qkv_dim,
                 )
                 for _ in range(self.template_stack_num_layer)
             ]
@@ -294,6 +300,10 @@ class SingleTemplateEmbedding(nn.Module):
         if not isinstance(act, torch.Tensor):
             message = "Template embedding requires at least one feature"
             raise TypeError(message)
+        if self.template_feature_bias is not None:
+            # A fused feature projection's bias; nine bias-free Linears summed
+            # cannot express it, so it is added once here.
+            act = act + self.template_feature_bias
         return act
 
     def forward(
@@ -314,4 +324,8 @@ class SingleTemplateEmbedding(nn.Module):
         if not isinstance(act, torch.Tensor):
             message = "Template embedding requires at least one feature"
             raise TypeError(message)
+        if self.template_feature_bias is not None:
+            # A fused feature projection's bias; nine bias-free Linears summed
+            # cannot express it, so it is added once here.
+            act = act + self.template_feature_bias
         return act

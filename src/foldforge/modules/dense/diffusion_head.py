@@ -78,8 +78,11 @@ class DiffusionHead(nn.Module):
             if spec.diffusion_projected_relpos
             else None
         )
+        self.pair_init_cond = spec.diffusion_pair_init_cond
         self.c_pair_cond_initial = trunk_pair_channel + (
-            pair_channel if spec.diffusion_projected_relpos else 139
+            trunk_pair_channel
+            if self.pair_init_cond
+            else (pair_channel if spec.diffusion_projected_relpos else 139)
         )
         self.pair_cond_initial_norm = fastnn.LayerNorm(
             self.c_pair_cond_initial, bias="pair_cond_initial_norm" in affine
@@ -94,6 +97,10 @@ class DiffusionHead(nn.Module):
         self.pair_transition_1 = DiffusionTransition(
             self.pair_channel, c_single_cond=None
         )
+
+        self.cond_final_norm = spec.diffusion_cond_final_norm
+        if self.cond_final_norm:
+            self.pair_cond_final_norm = fastnn.LayerNorm(self.pair_channel, bias=True)
 
         # Trunk single plus the target features.
         self.c_single_cond_initial = (
@@ -122,6 +129,8 @@ class DiffusionHead(nn.Module):
         self.single_transition_1 = DiffusionTransition(
             self.seq_channel, c_single_cond=None
         )
+        if spec.diffusion_cond_final_norm:
+            self.single_cond_final_norm = fastnn.LayerNorm(self.seq_channel, bias=True)
 
         self.atom_cross_att_encoder = AtomCrossAttEncoder(
             per_token_channels=self.c_act,
@@ -133,8 +142,12 @@ class DiffusionHead(nn.Module):
             spec=spec,
         )
 
-        self.single_cond_embedding_norm = fastnn.LayerNorm(
-            self.seq_channel, bias="single_cond_embedding_norm" in affine
+        self.single_cond_embedding_norm = (
+            fastnn.LayerNorm(
+                self.seq_channel, bias="single_cond_embedding_norm" in affine
+            )
+            if spec.single_cond_embedding_norm
+            else None
         )
         self.single_cond_embedding_projection = nn.Linear(
             self.seq_channel, self.c_act, bias=False
@@ -167,12 +180,15 @@ class DiffusionHead(nn.Module):
         single_embedding = use_conditioning * embeddings["single"]
         pair_embedding = use_conditioning * embeddings["pair"]
 
-        rel_features = featurization.create_relative_encoding(
-            batch.token_features, max_relative_idx=32, max_relative_chain=2
-        ).to(dtype=pair_embedding.dtype)
-        if self.relpe_projection is not None:
-            rel_features = self.relpe_projection(rel_features)
-        features_2d = torch.concatenate([pair_embedding, rel_features], dim=-1)
+        if self.pair_init_cond:
+            second = embeddings["pair_init"].to(dtype=pair_embedding.dtype)
+        else:
+            second = featurization.create_relative_encoding(
+                batch.token_features, max_relative_idx=32, max_relative_chain=2
+            ).to(dtype=pair_embedding.dtype)
+            if self.relpe_projection is not None:
+                second = self.relpe_projection(second)
+        features_2d = torch.concatenate([pair_embedding, second], dim=-1)
 
         pair_cond = layernorm_projection(
             self.pair_cond_initial_norm, self.pair_cond_initial_projection, features_2d
@@ -180,6 +196,8 @@ class DiffusionHead(nn.Module):
 
         pair_cond += self.pair_transition_0(pair_cond)
         pair_cond += self.pair_transition_1(pair_cond)
+        if self.cond_final_norm:
+            pair_cond = self.pair_cond_final_norm(pair_cond)
 
         # The diffusion module takes the structure projection where the family
         # trained one; every other family hands it the same tensor as the trunk.
@@ -217,6 +235,8 @@ class DiffusionHead(nn.Module):
 
         single_cond += self.single_transition_0(single_cond)
         single_cond += self.single_transition_1(single_cond)
+        if self.cond_final_norm:
+            single_cond = self.single_cond_final_norm(single_cond)
 
         return single_cond, pair_cond
 
@@ -254,11 +274,16 @@ class DiffusionHead(nn.Module):
         )
         act = enc.token_act
 
-        act += layernorm_projection(
-            self.single_cond_embedding_norm,
-            self.single_cond_embedding_projection,
-            trunk_single_cond,
-        )
+        if self.single_cond_embedding_norm is None:
+            # The conditioning already closed this track; re-normalising is not a
+            # no-op even at scale one, because it re-centres and re-scales.
+            act = act + self.single_cond_embedding_projection(trunk_single_cond)
+        else:
+            act += layernorm_projection(
+                self.single_cond_embedding_norm,
+                self.single_cond_embedding_projection,
+                trunk_single_cond,
+            )
 
         act = self.transformer(
             act=act,

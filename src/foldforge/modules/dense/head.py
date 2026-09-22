@@ -13,6 +13,7 @@
 import einops
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from foldforge.data.constants import atom_types
 from foldforge.data.features import dense_batch as feat_batch
@@ -38,6 +39,8 @@ class DistogramHead(nn.Module):
         first_break: float = 2.3125,
         last_break: float = 21.6875,
         bias: bool = False,
+        hidden: bool = False,
+        mean_symmetrised: bool = False,
     ) -> None:
         super().__init__()
 
@@ -45,9 +48,19 @@ class DistogramHead(nn.Module):
         self.num_bins = num_bins
         self.first_break = first_break
         self.last_break = last_break
+        self.mean_symmetrised = mean_symmetrised
 
-        # A trained bias passes through the symmetrisation below, so it enters twice.
-        self.half_logits = nn.Linear(self.c_pair, self.num_bins, bias=bias)
+        # A trained bias passes through the symmetrisation below, so it enters twice
+        # unless the family takes the mean.
+        self.hidden = None
+        width = self.c_pair
+        if hidden:
+            # A head trained post-hoc on a frozen trunk, as an MLP rather than the
+            # single projection AF3 reads the pair with.
+            self.input_layer_norm = fastnn.LayerNorm(self.c_pair)
+            self.hidden = nn.Linear(self.c_pair, 2 * self.c_pair, bias=True)
+            width = 2 * self.c_pair
+        self.half_logits = nn.Linear(width, self.num_bins, bias=bias)
 
         breaks = torch.linspace(
             self.first_break,
@@ -81,9 +94,19 @@ class DistogramHead(nn.Module):
         seq_mask = batch.token_features.mask.to(dtype=torch.bool)
         pair_mask = seq_mask[:, None] * seq_mask[None, :]
 
-        left_half_logits = self.half_logits(pair_act)
+        act = pair_act
+        if self.hidden is not None:
+            # The exact erf GELU, not the tanh approximation: the difference is
+            # silent and this head was trained against torch's default.
+            act = F.gelu(
+                self.hidden(self.input_layer_norm(pair_act)), approximate="none"
+            )
+        left_half_logits = self.half_logits(act)
         right_half_logits = left_half_logits
         logits = left_half_logits + right_half_logits.transpose(-2, -3)
+        if self.mean_symmetrised:
+            # The mean, not the sum. Once the softmax sees it this is not a rescale.
+            logits = logits / 2
         probs = torch.softmax(logits, dim=-1)
         contact_probs = torch.einsum(
             "ijk,k->ij", probs.float(), self.is_contact_bin.float()
@@ -223,6 +246,17 @@ class ConfidenceHead(nn.Module):
         self.global_norm_inputs = spec.confidence == "rf3"
 
         self.dgram_features_config = template.DistogramFeaturesConfig()
+        #: Distance classes the head embeds the predicted structure as.
+        self.confidence_dgram = spec.confidence_dgram
+        self.confidence_dgram_bins = (
+            40
+            if self.global_norm_inputs
+            else (
+                self.confidence_dgram[2]
+                if self.confidence_dgram is not None
+                else self.dgram_features_config.num_bins
+            )
+        )
 
         self.num_bins = 64
         self.max_error_bin = 31.0
@@ -232,6 +266,9 @@ class ConfidenceHead(nn.Module):
 
         self.num_plddt_bins = 50
         self.num_atom = atom_types.DENSE_ATOM_NUM
+        #: A head trained to predict pLDDT over a different atom table keeps its
+        #: own slot count; the gather back onto the dense layout is by atom name.
+        self.plddt_slots = spec.plddt_atom_slots or self.num_atom
         self.bin_width = 1.0 / self.num_plddt_bins
 
         if self.split_heads:
@@ -244,7 +281,7 @@ class ConfidenceHead(nn.Module):
                 self.c_target_feat, self.c_pair, bias=False
             )
             self.distogram_feat_project = nn.Linear(
-                40 if self.global_norm_inputs else self.dgram_features_config.num_bins,
+                self.confidence_dgram_bins,
                 self.c_pair,
                 bias=False,
             )
@@ -258,6 +295,7 @@ class ConfidenceHead(nn.Module):
                     num_intermediate_factor=spec.pairformer_transition_factor,
                     with_single=True,
                     spec=spec,
+                    dual_output=spec.confidence_dual_output,
                 )
                 for _ in range(n_pairformer_layers)
             ]
@@ -307,7 +345,7 @@ class ConfidenceHead(nn.Module):
 
         self.plddt_logits_ln = head_norm(self.c_single)
         self.plddt_logits = nn.Linear(
-            self.c_single, self.num_atom * self.num_plddt_bins, bias=False
+            self.c_single, self.plddt_slots * self.num_plddt_bins, bias=False
         )
 
         self.resolved_head = spec.resolved_head
@@ -344,6 +382,21 @@ class ConfidenceHead(nn.Module):
             dgram = torch.nn.functional.one_hot(
                 (distance[..., None] > edges).sum(-1), 40
             ).to(target_feat.dtype)
+        elif self.confidence_dgram is not None:
+            # Distances binned by a searchsorted over evenly spaced boundaries,
+            # and NOT masked: the family that trained this does not mask it.
+            low, high, classes = self.confidence_dgram
+            distance = (
+                (positions[:, None] - positions[None]).square().sum(-1) + 1e-10
+            ).sqrt()
+            edges = torch.linspace(
+                low, high, classes - 1, device=positions.device, dtype=distance.dtype
+            )
+            return out + self.distogram_feat_project(
+                torch.nn.functional.one_hot(
+                    (distance[..., None] > edges).sum(-1), classes
+                ).to(target_feat.dtype)
+            )
         else:
             dgram = template.dgram_from_positions(positions, self.dgram_features_config)
 
@@ -515,7 +568,11 @@ class ConfidenceHead(nn.Module):
 
         return {
             "predicted_lddt": predicted_lddt,
-            "predicted_experimentally_resolved": predicted_experimentally_resolved,
+            **(
+                {"predicted_experimentally_resolved": predicted_experimentally_resolved}
+                if predicted_experimentally_resolved is not None
+                else {}
+            ),
             "full_pde": pred_distance_error,
             "average_pde": average_pred_distance_error,
             **pae_outputs,

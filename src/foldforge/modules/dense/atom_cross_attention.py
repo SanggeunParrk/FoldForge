@@ -40,6 +40,11 @@ class AtomCrossAttEncoderOutput:
 class AtomCrossAttEncoder(nn.Module):
     """Represent atom cross att encoder."""
 
+    #: Distance class edges of the fused atom-pair feature. The index is the
+    #: number of edges strictly below the distance, and an invalid pair takes the
+    #: class after the last, so the one-hot is two wider than this list.
+    ATOM_PAIR_BINS = (0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 12.0, 16.0)
+
     def __init__(  # noqa: PLR0915 - one checkpoint parameter layout
         self,
         per_token_channels: int = 384,
@@ -106,12 +111,14 @@ class AtomCrossAttEncoder(nn.Module):
             self.per_atom_channels, self.per_atom_pair_channels, bias=False
         )
 
-        self.embed_pair_offsets = nn.Linear(
-            self.c_positions, self.per_atom_pair_channels, bias=False
-        )
-        self.embed_pair_distances = nn.Linear(
-            self.c_pair_distance, self.per_atom_pair_channels, bias=False
-        )
+        self.atom_pair_distogram = spec.atom_pair_distogram_feature
+        if not self.atom_pair_distogram:
+            self.embed_pair_offsets = nn.Linear(
+                self.c_positions, self.per_atom_pair_channels, bias=False
+            )
+            self.embed_pair_distances = nn.Linear(
+                self.c_pair_distance, self.per_atom_pair_channels, bias=False
+            )
 
         self.single_to_pair_cond_row_1 = nn.Linear(
             128, self.per_atom_pair_channels, bias=False
@@ -121,17 +128,26 @@ class AtomCrossAttEncoder(nn.Module):
             128, self.per_atom_pair_channels, bias=False
         )
 
-        self.embed_pair_offsets_1 = nn.Linear(
-            self.c_positions, self.per_atom_pair_channels, bias=False
-        )
+        if self.atom_pair_distogram:
+            # One projection over [distogram one-hot, inverse-square, validity].
+            # A one-hot distogram is not a linear function of the offsets, so
+            # unlike the single side this cannot be folded into AF3's Linears.
+            # It carries a bias, which applies to invalid pairs too.
+            self.embed_atom_pair_feat = nn.Linear(
+                len(self.ATOM_PAIR_BINS) + 4, self.per_atom_pair_channels, bias=True
+            )
+        else:
+            self.embed_pair_offsets_1 = nn.Linear(
+                self.c_positions, self.per_atom_pair_channels, bias=False
+            )
 
-        self.embed_pair_distances_1 = nn.Linear(
-            1, self.per_atom_pair_channels, bias=False
-        )
+            self.embed_pair_distances_1 = nn.Linear(
+                1, self.per_atom_pair_channels, bias=False
+            )
 
-        self.embed_pair_offsets_valid = nn.Linear(
-            1, self.per_atom_pair_channels, bias=False
-        )
+            self.embed_pair_offsets_valid = nn.Linear(
+                1, self.per_atom_pair_channels, bias=False
+            )
 
         self.pair_mlp_1 = nn.Linear(
             self.per_atom_pair_channels, self.per_atom_pair_channels, bias=False
@@ -139,9 +155,10 @@ class AtomCrossAttEncoder(nn.Module):
         self.pair_mlp_2 = nn.Linear(
             self.per_atom_pair_channels, self.per_atom_pair_channels, bias=False
         )
-        self.pair_mlp_3 = nn.Linear(
-            self.per_atom_pair_channels, self.per_atom_pair_channels, bias=False
-        )
+        if not self.atom_pair_distogram:
+            self.pair_mlp_3 = nn.Linear(
+                self.per_atom_pair_channels, self.per_atom_pair_channels, bias=False
+            )
 
         self.c_query = 128
         self.atom_transformer_encoder = DiffusionCrossAttTransformer(
@@ -232,20 +249,21 @@ class AtomCrossAttEncoder(nn.Module):
         col_act = self.single_to_pair_cond_col(torch.relu(act))
         pair_act = row_act[:, :, None, :] + col_act[:, None, :, :]
 
-        # Embed pairwise offsets
-        pair_act += self.embed_pair_offsets(
-            batch.ref_structure.positions[:, :, None, :]
-            - batch.ref_structure.positions[:, None, :, :]
-        )
-
-        sq_dists = torch.sum(
-            torch.square(
+        if not self.atom_pair_distogram:
+            # Embed pairwise offsets
+            pair_act += self.embed_pair_offsets(
                 batch.ref_structure.positions[:, :, None, :]
                 - batch.ref_structure.positions[:, None, :, :]
-            ),
-            dim=-1,
-        )
-        pair_act += self.embed_pair_distances(1.0 / (1 + sq_dists[:, :, :, None]))
+            )
+
+            sq_dists = torch.sum(
+                torch.square(
+                    batch.ref_structure.positions[:, :, None, :]
+                    - batch.ref_structure.positions[:, None, :, :]
+                ),
+                dim=-1,
+            )
+            pair_act += self.embed_pair_distances(1.0 / (1 + sq_dists[:, :, :, None]))
 
         return act, pair_act
 
@@ -408,25 +426,55 @@ class AtomCrossAttEncoder(nn.Module):
             offsets_valid = offsets_valid & keys_mask[:, None, :].to(torch.bool)
         offsets = queries_ref_pos[:, :, None, :] - keys_ref_pos[:, None, :, :]
 
-        pair_act += self.embed_pair_offsets_1(offsets) * offsets_valid[:, :, :, None]
-
-        # Embed pairwise inverse squared distances
         sq_dists = torch.sum(torch.square(offsets), dim=-1)
-        pair_act += (
-            self.embed_pair_distances_1(1.0 / (1 + sq_dists[:, :, :, None]))
-            * offsets_valid[:, :, :, None]
-        )
-        # Embed offsets valid mask
-        pair_act += self.embed_pair_offsets_valid(
-            offsets_valid[:, :, :, None].to(
-                dtype=self.embed_pair_offsets_valid.weight.dtype
+        if self.atom_pair_distogram:
+            # Compare SQUARED distances against squared edges. Taking the square
+            # root first needs an epsilon, and that epsilon turns a self-pair's
+            # exact zero into a positive number, which lands every self-pair one
+            # class too high. Squaring is exact and needs no guard.
+            edges = torch.tensor(
+                self.ATOM_PAIR_BINS, dtype=sq_dists.dtype, device=sq_dists.device
             )
-        )
+            index = (sq_dists[..., None] > edges.square()).sum(-1)
+            index = torch.where(
+                offsets_valid, index, index.new_full((), len(self.ATOM_PAIR_BINS) + 1)
+            )
+            dtype = self.embed_atom_pair_feat.weight.dtype
+            feature = torch.cat(
+                [
+                    F.one_hot(index, len(self.ATOM_PAIR_BINS) + 2).to(dtype),
+                    # Not masked: validity rides in its own column.
+                    (1.0 / (1.0 + sq_dists))[..., None].to(dtype),
+                    offsets_valid[..., None].to(dtype),
+                ],
+                dim=-1,
+            )
+            pair_act += self.embed_atom_pair_feat(feature)
+        else:
+            pair_act += (
+                self.embed_pair_offsets_1(offsets) * offsets_valid[:, :, :, None]
+            )
 
-        # Run a small MLP on the pair acitvations
-        pair_act2 = self.pair_mlp_1(torch.relu(pair_act))
-        pair_act2 = self.pair_mlp_2(torch.relu(pair_act2))
-        pair_act += self.pair_mlp_3(torch.relu(pair_act2))
+            # Embed pairwise inverse squared distances
+            pair_act += (
+                self.embed_pair_distances_1(1.0 / (1 + sq_dists[:, :, :, None]))
+                * offsets_valid[:, :, :, None]
+            )
+            # Embed offsets valid mask
+            pair_act += self.embed_pair_offsets_valid(
+                offsets_valid[:, :, :, None].to(
+                    dtype=self.embed_pair_offsets_valid.weight.dtype
+                )
+            )
+
+        if self.atom_pair_distogram:
+            # Two layers with no rectifier on the way in, and one residual add.
+            pair_act = pair_act + self.pair_mlp_2(torch.relu(self.pair_mlp_1(pair_act)))
+        else:
+            # Run a small MLP on the pair acitvations
+            pair_act2 = self.pair_mlp_1(torch.relu(pair_act))
+            pair_act2 = self.pair_mlp_2(torch.relu(pair_act2))
+            pair_act += self.pair_mlp_3(torch.relu(pair_act2))
 
         queries_act = self.atom_transformer_encoder(
             queries_act=queries_act,
@@ -487,6 +535,14 @@ class AtomCrossAttDecoder(nn.Module):
             c_query=self.per_atom_channels, spec=spec
         )
 
+        # A second, affine norm over the encoder's atom conditioning. AF3 reuses
+        # the encoder's unchanged.
+        self.post_atom_cond_layer_norm = (
+            fastnn.LayerNorm(self.per_atom_channels, bias=True)
+            if spec.post_atom_cond_norm
+            else None
+        )
+
         self.atom_features_layer_norm = fastnn.LayerNorm(
             self.per_atom_channels, bias="atom_features_layer_norm" in spec.affine_norms
         )
@@ -528,8 +584,16 @@ class AtomCrossAttDecoder(nn.Module):
             queries_mask=enc.queries_mask,
             queries_to_keys=batch.atom_cross_att.queries_to_keys,
             keys_mask=enc.keys_mask,
-            queries_single_cond=enc.queries_single_cond,
-            keys_single_cond=enc.keys_single_cond,
+            queries_single_cond=(
+                enc.queries_single_cond
+                if self.post_atom_cond_layer_norm is None
+                else self.post_atom_cond_layer_norm(enc.queries_single_cond)
+            ),
+            keys_single_cond=(
+                enc.keys_single_cond
+                if self.post_atom_cond_layer_norm is None
+                else self.post_atom_cond_layer_norm(enc.keys_single_cond)
+            ),
             pair_cond=enc.pair_cond,
         )
 

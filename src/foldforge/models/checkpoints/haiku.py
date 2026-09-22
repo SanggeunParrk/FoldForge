@@ -548,11 +548,19 @@ def build_adaptive_layer_norm_params(
             "layer_norm": build_layer_norm_params(l=aln.layer_norm),
         }
     return {
-        "single_cond_layer_norm": build_layer_norm_params(
-            l=aln.single_cond_layer_norm, use_bias=False
+        # The identity-centred form normalises neither the conditioning nor its
+        # scale, so it has neither record to map.
+        **(
+            {
+                "single_cond_layer_norm": build_layer_norm_params(
+                    l=aln.single_cond_layer_norm, use_bias=False
+                )
+            }
+            if hasattr(aln, "single_cond_layer_norm")
+            else {}
         ),
         "single_cond_scale": build_linear_params(
-            l=aln.single_cond_scale, use_bias=True
+            l=aln.single_cond_scale, use_bias=aln.single_cond_scale.bias is not None
         ),
         "single_cond_bias": build_linear_params(l=aln.single_cond_bias),
     }
@@ -562,9 +570,11 @@ def build_ada_ln_zero_params(
     ada_ln_zero: ParameterModule, *, use_single_cond: bool = False
 ) -> ParamTree:
     """Compute ada l n zero params."""
-    d = {
-        "transition2": build_linear_params(l=ada_ln_zero.transition2),
-    }
+    d = (
+        {"transition2": build_linear_params(l=ada_ln_zero.transition2)}
+        if ada_ln_zero.project
+        else {}
+    )
 
     if use_single_cond is True:
         d.update(
@@ -604,6 +614,11 @@ def build_outer_product_mean_params(outer_product_mean: ParameterModule) -> Para
             l=outer_product_mean.right_projection,
             use_bias=outer_product_mean.right_projection.bias is not None,
         ),
+        **(
+            {"product_norm": build_layer_norm_params(l=outer_product_mean.product_norm)}
+            if hasattr(outer_product_mean, "product_norm")
+            else {}
+        ),
         "output_w": Param(outer_product_mean.output_w),
         "output_b": Param(outer_product_mean.output_b),
     }
@@ -641,6 +656,17 @@ def build_grid_self_attention_params(pair_attention: ParameterModule) -> ParamTr
             l=pair_attention.output_projection,
             use_bias=pair_attention.output_projection.bias is not None,
         ),
+        **(
+            {
+                "output_projection_transposed": build_linear_params(
+                    l=pair_attention.output_projection_transposed,
+                    use_bias=pair_attention.output_projection_transposed.bias
+                    is not None,
+                )
+            }
+            if pair_attention.dual_output
+            else {}
+        ),
     }
 
 
@@ -664,11 +690,12 @@ def build_self_attention_params(
         ),
         "k_projection": build_linear_hma_params(l=self_attention.k_projection),
         "v_projection": build_linear_hma_params(l=self_attention.v_projection),
-        "gating_query": build_linear_params(l=self_attention.gating_query),
-        **build_kq_norm_params(self_attention),
-        "transition2": build_linear_params(
-            l=self_attention.adaptive_zero_init.transition2
+        **(
+            {"gating_query": build_linear_params(l=self_attention.gating_query)}
+            if self_attention.use_gating_query
+            else {}
         ),
+        **build_kq_norm_params(self_attention),
         **build_adaptive_layer_norm_params(
             aln=self_attention.adaptive_layernorm, use_single_cond=use_single_cond
         ),
@@ -699,7 +726,11 @@ def build_cross_attention_params(cross_attention: ParameterModule) -> ParamTree:
         ),
         "k_projection": build_linear_hma_params(l=cross_attention.k_projection),
         "v_projection": build_linear_hma_params(l=cross_attention.v_projection),
-        "gating_query": build_linear_params(l=cross_attention.gating_query),
+        **(
+            {"gating_query": build_linear_params(l=cross_attention.gating_query)}
+            if cross_attention.use_gating_query
+            else {}
+        ),
         **build_kq_norm_params(cross_attention),
         **build_ada_ln_zero_params(
             ada_ln_zero=cross_attention.adaptive_zero_init, use_single_cond=True
@@ -771,7 +802,8 @@ def build_diffusion_transformer_params(transformer: ParameterModule) -> ParamTre
         }
     return {
         "pair_input_layer_norm": build_layer_norm_params(
-            l=transformer.pair_input_layer_norm, use_bias=False
+            l=transformer.pair_input_layer_norm,
+            use_bias=transformer.pair_input_layer_norm.bias is not None,
         ),
         "__layer_stack_with_per_layer/pair_logits_projection": stacked(
             [build_linear_hma_params(l=l) for l in transformer.pair_logits_projection]
@@ -818,7 +850,8 @@ def build_diffusion_cross_att_transformer_params(
         }
     return {
         "pair_input_layer_norm": build_layer_norm_params(
-            l=transformer.pair_input_layer_norm, use_bias=False
+            l=transformer.pair_input_layer_norm,
+            use_bias=transformer.pair_input_layer_norm.bias is not None,
         ),
         "pair_logits_projection": build_linear_hma_params(
             l=transformer.pair_logits_projection
@@ -849,22 +882,48 @@ def build_atom_cross_att_encoder_params(
         "single_to_pair_cond_col": build_linear_params(
             l=encoder.single_to_pair_cond_col
         ),
-        "embed_pair_offsets": build_linear_params(l=encoder.embed_pair_offsets),
-        "embed_pair_distances": build_linear_params(l=encoder.embed_pair_distances),
+        **(
+            {}
+            if encoder.atom_pair_distogram
+            else {
+                "embed_pair_offsets": build_linear_params(l=encoder.embed_pair_offsets),
+                "embed_pair_distances": build_linear_params(
+                    l=encoder.embed_pair_distances
+                ),
+            }
+        ),
         "single_to_pair_cond_row_1": build_linear_params(
             l=encoder.single_to_pair_cond_row_1
         ),
         "single_to_pair_cond_col_1": build_linear_params(
             l=encoder.single_to_pair_cond_col_1
         ),
-        "embed_pair_offsets_1": build_linear_params(l=encoder.embed_pair_offsets_1),
-        "embed_pair_distances_1": build_linear_params(l=encoder.embed_pair_distances_1),
-        "embed_pair_offsets_valid": build_linear_params(
-            l=encoder.embed_pair_offsets_valid
+        **(
+            {
+                "embed_atom_pair_feat": build_linear_params(
+                    l=encoder.embed_atom_pair_feat, use_bias=True
+                )
+            }
+            if encoder.atom_pair_distogram
+            else {
+                "embed_pair_offsets_1": build_linear_params(
+                    l=encoder.embed_pair_offsets_1
+                ),
+                "embed_pair_distances_1": build_linear_params(
+                    l=encoder.embed_pair_distances_1
+                ),
+                "embed_pair_offsets_valid": build_linear_params(
+                    l=encoder.embed_pair_offsets_valid
+                ),
+            }
         ),
         "pair_mlp_1": build_linear_params(l=encoder.pair_mlp_1),
         "pair_mlp_2": build_linear_params(l=encoder.pair_mlp_2),
-        "pair_mlp_3": build_linear_params(l=encoder.pair_mlp_3),
+        **(
+            {}
+            if encoder.atom_pair_distogram
+            else {"pair_mlp_3": build_linear_params(l=encoder.pair_mlp_3)}
+        ),
         "atom_transformer_encoder": build_diffusion_cross_att_transformer_params(
             encoder.atom_transformer_encoder, prefix=prefix
         ),
@@ -928,6 +987,15 @@ def build_atom_cross_att_decoder_params(decoder: ParameterModule) -> ParamTree:
             decoder.atom_transformer_decoder,
             prefix="diffusion_atom_transformer_decoder",
         ),
+        **(
+            {
+                "post_atom_cond_layer_norm": build_layer_norm_params(
+                    l=decoder.post_atom_cond_layer_norm
+                )
+            }
+            if decoder.post_atom_cond_layer_norm is not None
+            else {}
+        ),
         "atom_features_layer_norm": build_scale_norm_params(
             decoder.atom_features_layer_norm
         ),
@@ -949,6 +1017,16 @@ def build_template_embedding_params(template_embedding: ParameterModule) -> Para
     )
 
     return {
+        **(
+            {
+                "single_template_embedding/template_feature_bias": Param(
+                    template_embedding.single_template_embedding.template_feature_bias
+                )
+            }
+            if template_embedding.single_template_embedding.template_feature_bias
+            is not None
+            else {}
+        ),
         "single_template_embedding/query_embedding_norm": build_layer_norm_params(
             l=template_embedding.single_template_embedding.query_embedding_norm
         ),
@@ -1130,8 +1208,26 @@ def build_diffusion_head_params(head: ParameterModule) -> ParamTree:
             ),
             "diffusion_",
         ),
-        "single_cond_embedding_norm": build_scale_norm_params(
-            head.single_cond_embedding_norm
+        **(
+            {
+                "single_cond_embedding_norm": build_scale_norm_params(
+                    head.single_cond_embedding_norm
+                )
+            }
+            if head.single_cond_embedding_norm is not None
+            else {}
+        ),
+        **(
+            {
+                "pair_cond_final_norm": build_layer_norm_params(
+                    l=head.pair_cond_final_norm
+                ),
+                "single_cond_final_norm": build_layer_norm_params(
+                    l=head.single_cond_final_norm
+                ),
+            }
+            if head.cond_final_norm
+            else {}
         ),
         "single_cond_embedding_projection": build_linear_params(
             l=head.single_cond_embedding_projection
@@ -1143,6 +1239,18 @@ def build_diffusion_head_params(head: ParameterModule) -> ParamTree:
             "diffusion_",
         ),
     }
+
+
+def build_distogram_head_params(head: ParameterModule) -> ParamTree:
+    """Compute distogram head params; the MLP form carries a norm and a hidden layer."""
+    params: ParamTree = {}
+    if head.hidden is not None:
+        params["input_layer_norm"] = build_layer_norm_params(l=head.input_layer_norm)
+        params["hidden"] = build_linear_params(l=head.hidden, use_bias=True)
+    params["half_logits"] = build_linear_params(
+        l=head.half_logits, use_bias=head.half_logits.bias is not None
+    )
+    return params
 
 
 def build_confidence_head_params(head: ParameterModule) -> ParamTree:
@@ -1262,7 +1370,8 @@ def build_evoformer_params(evoformer: ParameterModule) -> ParamTree:
         ),
         "prev_embedding": build_linear_params(l=evoformer.prev_embedding),
         "~_relative_encoding/position_activations": build_linear_params(
-            l=evoformer.position_activations
+            l=evoformer.position_activations,
+            use_bias=evoformer.position_activations.bias is not None,
         ),
         **(
             {"bond_embedding": build_linear_params(l=evoformer.bond_embedding)}
@@ -1316,10 +1425,12 @@ def get_translation_dict(model: ParameterModule) -> ParamTree:
         ),
         "evoformer": build_evoformer_params(model.evoformer),
         "~/diffusion_head": build_diffusion_head_params(model.diffusion_head),
-        "distogram_head/half_logits": build_linear_params(
-            l=model.distogram_head.half_logits,
-            use_bias=model.distogram_head.half_logits.bias is not None,
-        ),
+        **{
+            f"distogram_head/{name}": params
+            for name, params in build_distogram_head_params(
+                model.distogram_head
+            ).items()
+        },
         "confidence_head": build_confidence_head_params(model.confidence_head),
         **(
             {

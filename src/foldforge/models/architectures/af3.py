@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -60,9 +61,9 @@ class Evoformer(nn.Module):
             self.pair_channel, self.pair_channel, bias=False
         )
 
-        self.c_rel_feat = 139
+        self.c_rel_feat = spec.relpos_channel
         self.position_activations = nn.Linear(
-            self.c_rel_feat, self.pair_channel, bias=False
+            self.c_rel_feat, self.pair_channel, bias=spec.relpos_bias
         )
 
         if not spec.no_bond_embedding:
@@ -280,19 +281,35 @@ class Evoformer(nn.Module):
     def forward(
         self,
         batch: feat_batch.Batch,
-        prev: dict[str, torch.Tensor],
+        prev: dict[str, Any],
         target_feat: torch.Tensor,
-    ) -> dict[str, torch.Tensor]:
+    ) -> dict[str, Any]:
         """Compute the module output."""
         pair_activations, pair_mask = self._seq_pair_embedding(
             batch.token_features, target_feat
         )
 
-        pair_activations += self.prev_embedding(
-            self.prev_embedding_layer_norm(prev["pair"].to(pair_activations.dtype))
+        pair_init = None
+        if self.spec.diffusion_pair_init_cond:
+            # Every term here is an addition, so applying the relative encoding
+            # first and capturing before the recycle add gives the same
+            # activation and a clean z_init to condition the diffusion on. The
+            # order is reversed only for the families that need it: summation is
+            # not associative in floating point, and the rest stay bit-identical.
+            pair_activations = self._relative_encoding(batch, pair_activations)
+            pair_init = pair_activations
+
+        recycled = prev["pair"]
+        if self.spec.recycle_from_initial and prev.get("recycle_first", False):
+            # The carry starts at the INITIAL representations rather than zeros,
+            # so pass one already adds recycle_proj(norm(z_init)).
+            recycled = pair_init if pair_init is not None else pair_activations
+        pair_activations = pair_activations + self.prev_embedding(
+            self.prev_embedding_layer_norm(recycled.to(pair_activations.dtype))
         )
 
-        pair_activations = self._relative_encoding(batch, pair_activations)
+        if pair_init is None:
+            pair_activations = self._relative_encoding(batch, pair_activations)
 
         if not self.spec.no_bond_embedding:
             # A family whose token-pair stream carries no bond feature has no
@@ -312,13 +329,20 @@ class Evoformer(nn.Module):
             msa_batch=batch.msa,
             pair_activations=pair_activations,
             pair_mask=pair_mask,
-            target_feat=target_feat,
+            target_feat=(
+                prev["single"].to(target_feat.dtype)
+                if self.spec.msa_single_from_recycle
+                else target_feat
+            ),
         )
 
         single_activations = self.single_activations(target_feat)
-        single_activations += self.prev_single_embedding(
+        recycled_single = prev["single"]
+        if self.spec.recycle_from_initial and prev.get("recycle_first", False):
+            recycled_single = single_activations
+        single_activations = single_activations + self.prev_single_embedding(
             self.prev_single_embedding_layer_norm(
-                prev["single"].to(single_activations.dtype)
+                recycled_single.to(single_activations.dtype)
             )
         )
 
@@ -333,8 +357,10 @@ class Evoformer(nn.Module):
         return {
             "single": single_activations,
             "pair": pair_activations,
+            **({"pair_init": pair_init} if pair_init is not None else {}),
             "target_feat": target_feat,
             "structure_target_feat": prev["structure_target_feat"],
+            "recycle_first": False,
         }
 
 
@@ -377,6 +403,8 @@ class AlphaFold3(nn.Module):
             c_pair=spec.pair_channel,
             num_bins=spec.distogram_bins,
             bias=spec.distogram_bias,
+            hidden=spec.distogram_hidden,
+            mean_symmetrised=spec.distogram_mean_symmetrised,
         )
         self.confidence_head = ConfidenceHead(
             c_single=spec.seq_channel,
@@ -496,6 +524,7 @@ class AlphaFold3(nn.Module):
             ),
             "target_feat": target_feat,
             "structure_target_feat": structure_feat,
+            "recycle_first": True,
         }
 
         # Recycles are additional trunk passes after the initial pass.

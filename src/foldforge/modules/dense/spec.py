@@ -74,6 +74,10 @@ class DenseSpec:
     #: that output; "chai1" builds its own token stream and projects the pair
     #: [token_act, stream] twice. The last two emit one seq_channel vector.
     input_embedder: str = "af3"
+    #: Columns of the relative-position feature. A family that folds constant
+    #: members of its token-pair stream into this projection carries a bias.
+    relpos_channel: int = 139
+    relpos_bias: bool = False
     #: Columns of the MSA feature when the family does not build AF3's set.
     msa_feat_columns: int | None = None
     #: Value of the appended MSA "is paired" column on the query row; None omits it.
@@ -111,6 +115,17 @@ class DenseSpec:
     #: Diffusion pair conditioning concatenates the trunk pair with PROJECTED
     #: relative-position features.
     diffusion_projected_relpos: bool = False
+    #: Diffusion pair conditioning concatenates the trunk pair with the token
+    #: embedder's OWN pair output instead of a relative-position encoding; the
+    #: relative features are already inside it.
+    diffusion_pair_init_cond: bool = False
+    #: Each conditioning track closes with an affine LayerNorm. Both feed every
+    #: adaptive norm downstream, which scale by (s + 1), so omitting them lets
+    #: the token transformer run away.
+    diffusion_cond_final_norm: bool = False
+    #: The token transformer re-normalises the single conditioning before
+    #: projecting it. A family that already closed that track does not.
+    single_cond_embedding_norm: bool = True
     #: The diffusion single conditioning projection carries a bias.
     single_cond_projection_bias: bool = False
     #: The fused atom feature embedding carries a bias.
@@ -120,12 +135,32 @@ class DenseSpec:
     pre_trunk_atom_query: bool = False
     #: The reference charge enters raw; AF3 feeds arcsinh(charge).
     raw_ref_charge: bool = False
+    #: The atom-pair conditioning is ONE projection over a distance-class
+    #: one-hot, an inverse-square distance and a validity column, instead of
+    #: separate offset, distance and validity embeddings; its MLP is two
+    #: layers rather than three.
+    atom_pair_distogram_feature: bool = False
+    #: The atom decoder conditions on a second, affine norm over the encoder's
+    #: atom conditioning rather than reusing it unchanged.
+    post_atom_cond_norm: bool = False
     #: A padded key atom is masked from every query, not only from padded queries.
     key_masked_atom_attention: bool = False
     #: Atom transformers norm and project their pair conditioning in every block.
     per_block_atom_pair_layer_norm: bool = False
     #: Diffusion attentions LayerNorm the projected queries and keys (all heads flat).
     attention_kq_norm: bool = False
+    #: Diffusion conditioning uses the identity-centred (s + 1) scale rather than
+    #: sigmoid(s), and leaves the conditioning unnormalised.
+    adaptive_identity_scale: bool = False
+    #: Epsilon of the activation LayerNorm inside the diffusion blocks.
+    adaptive_norm_eps: float = 1e-5
+    #: The diffusion token transformer's attention carries an output gate.
+    token_attention_gating_query: bool = True
+    #: The atom transformers' attention carries an output gate, and projects its
+    #: concatenated heads. Without the projection the raw heads are multiplied by
+    #: the conditioning gate and that is the whole output.
+    atom_attention_gating_query: bool = True
+    atom_attention_project_output: bool = True
     #: Diffusion blocks feed the transition the PRE-attention activation and add
     #: both deltas in one residual: x + attention(x) + transition(x).
     parallel_attention_transition: bool = False
@@ -136,6 +171,10 @@ class DenseSpec:
     #: The outer product's left and right projections carry trained biases.
     opm_projection_bias: bool = False
     distogram_bins: int = 64
+    #: The distogram head is an MLP (norm, hidden, GELU) rather than AF3's
+    #: single projection, and symmetrises with the mean rather than the sum.
+    distogram_hidden: bool = False
+    distogram_mean_symmetrised: bool = False
     #: A constant the vendor's conformer-embedding MLP emits for an all-zero input.
     conformer_embedding_bias: bool = False
     #: The diffusion atom encoder embeds chirality gradients of the noisy coordinates.
@@ -154,6 +193,11 @@ class DenseSpec:
     #: projection reads them in mixed orientation, so the ending-node direction
     #: is NOT transposed back before the sum.
     untransposed_column_pair_output: bool = False
+    #: The confidence head embeds the predicted structure as this many distance
+    #: classes over (min, max); None keeps AF3's own distogram features.
+    confidence_dgram: tuple[float, float, int] | None = None
+    #: pLDDT is predicted over this many atom slots; None is the dense layout's.
+    plddt_atom_slots: int | None = None
     #: The confidence head's pair attention carries a per-direction output
     #: projection pair combined as `kept + transpose(other)`.
     confidence_dual_output: bool = False
@@ -342,6 +386,22 @@ CHAI1 = replace(
     family="chai1",
     input_embedder="chai1",
     msa_feat_columns=41,
+    relpos_channel=134,
+    distogram_bias=True,
+    distogram_hidden=True,
+    distogram_mean_symmetrised=True,
+    diffusion_pair_init_cond=True,
+    diffusion_cond_final_norm=True,
+    single_cond_embedding_norm=False,
+    adaptive_identity_scale=True,
+    adaptive_norm_eps=0.1,
+    token_attention_gating_query=False,
+    atom_attention_gating_query=False,
+    atom_attention_project_output=False,
+    atom_pair_distogram_feature=True,
+    post_atom_cond_norm=True,
+    parallel_attention_transition=True,
+    relpos_bias=True,
     pair_channel=256,
     diffusion_pair_channel=256,
     pairformer_transition_factor=2,
@@ -357,6 +417,8 @@ CHAI1 = replace(
     template_present_denominator=True,
     confidence="chai1",
     confidence_dual_output=True,
+    confidence_dgram=(3.375, 21.375, 16),
+    plddt_atom_slots=37,
     affine_norms=frozenset(
         {
             "pair_cond_initial_norm",

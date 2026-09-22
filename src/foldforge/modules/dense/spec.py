@@ -125,7 +125,12 @@ class DenseSpec:
     #: Columns of the MSA feature when the family does not build AF3's set.
     msa_feat_columns: int | None = None
     #: The MSA is taken in the order given, query first, and not shuffled.
-    msa_keep_order: bool = False
+    #: How the MSA is cut to the trunk's depth. "shuffle" is AF3's gumbel
+    #: permutation followed by a truncation; "ordered" takes the alignment's
+    #: first rows as given; "keep_query" draws a random subset but pins the
+    #: query at row 0 and re-sorts. The three differ only above the depth
+    #: limit, which is why a single-sequence gate cannot tell them apart.
+    msa_subsample: str = "shuffle"
     #: Value of the appended MSA "is paired" column on the query row; None omits it.
     msa_query_paired: float | None = None
     #: Pair init also embeds token bond orders and contact conditioning.
@@ -533,7 +538,7 @@ CHAI1 = replace(
     language_model="esm2",
     msa_feat_layout="chai1",
     msa_feat_columns=41,
-    msa_keep_order=True,
+    msa_subsample="ordered",
     relpos="chai1",
     relpos_channel=134,
     distogram_bias=True,
@@ -701,7 +706,7 @@ ESMFOLD2 = replace(
     distogram_bins=64,
     distogram_bias=True,
     diffusion_projected_relpos=True,
-    msa_keep_order=True,
+    msa_subsample="keep_query",
     language_model="esmc",
     confidence="boltz2",
     confidence_learned_bins=39,

@@ -452,9 +452,16 @@ class Evoformer(nn.Module):
         """Process MSA and returns updated pair activations."""
         dtype = pair_activations.dtype
 
-        if not self.spec.msa_keep_order:
-            msa_batch = featurization.shuffle_msa(msa_batch)
-        msa_batch = featurization.truncate_msa_batch(msa_batch, self.num_msa)
+        policy = self.spec.msa_subsample
+        if policy == "keep_query":
+            msa_batch = featurization.subsample_msa_keep_query(msa_batch, self.num_msa)
+        else:
+            if policy == "shuffle":
+                msa_batch = featurization.shuffle_msa(msa_batch)
+            elif policy != "ordered":
+                message = f"unknown MSA subsampling policy {policy!r}"
+                raise ValueError(message)
+            msa_batch = featurization.truncate_msa_batch(msa_batch, self.num_msa)
         if getattr(self, "foldforge_msa_bucketing", False):
             extent = ceiling(msa_batch.rows.shape[0], MSA_SHAPES, "msa")
             msa_batch = replace(

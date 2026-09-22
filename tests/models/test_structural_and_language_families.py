@@ -278,3 +278,46 @@ def test_no_spec_field_is_declared_and_never_read():
         if field.name != "family" and f".{field.name}" not in sources
     ]
     assert unread == []
+
+
+def test_keep_query_subsampling_never_drops_the_query():
+    """AF3's shuffle-then-truncate drops it about half the time.
+
+    The gumbel shuffle ranks EVERY row including row 0, so the query lands
+    somewhere random and the truncation then discards it with probability
+    1 - num_msa/depth. A trunk handed an alignment with no query in it folds
+    WORSE the moment it is given a real one, which is how this was found.
+    """
+    from foldforge.data.features import dense as features
+    from foldforge.modules.dense import featurization
+
+    depth, width, keep = 40, 6, 8
+    # Row i is all i, so a subsample can be read straight off the first column.
+    rows = torch.arange(depth).reshape(depth, 1).repeat(1, width)
+    msa = features.MSA(
+        rows=rows,
+        mask=torch.ones(depth, width),
+        deletion_matrix=torch.zeros(depth, width),
+        profile=torch.zeros(width, 31),
+        deletion_mean=torch.zeros(width),
+        num_alignments=torch.tensor(depth),
+    )
+
+    torch.manual_seed(0)
+    draws = set()
+    for _ in range(8):
+        index = featurization.subsample_msa_keep_query(msa, keep).rows[:, 0].tolist()
+        assert index[0] == 0, "the query must stay at row 0"
+        assert index == sorted(index), "an a3m's row order is information"
+        assert len(set(index)) == keep, "row 0 must not also be drawn into the tail"
+        draws.add(tuple(index))
+    assert len(draws) > 1, "the tail is a random subset, not a truncation"
+
+
+def test_the_three_msa_subsampling_policies_are_stated_apart():
+    """They differ only ABOVE the depth limit, so one gate cannot tell them apart."""
+    policies = {name: spec.msa_subsample for name, spec in SPECS.items()}
+    assert policies["alphafold3"] == "shuffle"
+    assert policies["chai1"] == "ordered"
+    assert policies["esmfold2"] == "keep_query"
+    assert set(policies.values()) <= {"shuffle", "ordered", "keep_query"}

@@ -274,6 +274,34 @@ def shuffle_msa(msa: features.MSA) -> features.MSA:
     return msa.index_msa_rows(index_order)
 
 
+def subsample_msa_keep_query(msa: features.MSA, num_msa: int) -> features.MSA:
+    """Subsample to ``num_msa`` rows KEEPING THE QUERY at row 0, in a3m order.
+
+    AF3's shuffle-then-truncate is a different function. Its gumbel shuffle
+    ranks EVERY row including row 0, so the query lands somewhere random and the
+    truncation drops it outright with probability 1 - num_msa/depth -- about
+    half the time on a 2145-row alignment at depth 1024. A trunk handed an
+    alignment with no query in it folds WORSE the moment it is given a real one,
+    which is how this was found.
+
+    Depth one is the case that hides it: a self-MSA has nothing to shuffle and
+    nothing to drop, so every gate that folds from a single sequence agrees.
+    """
+    logits = (torch.clip(torch.sum(msa.mask, dim=-1), 0.0, 1.0) - 1.0) * 1e6
+    # Row 0 is taken explicitly, so it must not also be drawn into the tail:
+    # the query would occupy two slots and one real sequence would be lost.
+    # Pushing it below the padded rows is enough, since padding sits at -1e6
+    # and only the first num_msa - 1 draws are used.
+    logits = logits.clone()
+    logits[0] -= 2e6
+    order = gumbel_argsort_sample_idx(logits)
+    index = torch.concatenate([order.new_zeros(1), order[: num_msa - 1]])
+    # Sorted, as the vendor sorts: an a3m is ordered by similarity to the
+    # query, so its row order is information and a permutation of it is a
+    # different input to any module that is not row-equivariant.
+    return msa.index_msa_rows(torch.sort(index).values)
+
+
 def chai_relative_encoding(
     token_features: features.TokenFeatures, dtype: torch.dtype
 ) -> torch.Tensor:

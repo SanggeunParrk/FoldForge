@@ -80,6 +80,9 @@ class DenseSpec:
     relpos: str = "af3"
     relpos_channel: int = 139
     relpos_bias: bool = False
+    #: Which protein language model supplies this family's token stream, if
+    #: any. Its embeddings arrive on the batch like any other input.
+    language_model: str | None = None
     #: Which MSA feature stream the weights were trained on.
     msa_feat_layout: str = "af3"
     #: Columns of the MSA feature when the family does not build AF3's set.
@@ -391,6 +394,7 @@ CHAI1 = replace(
     ALPHAFOLD3,
     family="chai1",
     input_embedder="chai1",
+    language_model="esm2",
     msa_feat_layout="chai1",
     msa_feat_columns=41,
     msa_keep_order=True,

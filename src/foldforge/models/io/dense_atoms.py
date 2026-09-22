@@ -93,6 +93,20 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         }
         tensors["deletion_mean"] = tensors["deletion_mean"].float()
 
+        if model.spec.language_model is not None:
+            # Most of this family's token stream; absent, the fold still runs
+            # and is merely much worse, so a missing tower is an error.
+            from foldforge.models.io.language import token_embeddings
+
+            tensors["lm_embeddings"] = token_embeddings(
+                model.spec.language_model,
+                args.checkpoint,
+                aatype=tensors["aatype"],
+                asym_id=tensors["asym_id"],
+                mask=tensors["seq_mask"],
+                dtype=dtype,
+            )
+
         from foldforge.models.io.images import input_images
 
         image_inputs = input_images(example, args.output.image_names, gap_id=31)

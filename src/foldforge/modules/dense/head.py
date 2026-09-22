@@ -544,6 +544,8 @@ class ConfidenceHead(nn.Module):
             "... (n_atom n_bins) -> ... n_atom n_bins",
             n_bins=self.num_plddt_bins,
         )
+        if self.plddt_slots != self.num_atom:
+            plddt_logits = self._gather_plddt_by_atom_name(plddt_logits, batch)
         predicted_lddt = torch.sum(
             torch.softmax(plddt_logits, dim=-1) * self.plddt_bin_centers, dim=-1
         )
@@ -577,6 +579,33 @@ class ConfidenceHead(nn.Module):
             "average_pde": average_pred_distance_error,
             **pae_outputs,
         }
+
+    def _gather_plddt_by_atom_name(
+        self, logits: torch.Tensor, batch: feat_batch.Batch | None
+    ) -> torch.Tensor:
+        """Put logits predicted over a canonical atom table on the dense slots.
+
+        The two orders differ -- CB is canonical slot 3 and dense slot 4, and
+        tryptophan's NE1 is 24 -- and the permutation depends on the residue
+        type, so no reshape of the weight can express it. The atom NAME is
+        carried per dense slot, so match on that.
+        """
+        if batch is None:
+            message = "Gathering pLDDT by atom name needs the batch's atom names"
+            raise ValueError(message)
+        names = batch.ref_structure.atom_name_chars.to(torch.int64)
+        table = torch.tensor(
+            [[ord(c) - 32 for c in name.ljust(4)] for name in atom_types.ATOM37],
+            dtype=names.dtype,
+            device=names.device,
+        )
+        hit = (names[:, :, None, :] == table[None, None]).all(-1)
+        # (n_token, dense slots) -> the canonical slot each one names.
+        index = hit.to(torch.int64).argmax(-1)
+        index = index[..., None].expand(*index.shape, logits.shape[-1])
+        while index.ndim < logits.ndim:
+            index = index[None].expand(logits.shape[-index.ndim - 1], *index.shape)
+        return torch.take_along_dim(logits, index, dim=-2)
 
     def _get_tmscore_adjusted_pae(
         self,

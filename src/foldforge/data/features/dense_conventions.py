@@ -17,6 +17,9 @@ if TYPE_CHECKING:
 
 _NAME_CLASSES = 64
 
+#: AF3 encodes an atom name character as its ordinal less this.
+_NAME_OFFSET = 32
+
 #: Gap class in FoldForge's polymer vocabulary.
 _GAP_RESTYPE = 21
 
@@ -168,6 +171,47 @@ def widen_key_subset(example: dict[str, Any], keys: int) -> None:
     )
 
 
+def override_ref_conformers(example: dict[str, Any], conformers: dict) -> int:
+    """Replace `ref_pos` with another model's reference geometry, by atom name.
+
+    AF3 takes reference coordinates from the CCD ideal values. A family trained
+    on its own idealised frame was trained on THAT one, and the feature goes
+    straight into a Linear, so it is not pose-invariant. Atoms whose names the
+    table does not carry keep the coordinates they already had.
+    """
+    from alphafold3.constants import residue_names  # noqa: PLC0415 - AF3 input
+
+    positions = np.array(example["ref_pos"])
+    mask = np.asarray(example["ref_mask"])
+    chars = np.asarray(example["ref_atom_name_chars"])
+    aatype = np.asarray(example["aatype"])
+    codes = residue_names.POLYMER_TYPES_WITH_UNKNOWN_AND_GAP
+
+    def name(row: np.ndarray) -> str:
+        codes = (
+            chr(int(c) + _NAME_OFFSET) if 0 <= c < _NAME_CLASSES else "" for c in row
+        )
+        return "".join(codes).strip()
+
+    replaced = 0
+    for token in range(positions.shape[0]):
+        index = int(aatype[token])
+        entry = conformers.get(codes[index]) if index < len(codes) else None
+        if entry is None:
+            continue
+        names, reference = entry
+        lookup = {atom: slot for slot, atom in enumerate(names)}
+        for atom in range(positions.shape[1]):
+            if not mask[token, atom]:
+                continue
+            slot = lookup.get(name(chars[token, atom]))
+            if slot is not None:
+                positions[token, atom] = reference[slot]
+                replaced += 1
+    example["ref_pos"] = positions.astype(np.asarray(example["ref_pos"]).dtype)
+    return replaced
+
+
 def dedupe_self_msa(example: dict[str, Any]) -> None:
     """Keep the query ONCE when every live MSA row is the query.
 
@@ -268,6 +312,12 @@ def empty_template_gap(example: dict[str, Any], slots: str) -> None:
 
 def apply(example: dict[str, Any], spec: DenseSpec) -> dict[str, Any]:
     """Apply ``spec``'s input conventions to one featurised example, in place."""
+    if spec.ref_conformers != "af3":
+        from foldforge.data.constants import residue_geometry  # noqa: PLC0415
+
+        override_ref_conformers(
+            example, residue_geometry.as_conformers(spec.ref_conformers)
+        )
     if spec.centre_ref_conformers:
         centre_conformers(example)
     if spec.drop_atoms:

@@ -422,3 +422,50 @@ def test_every_pde_symmetrisation_is_named():
 def test_the_reference_charge_convention_covers_every_family_that_takes_it_raw():
     raw = {name for name, spec in SPECS.items() if spec.raw_ref_charge}
     assert raw == {"chai1", "boltz2", "rosettafold3", "esmfold2"}
+
+
+def test_the_reference_geometry_override_replaces_by_atom_name():
+    """Its atom encoder was trained on ITS frame, and ref_pos is not pose-invariant."""
+    import numpy as np
+
+    from foldforge.data.constants import residue_geometry
+    from foldforge.data.features.dense_conventions import override_ref_conformers
+
+    frame = residue_geometry.as_conformers("esmfold2")
+    names, positions = frame["ALA"]
+    encode = lambda atom: [ord(c) - 32 for c in atom.ljust(4)]
+
+    # Two tokens: an alanine the table covers, and a ligand atom it does not.
+    example = {
+        "ref_pos": np.zeros((2, 4, 3), np.float32),
+        "ref_mask": np.array([[1, 1, 0, 0], [1, 0, 0, 0]], np.float32),
+        "ref_atom_name_chars": np.array(
+            [
+                [encode(names[0]), encode(names[1]), encode(""), encode("")],
+                [encode("ZZ9"), encode(""), encode(""), encode("")],
+            ]
+        ),
+        # Alanine's index in AF3's polymer table, then something past the end.
+        "aatype": np.array([0, 40]),
+    }
+    replaced = override_ref_conformers(example, frame)
+
+    assert replaced == 2
+    assert np.allclose(example["ref_pos"][0, 0], positions[0])
+    assert np.allclose(example["ref_pos"][0, 1], positions[1])
+    # A residue the table does not carry keeps what it had, rather than zeroing.
+    assert np.allclose(example["ref_pos"][1], 0.0)
+    # A masked slot is never written, even where the name would match.
+    assert np.allclose(example["ref_pos"][0, 2:], 0.0)
+
+
+def test_the_language_model_family_takes_every_featurisation_knob_it_needs():
+    """Getting one wrong is silent, and shows as a fold that is merely mediocre."""
+    spec = SPECS["esmfold2"]
+    # No terminal OXT: worse here than elsewhere, because the atom window is
+    # +/-64 by RANK, so one spurious atom at the END corrupts the last ~64.
+    assert spec.drop_atoms == ("OXT",)
+    # Its self-MSA is the query ONCE; AF3 hands it two identical rows.
+    assert spec.dedupe_self_msa
+    assert spec.ref_conformers == "esmfold2"
+    assert spec.atom_keys_subset == 192

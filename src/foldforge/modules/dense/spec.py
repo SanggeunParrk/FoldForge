@@ -31,6 +31,10 @@ class DenseSpec:
     #: The vendor's single conditioning spans 833 channels: its restype and profile
     #: blocks carry one class AF3 lacks, re-inserted as zero columns before the norm.
     padded_single_cond: bool = False
+    #: Whose idealised residue geometry fills `ref_pos`. "af3" is the CCD
+    #: ideal; a family trained on its own frame was trained on THAT one, and
+    #: the feature goes straight into a Linear, so it is not pose-invariant.
+    ref_conformers: str = "af3"
     #: Reference conformers are centred per residue before they reach the network.
     centre_ref_conformers: bool = False
     #: Atom names the vendor's tokenizer never creates on standard residues.
@@ -730,6 +734,16 @@ ESMFOLD2 = replace(
     chain_bucket_on_same_chain=True,
     pde_symmetrise="none",
     raw_ref_charge=True,
+    # No terminal OXT: this family builds its atom list from a fixed table that
+    # carries none, so AF3's extra oxygen is an atom it has never seen. Worse
+    # here than elsewhere, because the atom window is +/-64 by RANK -- one
+    # spurious atom at the END of the list corrupts the last ~64 atoms'
+    # attention, and nothing before them.
+    drop_atoms=("OXT",),
+    # Its self-MSA is the query ONCE, where AF3 hands a chain with no
+    # alignments two identical rows. Worth 4.3% of the trunk's MSA injection.
+    dedupe_self_msa=True,
+    ref_conformers="esmfold2",
     language_model="esmc",
     confidence="boltz2",
     confidence_learned_bins=39,

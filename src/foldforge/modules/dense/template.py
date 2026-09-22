@@ -227,6 +227,22 @@ class SingleTemplateEmbedding(nn.Module):
         index = torch.where(covered.bool(), index, classes)
         return torch.nn.functional.one_hot(index, classes + 1)
 
+    def _restype_one_hot(
+        self, aatype: torch.Tensor, coverage: torch.Tensor, dtype: torch.dtype
+    ) -> torch.Tensor:
+        """One-hot the template restypes, gapping the ones it does not cover.
+
+        Telling the embedder a residue identity for a position with no
+        structure is a different input from saying there is none.
+        """
+        if self.spec.template_gap_uncovered:
+            gap = residue_names.POLYMER_TYPES_WITH_UNKNOWN_AND_GAP.index("-")
+            aatype = torch.where(coverage.sum(-1) > 0, aatype, aatype.new_full((), gap))
+        return torch.nn.functional.one_hot(
+            aatype.to(dtype=torch.int64),
+            residue_names.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP,
+        ).to(dtype=dtype)
+
     def construct_input(
         self, query_embedding, templates: features.Templates, multichain_mask_2d
     ) -> torch.Tensor:
@@ -259,16 +275,7 @@ class SingleTemplateEmbedding(nn.Module):
         pseudo_beta_mask_2d = pseudo_beta_mask_2d.to(dtype=dtype)
         to_concat = [(dgram, 1), (pseudo_beta_mask_2d, 0)]
 
-        if self.spec.template_gap_uncovered:
-            # A residue the template does not COVER is the gap restype, not the
-            # query's own: telling the embedder an identity for a position with
-            # no structure is a different input from saying there is none.
-            covered = dense_atom_mask.sum(-1) > 0
-            aatype = torch.where(covered, aatype, aatype.new_full((), 21))
-        aatype = torch.nn.functional.one_hot(
-            aatype.to(dtype=torch.int64),
-            residue_names.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP,
-        ).to(dtype=dtype)
+        aatype = self._restype_one_hot(aatype, dense_atom_mask, dtype)
         to_concat.append((aatype[None, :, :], 1))
         to_concat.append((aatype[:, None, :], 1))
 
@@ -325,6 +332,13 @@ class SingleTemplateEmbedding(nn.Module):
         to_concat.extend([(x, 0) for x in unit_vector])
         to_concat.append((backbone_mask_2d, 0))
 
+        if self.spec.template_coverage_mask:
+            # Kept for the aggregation below: each template's normalised
+            # embedding is multiplied by its own coverage before the sum. Not a
+            # no-op, because the norm has a bias, so a pair the template does
+            # not cover is NONZERO after it.
+            self._coverage_2d = pseudo_beta_mask_2d
+
         query_embedding = self.query_embedding_norm(query_embedding)
 
         to_concat.append((query_embedding, 1))
@@ -360,12 +374,6 @@ class SingleTemplateEmbedding(nn.Module):
             act = pairformer_block(act, pair_mask=padding_mask_2d)
 
         act = self.output_layer_norm(act)
-
-        if not isinstance(act, torch.Tensor):
-            message = "Template embedding requires at least one feature"
-            raise TypeError(message)
-        if self.template_feature_bias is not None:
-            # A fused feature projection's bias; nine bias-free Linears summed
-            # cannot express it, so it is added once here.
-            act = act + self.template_feature_bias
+        if self.spec.template_coverage_mask:
+            act = act * self._coverage_2d[..., None].to(act.dtype)
         return act

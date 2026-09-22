@@ -475,14 +475,28 @@ class AlphaFold3(nn.Module):
                 include_minimum_before_zero=False,
             )
         )(self.diffusion_steps, device=mask.device)
-        sampler = EulerSampler(
-            EulerSampler.Config(
+        sampler_config = EulerSampler.Config(
+            gamma_0=self.spec.gamma_0,
+            gamma_min=self.spec.gamma_min,
+            noise_scale=self.spec.noise_scale,
+            step_scale=self.spec.step_scale,
+        )
+        if self.spec.churn_total is not None:
+            # EDM's own parameterisation: one constant across the window, so it
+            # depends on how many steps the trajectory has.
+            sampler_config = EulerSampler.Config(
                 gamma_0=self.spec.gamma_0,
                 gamma_min=self.spec.gamma_min,
                 noise_scale=self.spec.noise_scale,
                 step_scale=self.spec.step_scale,
+                churn_gamma=min(
+                    self.spec.churn_total / self.diffusion_steps, 2.0**0.5 - 1.0
+                ),
+                churn_sigma_min=self.spec.churn_sigma_min,
+                churn_sigma_max=self.spec.churn_sigma_max,
+                variance_floor=self.spec.sampler_variance_floor,
             )
-        )
+        sampler = EulerSampler(sampler_config)
 
         def denoise(coords: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
             """Compute denoise."""
@@ -540,8 +554,16 @@ class AlphaFold3(nn.Module):
             "structure_target_feat": structure_feat,
         }
 
-        # Recycles are additional trunk passes after the initial pass.
-        for pass_index in range(self.num_recycles + 1):
+        # AF3 counts ADDITIONAL passes, so ten recycles run the trunk eleven
+        # times; a family that counts TOTAL passes runs it ten. Getting this
+        # wrong is invisible -- by then the recycle has nearly converged and an
+        # extra pass only perturbs the output.
+        passes = (
+            max(1, self.num_recycles)
+            if self.spec.recycles_are_total
+            else self.num_recycles + 1
+        )
+        for pass_index in range(passes):
             embeddings = self.evoformer(
                 batch=batch_data,
                 prev=embeddings,

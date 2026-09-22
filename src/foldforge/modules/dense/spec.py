@@ -44,6 +44,9 @@ class DenseSpec:
     #: The diffusion transformer norms and projects the pair conditioning in every
     #: block; AF3 norms once and projects once per super block.
     per_block_pair_layer_norm: bool = False
+    #: Whether a recycle setting counts TOTAL trunk passes rather than the
+    #: additional ones AF3 counts. Clamped at one either way.
+    recycles_are_total: bool = False
     trunk_layers: int = 48
     #: Expansion factor of the pairformer transitions, in the trunk and the
     #: confidence head. AF3 is 4; chai-1 halves both.
@@ -238,12 +241,23 @@ class DenseSpec:
     #: A template residue the template does not COVER is the gap restype, not
     #: the query's own residue.
     template_gap_uncovered: bool = False
+    #: Each template's normalised embedding is multiplied by its own coverage
+    #: before the sum. Not a no-op: the norm has a bias, so an uncovered pair
+    #: is nonzero after it.
+    template_coverage_mask: bool = False
     #: Templates are averaged over the PRESENT slots, not over every slot.
     template_present_denominator: bool = False
     #: Atom activations are re-masked in every atom-transformer block.
     mask_atom_act_per_block: bool = False
     #: Whether the confidence head predicts experimentally-resolved atoms.
     resolved_head: bool = True
+    #: EDM's own churn: one constant over a sigma window, rather than AF3's
+    #: gamma_0 switched on above gamma_min. None keeps AF3's form.
+    churn_total: float | None = None
+    churn_sigma_min: float = 0.0
+    churn_sigma_max: float = float("inf")
+    #: Floor of the re-noising variance; a no-churn step still adds this.
+    sampler_variance_floor: float = 0.0
     gamma_0: float = 0.8
     gamma_min: float = 1.0
     noise_scale: float = 1.003
@@ -398,6 +412,7 @@ CHAI1 = replace(
     ALPHAFOLD3,
     family="chai1",
     input_embedder="chai1",
+    recycles_are_total=True,
     language_model="esm2",
     msa_feat_layout="chai1",
     msa_feat_columns=41,
@@ -434,6 +449,7 @@ CHAI1 = replace(
     template_mask_class=True,
     template_gap_uncovered=True,
     template_present_denominator=True,
+    template_coverage_mask=True,
     confidence="chai1",
     confidence_dual_output=True,
     confidence_dgram=(3.375, 21.375, 16),
@@ -467,6 +483,10 @@ CHAI1 = replace(
     drop_atoms=("OXT",),
     atom_key_window="circular",
     sigma_max=80.0,
+    churn_total=80.0,
+    churn_sigma_min=4e-4,
+    churn_sigma_max=80.0,
+    sampler_variance_floor=1e-6,
 )
 
 SPECS = {

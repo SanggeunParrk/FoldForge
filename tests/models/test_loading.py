@@ -216,6 +216,7 @@ def test_af3_recycles_are_additional_trunk_passes(
     monkeypatch, recycles, reference_precision
 ):
     from foldforge.models.architectures import af3
+    from foldforge.modules.dense.spec import ALPHAFOLD3
 
     batch = SimpleNamespace(
         num_res=2,
@@ -243,6 +244,7 @@ def test_af3_recycles_are_additional_trunk_passes(
     model = af3.AlphaFold3.__new__(af3.AlphaFold3)
     nn.Module.__init__(model)
     model.num_recycles = recycles
+    model.spec = ALPHAFOLD3
     model.reference_precision = reference_precision
     model.evoformer_pair_channel = model.evoformer_seq_channel = 2
     model.evoformer = Trunk()

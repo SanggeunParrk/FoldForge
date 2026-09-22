@@ -13,6 +13,8 @@
 import dataclasses
 from typing import Self
 
+import torch
+
 from foldforge.data.features import dense as features
 
 
@@ -31,6 +33,13 @@ class Batch:
     atom_cross_att: features.AtomCrossAtt
     convert_model_output: features.ConvertModelOutput
     frames: features.Frames
+    #: (num_tokens, num_tokens, c_pair) for the one family that folds from a
+    #: protein language model. It rides the batch rather than the graph because
+    #: the shim that builds it is a SEPARATE graph -- the last few layers of a
+    #: 6.35B-parameter tower, not part of AF3's. What the graph then does with
+    #: it, the per-pass dropout and the four-block encoder, is ordinary pair
+    #: work and stays in the trunk. None for every other family.
+    lm_pair: torch.Tensor | None = None
 
     @property
     def num_res(self) -> int:
@@ -56,6 +65,7 @@ class Batch:
             atom_cross_att=features.AtomCrossAtt.from_data_dict(batch),
             convert_model_output=features.ConvertModelOutput.from_data_dict(batch),
             frames=features.Frames.from_data_dict(batch),
+            lm_pair=batch.get("lm_pair"),
         )
 
     def as_data_dict(self) -> features.BatchDict:

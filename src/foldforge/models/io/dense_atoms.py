@@ -19,6 +19,31 @@ if TYPE_CHECKING:
     from foldforge.models.io.request import Request
 
 
+def _language_features(
+    name: str, checkpoint: Any, tensors: dict[str, Any], dtype: Any
+) -> dict[str, Any]:
+    """Run the family's language model, as a pair or as per-token embeddings."""
+    from foldforge.models.io import language
+
+    common = {
+        "aatype": tensors["aatype"],
+        "asym_id": tensors["asym_id"],
+        "mask": tensors["seq_mask"],
+        "dtype": dtype,
+    }
+    if language.reads_pair(name):
+        return {
+            "lm_pair": language.pair_representation(
+                name,
+                checkpoint,
+                residue_index=tensors["residue_index"],
+                mol_type=tensors["is_protein"].long(),
+                **common,
+            )
+        }
+    return {"lm_embeddings": language.token_embeddings(name, checkpoint, **common)}
+
+
 def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[Case]:
     """Prepare ."""
     from alphafold3.constants import chemical_component_sets
@@ -124,16 +149,13 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
 
         if model.spec.language_model is not None:
             # Most of this family's token stream; absent, the fold still runs
-            # and is merely much worse, so a missing tower is an error.
-            from foldforge.models.io.language import token_embeddings
-
-            tensors["lm_embeddings"] = token_embeddings(
-                model.spec.language_model,
-                args.checkpoint,
-                aatype=tensors["aatype"],
-                asym_id=tensors["asym_id"],
-                mask=tensors["seq_mask"],
-                dtype=dtype,
+            # and is merely much worse, so a missing tower is an error. Some
+            # families read the tower as one embedding per token and some as a
+            # pair, which is a different graph rather than a different setting.
+            tensors.update(
+                _language_features(
+                    model.spec.language_model, args.checkpoint, tensors, dtype
+                )
             )
 
         from foldforge.models.io.images import input_images

@@ -259,9 +259,16 @@ class Evoformer(nn.Module):
         INFERENCE and resamples every recycle pass, so it cannot move outside
         the loop.
         """
-        lm = getattr(batch, "lm_pair", None)
+        lm = batch.lm_pair
         if lm is None:
-            return pair_activations
+            # Folding this family without its language model still produces a
+            # structure, and a plausible-looking one -- which is why the gap
+            # has to be an error rather than a quiet fallback.
+            message = (
+                "This family folds from a language model; none reached the "
+                "trunk, and folding without it is a different model"
+            )
+            raise ValueError(message)
         lm = lm.to(dtype=pair_activations.dtype)
         rate = self.spec.lm_pair_dropout
         if rate:

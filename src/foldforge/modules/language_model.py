@@ -17,7 +17,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
+import numpy as np
 import torch
+import torch.nn.functional as F
 
 from foldforge.data.constants import residue_names
 
@@ -106,3 +108,97 @@ def load_traced(path: str | Path, device: torch.device | None = None) -> TokenEm
     for parameter in model.parameters():
         parameter.requires_grad_(requires_grad=False)
     return model
+
+
+class PairShim(torch.nn.Module):
+    """Turn a protein language model's hidden states into a pair representation.
+
+    A SEPARATE graph from the folding trunk: the last few layers of a tower, not
+    part of AF3's. Its weights ride beside the blob rather than inside it -- 40
+    MB against 800 -- and a fold that skips the tower never loads them. What the
+    trunk then does with the result, the per-pass dropout and the encoder
+    blocks, is ordinary pair work and stays there.
+
+    The layer mix arrives already softmaxed: it is a constant, so it folds to a
+    plain (num_layers,) array. It peaks on the LAST layers -- for ESM-C, 79, 80
+    and 78 hold 58% of the mass -- so the tower cannot be truncated from the
+    top.
+    """
+
+    # Declared so the type checker can see what `register_buffer` installs.
+    combine: torch.Tensor
+    lm_norm_scale: torch.Tensor
+    lm_norm_offset: torch.Tensor
+    lm_projection_weights: torch.Tensor
+    downproject_weights: torch.Tensor
+    downproject_bias: torch.Tensor
+    pair_mlp_1_weights: torch.Tensor
+    pair_mlp_1_bias: torch.Tensor
+    pair_mlp_2_weights: torch.Tensor
+    pair_mlp_2_bias: torch.Tensor
+    pair_norm_scale: torch.Tensor
+    pair_norm_offset: torch.Tensor
+
+    #: Every weight the shim needs, by the name the converter writes.
+    RECORDS = (
+        "combine",
+        "lm_norm.scale",
+        "lm_norm.offset",
+        "lm_projection.weights",
+        "downproject.weights",
+        "downproject.bias",
+        "pair_mlp_1.weights",
+        "pair_mlp_1.bias",
+        "pair_mlp_2.weights",
+        "pair_mlp_2.bias",
+        "pair_norm.scale",
+        "pair_norm.offset",
+    )
+
+    def __init__(self, weights: dict[str, torch.Tensor]) -> None:
+        super().__init__()
+        missing = [name for name in self.RECORDS if name not in weights]
+        if missing:
+            message = f"Language-model shim is missing {', '.join(missing)}"
+            raise ValueError(message)
+        for name in self.RECORDS:
+            self.register_buffer(name.replace(".", "_"), weights[name])
+
+    def forward(self, hidden: torch.Tensor) -> torch.Tensor:
+        """Map (num_tokens, num_layers, width) to (num_tokens, num_tokens, c_pair).
+
+        In float32 throughout: the trunk amplifies an injection error by around
+        fifty, so TF32 matmuls here land at the same magnitude as a featurisation
+        bug. The precision costs nothing measurable at this size.
+        """
+        x = F.layer_norm(
+            hidden.float(), hidden.shape[-1:], self.lm_norm_scale, self.lm_norm_offset
+        )
+        # The mix is applied BEFORE the projection: the projection is linear and
+        # shared across layers, so the two orders agree exactly, and this does
+        # one matmul where the other does one per layer.
+        x = torch.einsum("k,lkc->lc", self.combine, x) @ self.lm_projection_weights
+        x = x @ self.downproject_weights + self.downproject_bias
+        # The outer product carries BOTH a product and a difference, so the pair
+        # sees magnitude and direction rather than only agreement.
+        z = torch.concatenate(
+            [x[:, None] * x[None, :], x[:, None] - x[None, :]], dim=-1
+        )
+        z = z @ self.pair_mlp_1_weights + self.pair_mlp_1_bias
+        z = F.gelu(z, approximate="none") @ self.pair_mlp_2_weights
+        z = z + self.pair_mlp_2_bias
+        return F.layer_norm(
+            z, z.shape[-1:], self.pair_norm_scale, self.pair_norm_offset
+        )
+
+
+def load_pair_shim(path: Path) -> PairShim:
+    """Build the shim from the `.lm.npz` the converter writes beside the blob.
+
+    The variants of a family share the TOWER; they do not share this. Each
+    trains its own, and feeding one variant another's reads correlation 0.03
+    against native -- which is exactly the mistake one shared filename invites,
+    so the file is named per MODEL.
+    """
+    with np.load(path) as blob:
+        return PairShim({name: torch.from_numpy(blob[name]) for name in blob})

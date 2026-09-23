@@ -123,6 +123,38 @@ Both land inside the band. The row differs from `esmfold2` in `trunk_layers`
 (48 -> 24) and `msa_layers` (4 -> 0) and in nothing else, matching the released
 configs and the reference's registry, and it folds like it.
 
+### Chai-1's confidence, narrowed and still open
+
+Chai-1 folds 5I28 to 0.89 A CA-RMSD with 0 broken bonds -- a good structure --
+and reports **pLDDT 41** where AF3 on the identical input reports 96, with a
+median PAE of 4.80 A against 1.65. Its pLDDT never exceeds 0.499 across 128
+tokens.
+
+Ruled out, each measured rather than reasoned about:
+
+- **The structure the head reads.** Tapping `ConfidenceHead.forward` and
+  matching its `dense_atom_positions` against the written mmCIF gives
+  **0.0005 A** on dense slot 1, for Chai-1 and for AF3 alike. The head is
+  reading exactly the structure that got written.
+- **The 37-slot pLDDT gather.** Chai-1 predicts over ATOM37 and gathers per
+  atom by name; ours matches the reference operation for operation, including
+  the `argmax`-on-no-hit behaviour and the `take_along` axis.
+- **The bin arithmetic.** 50 bins, `bin_width = 1/50`, centres
+  `arange(0.5*w, 1.0, w)`, `sum(softmax * centres) * 100` -- the reference's
+  own lines.
+- **The confidence pairformer.** The reference gated Chai-1's `pae_logits` and
+  `pde_logits` at corr 0.999938 and 0.999916 against captured native I/O.
+- **The language model.** Alive: 128 distinct ESM2 embeddings for 128 tokens.
+
+**What would settle it is the released Chai-1, and it is not on this machine.**
+`chai_lab` is not installed and `model_checkpoints/chai1/models_v2/` is empty,
+so there is no native arm to ask whether the release also reports ~41 here.
+Note too that the reference **deliberately did not gate this**: it compared
+LOGITS rather than derived scores precisely so that no assumption about
+Chai-1's bin centres entered the gate, and it excluded pLDDT because, unlike
+PAE and PDE, it is per atom and needs atom-layout agreement. So this is
+unverified there as well, not merely here.
+
 ### The one real defect this found
 
 **The language model was dead.** `build_lm_inputs` selected protein tokens with

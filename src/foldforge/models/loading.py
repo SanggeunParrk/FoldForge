@@ -166,14 +166,6 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     model = install_conditioning(install_pairformers(model))
     if dtype == torch.bfloat16 and precision_policy != "af3_default":
         clear_native_compute_override(model, dtype)
-    if precision_policy == "model_default":
-        from foldforge.models.precision import reference_precision
-
-        model = reference_precision(model, name)
-        report.update(
-            precision_policy="model_default",
-            autocast_scopes=model.reference_autocast_scopes,
-        )
     report.update(
         backend=backend,
         parameter_dtype=str(dtype),

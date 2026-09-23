@@ -110,7 +110,7 @@ def main() -> int:
     target = limit_msa(load(spec_path), PREPARED_ROWS, out / "prepared-msa")
     database = CCDDatabase(target.spec.ccd_db)
     adapter_input = out / "input.adapter.json"
-    write_adapter_input(target, args.model, adapter_input, config.trunk_seed)
+    write_adapter_input(target, adapter_input, config.trunk_seed)
     request = Request(
         model=args.model,
         ccd_db=database.root,

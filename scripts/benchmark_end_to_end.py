@@ -69,7 +69,6 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
     )
     parser.add_argument("--variant", choices=["protenix-v2"])
     parser.add_argument("--no-templates", action="store_true")
-    parser.add_argument("--lm-cache", type=Path)
     parser.add_argument("--benchmark-repeats", type=int, default=0)
     parser.add_argument("--trunk-seed", type=int, default=0)
     parser.add_argument("--diffusion-seed", type=int, default=0)
@@ -229,18 +228,6 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
                 "--out",
                 str(output),
             ]
-            if args.model == "esmfold2":
-                command += [
-                    "--lm-cache",
-                    str(
-                        args.lm_cache
-                        or (
-                            Path("validation/inputs/data")
-                            / target
-                            / "cache/esmc_hidden_states.pt"
-                        )
-                    ),
-                ]
             print("START", label, flush=True)  # noqa: T201 - CLI output contract
             start = time.perf_counter()
             error = None

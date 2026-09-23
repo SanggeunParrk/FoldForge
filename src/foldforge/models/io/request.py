@@ -77,13 +77,3 @@ class Request:
         ):
             msg = "Spec and selected CCD database disagree"
             raise ValueError(msg)
-
-    @property
-    def dtype(self) -> str:
-        """Compute dtype."""
-        return "float32" if self.precision in {"fp32", "model_default"} else "bfloat16"
-
-    @property
-    def implementation(self) -> str:
-        """Compute implementation."""
-        return "miniworld_engine" if self.backend == "miniworld" else self.backend

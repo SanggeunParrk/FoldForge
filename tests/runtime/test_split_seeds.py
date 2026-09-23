@@ -13,7 +13,6 @@ from team_gm.diffusion.edm.sampling import EulerSampler
 from team_gm.modules.execution import ExecutedCallable
 from torch import nn
 
-from foldforge.models import is_dense
 from foldforge.models.config import Config, ExecutionConfig
 from foldforge.models.io.cli import parse
 from foldforge.models.io.request import Request
@@ -152,77 +151,60 @@ def test_af3_json_uses_requested_trunk_seed(tmp_path, monkeypatch):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA sampling boundaries")
-@pytest.mark.parametrize("family", ["af3", "esmfold2", "protenix", "opendde"])
 @pytest.mark.parametrize("mode", ["eager", "graph", "compile_graph"])
-def test_diffusion_seed_is_independent_of_trunk_and_graph(family, mode):
+def test_diffusion_seed_is_independent_of_trunk_and_graph(mode):
+    """One binding for every family: the host boundary around ``_sample_diffusion``.
+
+    The binder used to ask which layout served the family, because the
+    sequence one sampled through ``structure_head.sample`` with an explicit
+    generator and the flat one carried ``rollout_seed`` in its feature dict.
+    Both layouts are gone, so there is one owner, one method, and nothing for
+    the binder to ask -- it no longer takes a family at all. Parametrising this
+    by family would therefore assert the same thing four times; the axis that
+    still changes the code path is the execution mode.
+    """
     model = nn.Module()
     model.register_parameter("weight", nn.Parameter(torch.zeros(1, device="cuda")))
-    model.structure_head = nn.Module()
     policy = ExecutionConfig(
         compile=mode == "compile_graph", cuda_graph=mode != "eager"
     )
     denoise = ExecutedCallable(
         lambda x, sigma: x * 0.9 + sigma * 0.01, policy, "seed-test"
     )
-    original_trunk_generator = torch.Generator(device="cuda").manual_seed(7)
 
-    def sample(*, generator=None, rollout_seed=None) -> tuple:
-        if family == "esmfold2":
-            assert generator is not original_trunk_generator
-        if not is_dense(family) and family != "esmfold2":
-            # Only a flat graph carries a seed in its feature dictionary; a
-            # dense one takes the seed from the host context around the call.
-            assert rollout_seed in {19, 20}
-            generator = torch.Generator(device="cuda").manual_seed(rollout_seed)
-        else:
-            assert rollout_seed is None
+    def sample() -> tuple:
         coords = EulerSampler().sample(
             denoise,
             (5, 8, 3),
             torch.tensor([3.0, 2.0, 1.0, 0.1], device="cuda"),
             device="cuda",
-            generator=generator,
         )
         return coords, (random.random(), np.random.random())
 
-    # Named the way the binder names them, so a family that moves between the
-    # two layouts needs nothing here.
-    owner, method = (
-        (model.structure_head, "sample")
-        if family == "esmfold2"
-        else (model, "_sample_diffusion" if is_dense(family) else "sample_diffusion")
-    )
-
     def run(trunk_seed, diffusion_seed) -> tuple:
-        setattr(owner, method, sample)
-        bind_sampling_seed(model, family, diffusion_seed)
+        model._sample_diffusion = sample  # noqa: SLF001 - the binder's own name
+        bind_sampling_seed(model, diffusion_seed)
         seed_all(trunk_seed)
         trunk = torch.randn(4, device="cuda")
         state = RNGState.capture()
-        generator_state = original_trunk_generator.get_state()
         with torch.no_grad():
-            result, host = getattr(owner, method)(
-                **(
-                    {"generator": original_trunk_generator}
-                    if family == "esmfold2"
-                    else {}
-                )
-            )
+            result, host = model._sample_diffusion()  # noqa: SLF001 - the binder's own name
         after = torch.rand(4, device="cuda")
         state.restore()
         assert torch.equal(after, torch.rand(4, device="cuda"))
-        assert torch.equal(generator_state, original_trunk_generator.get_state())
         return trunk, result, host
 
     first = run(7, 19)
     repeat = run(7, 19)
     other_trunk = run(8, 19)
     other_diffusion = run(7, 20)
+    # The diffusion trajectory reads only the diffusion seed ...
     assert torch.equal(first[1], repeat[1])
     assert torch.equal(first[1], other_trunk[1])
     assert first[2] == repeat[2] == other_trunk[2]
+    assert not torch.equal(first[1], other_diffusion[1])
     assert first[2] != other_diffusion[2]
+    # ... and the trunk reads only the trunk seed.
     assert not torch.equal(first[0], other_trunk[0])
     assert torch.equal(first[0], other_diffusion[0])
-    assert not torch.equal(first[1], other_diffusion[1])
     assert not torch.equal(first[1][0], first[1][1])

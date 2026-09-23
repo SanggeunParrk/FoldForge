@@ -129,11 +129,29 @@ reference's own converter, and the Haiku layer-stack indices shift correctly --
 the full release's coda is `__layer_stack_no_per_layer_2` where the fast
 release's is `_1`, because only the full one has an MSA stack ahead of it).
 
-The working hypothesis is that the LM pair injection is subtly wrong for both
-releases and only shows here: with no MSA and no templates, the language model
-is the fast release's ONLY structural signal, so the full release's MSA encoder
-would hide the same error. The control that decides it is the full release with
-its MSA removed.
+The full release with its MSA removed breaks the same way -- 9.87 A mean, 24
+of 100 top pairs -- which first looked like proof that the language model is
+the shared defect. **It is not clean evidence**: `esmfold2` still has an MSA
+encoder, so that run puts four MSA blocks on a depth-1 self-MSA, and an
+instrumented pass shows the pair reaching the LM injection at RMS 583 there
+against 7.2 for the fast release. The released encoder masks itself to zero on
+a depth-1 alignment; ours evidently does not, so that control measures a second
+bug rather than the first one.
+
+What the same instrumented pass does say about the fast release is that the
+language model IS reaching the trunk at a sane scale: shim output RMS 1.48,
+contribution after the four `lm_encoder` blocks RMS 3.27, against a pair of
+7.25 -- 45% of the injection. So the defect is not a missing or negligible
+injection; it is the CONTENT of what arrives, or the 24-block trunk that reads
+it.
+
+Deciding that needs the reference as an oracle on the same input, which means
+converting the ESM-C tower to its blob format (5.5 GB) and comparing `lm_pair`
+tensor to tensor. That is the next step and it has not been taken.
+
+Two things to fix that this turned up on the way, both filed above as their own
+defects: the depth-1 MSA encoder blow-up, and -- already fixed -- the rigid
+align that folded the sample axis into the atom list.
 
 ## Acceptance per model
 

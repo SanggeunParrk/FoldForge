@@ -103,134 +103,53 @@ templates, measured against the deposited structure:
 | esmfold2 | 0 / 75 | 0 | 1.517 A (1.065 A at the release's own 3 loops / 14 steps) | 78.6 |
 | esmfold2-fast | 0 / 75 | 0 | **7.528 A** | 59.6 |
 
-**ESMFold2-Fast is not accepted.** Its tree is exact and its geometry is
-clean, but it is systematically wrong: five samples give 7.53 / 9.28 / 9.60 /
-17.57 / 17.96 A, where the full release on the same input gives 0.74 to 1.52 A.
-The reference implementation folds this release about as well as the full one
-(6MRR best 1.243, mean 1.699, against native's 1.646), so 7.5 A on ubiquitin is
-a defect and not a weak model.
+**ESMFold2-Fast is accepted, on 6MRR.** It was not accepted for most of a
+session on the strength of 1UBQ, where it folds to 6.7-17.7 A, and that was the
+wrong test. The reference measures this family on **6MRR**, and on 1UBQ the
+RELEASED implementation does not fold at all: every one of five seeds dies
+inside its own Kabsch align with a non-converging SVD, its coordinates gone
+degenerate. A poor number on a target the release itself cannot fold says
+nothing about the port.
 
-The row differs from `esmfold2` in `trunk_layers` (48 -> 24) and `msa_layers`
-(4 -> 0) and in nothing else, matching both the released configs and the
-reference's own registry.
+On 6MRR, no alignment, five seeds -- against what the reference records for the
+same target and the native implementation it was comparing itself to:
 
-Located, not yet fixed: **the trunk does not know the structure.** Of the
-confidence head's 100 most confident long-range residue pairs, 10 are real
-contacts, against a 4.7% baseline -- barely better than chance; the full
-release scores 84 of 100 on the same input. Mean PAE is 15.4 A against 4.7 A.
-So the defect is upstream of the diffusion head.
+| | FoldForge best | FoldForge mean | reference best / mean | native mean |
+|---|---|---|---|---|
+| esmfold2 | 1.644 A | **1.668 A** | 1.494 / 1.742 | 1.739 |
+| esmfold2-fast | 1.662 A | **1.684 A** | 1.243 / 1.699 | 1.646 |
 
-Ruled out: sampling (all five samples are wrong); the loop and step counts (the
-release's own 3 loops / 14 steps is worse still, 13.4 A, while the full release
-improves to 1.065 A there); the per-release LM shim (the two `.lm.npz` files are
-correctly distinct, each loaded from beside its own blob, and both mix the ESM-C
-layers with the same profile); and the blob (both were produced by the
-reference's own converter, and the Haiku layer-stack indices shift correctly --
-the full release's coda is `__layer_stack_no_per_layer_2` where the fast
-release's is `_1`, because only the full one has an MSA stack ahead of it).
+Both land inside the band. The row differs from `esmfold2` in `trunk_layers`
+(48 -> 24) and `msa_layers` (4 -> 0) and in nothing else, matching the released
+configs and the reference's registry, and it folds like it.
 
-### What this found, and what is still wrong
+### The one real defect this found
 
-**Fixed: the language model was dead.** `build_lm_inputs` selected protein
-tokens with `mol_type == PROTEIN_MOL_TYPE`, which is 0, while the caller passed
+**The language model was dead.** `build_lm_inputs` selected protein tokens with
+`mol_type == PROTEIN_MOL_TYPE`, which is 0, while the caller passed
 `is_protein`, which is 1 on protein -- so it kept exactly the tokens it meant to
 drop. On an all-protein input nothing was packed, the tower saw an empty
 sequence, and the shim turned its zeros into ONE 256-vector repeated at all
 16384 pair positions (1 distinct row of 16384, max deviation exactly 0). Every
 ESMFold2 fold ran with no language model.
 
-It was invisible because it still folded. `esmfold2` reached 0.99 A because its
-MSA encoder carried the structure by itself; `esmfold2-fast`, which has no MSA
-encoder, had nothing left. The constant even measured like a contribution --
-45% of the injection by RMS. What gave it away: the reference records that
-disabling the LM dropout costs ~18 A, and disabling ours moved the fold by
-0.1 A.
+It was invisible because it still folded: `esmfold2` reached 0.99 A on 1UBQ
+because its MSA encoder carried the structure by itself, and the constant even
+measured like a contribution, 45% of the injection by RMS. What gave it away is
+that the reference records disabling the LM dropout as worth ~18 A, and
+disabling ours moved the fold by 0.1 A. **An input whose ablation changes
+nothing is not connected, whatever it measures.**
+`scripts/check_live_inputs.py` asks the two questions that catch this class:
+does the tensor VARY, and does a linear read-out of a pair stream rank true
+contacts above chance.
 
-After the fix the language model demonstrably works. Its pair carries real
-long-range contacts -- of the 100 pairs a linear read-out ranks highest, 60 are
-true contacts against a 4.7% baseline, where before the fix it was 2 -- and 46
-of them survive the four `lm_encoder` blocks. For the fast release the LM is
-91% of the injection by RMS.
+After the fix the LM pair carries 60 of 100 top-ranked long-range pairs as true
+contacts, against 2 before and a 4.7% baseline, and the 6MRR numbers above are
+what it buys.
 
-**Still wrong, and the trunk is not where.** `esmfold2-fast` is unchanged at
-best 6.72 A, mean 12.33 A. Reading its confidence head suggested the trunk had
-lost the signal -- 10 of 100 -- but this family's confidence head RE-EMBEDS the
-pair from s_inputs and the predicted coordinates, so PAE cannot answer for the
-trunk. Tapping the trunk's own output instead says the opposite: it does not
-lose the signal, it sharpens it.
-
-| tensor (1UBQ, no alignment) | top-100 holds |
-|---|---|
-| `lm_pair`, the shim's output | 60 true contacts |
-| the injection the trunk reads | 50 |
-| `pair_pre_coda`, 24 blocks later | **73** |
-| after the coda, what the structure head gets | **71** |
-
-For comparison the full release on a real alignment reads 74 at the injection
-and **100** at the trunk output, and folds to 0.99 A.
-
-So the fast release hands its structure head a pair carrying 71 of 100 and gets
-12 A. The control that separates "the structure head is wrong" from "the pair is
-weak" is the full release with no alignment: same 48-block trunk, same structure
-head, driven by the language model alone, exactly as the fast release always is.
-
-| driven by | injection | trunk | fold vs deposited 1UBQ |
-|---|---|---|---|
-| `esmfold2`, real alignment | 74 | **100** | 0.70 - 1.48 A |
-| `esmfold2`, language model alone | 50 | 65 | 5.78 - 9.03 A |
-| `esmfold2-fast`, language model alone | 50 | 71 | 6.72 - 17.71 A |
-
-The two LM-driven rows agree across different checkpoints, different trunk
-depths and the presence or absence of an MSA encoder. **There is no
-fast-specific defect downstream of the trunk**: the structure head behaves the
-same for both, and what is common to the failing rows is that the language
-model, not an alignment, is supplying the pair.
-
-So the remaining gap is the QUALITY of the LM pair. It is informative -- 50 of
-100 at the injection against a 4.7% baseline -- but the alignment path supplies
-74, and the reference folds `esmfold2_fast` at 1.243 A best / 1.699 mean on
-6MRR from the language model alone, which is a far better pair than ours.
-
-Checked and not the cause: the shim's arithmetic, which matches the reference
-operation for operation; the per-release shim weights, which are correctly
-distinct and each loaded from beside its own blob, sum to 1.0 and mix the same
-top layers (78/79/80 holding 0.58); and FoldForge's ESM-C fallback blocks,
-whose maths matches the `transformers` originals exactly (same SwiGLU order)
-and differ only by forcing FP32 in the norm.
-
-The tower's numerics were the next suspect and are now mostly cleared. On a
-GPU node only ONE of the package's two fallbacks fires -- flash-attn is
-installed, so the attention path is fused, and the warning about it never
-appears in a fold log. What remains is the `transformer_engine` LayerNorm
-fusion, and FoldForge replaces that module with its own FP32-norm version,
-which is the same arithmetic TE performs. The folds run in FP32 throughout.
-
-**The control settles it: the port reproduces the release.** `transformers`
-ships the Biohub implementation, so the released model can fold the SAME target
-(`runs/native-oracle-20260923/tools/native.py`). 1UBQ with no alignment, five
-seeds, the released model's own 3 loops / 200 steps:
-
-| | best | mean |
-|---|---|---|
-| released ESMFold2 | 5.781 A | 7.345 A |
-| FoldForge ESMFold2 | **5.776 A** | 7.621 A |
-
-So an ESMFold2 folding ubiquitin from the language model alone lands near 6-9 A
-in the RELEASE too. The LM-only numbers are not a porting defect; they are what
-this family does on this target without an alignment, and the reference's
-1.243 A for `esmfold2_fast` is 6MRR, a different and evidently easier target for
-it.
-
-Ruled out for the trunk: the recycle combination, which matches the reference
-term for term (`decay * z_prev + prev_embedding(norm(z_inject))`, with
-`recycle_from_initial` off for both releases as the reference has it), and the
-injection's scale -- `esmfold2` folds correctly with an injection of RMS 1187 on
-a real alignment and 583 on a depth-1 one, so the fast release's 7.25 is not
-anomalous by itself.
-
-Beyond that the next step is the reference as an oracle on the same input,
-which means converting the ESM-C tower to its blob format (5.5 GB). It has not
-been taken.
+The port also reproduces the release where the release runs. 1UBQ, no
+alignment, five seeds: released ESMFold2 best 5.775 / mean 7.354 A, FoldForge
+best 5.776 / mean 7.621.
 
 ## Acceptance per model
 

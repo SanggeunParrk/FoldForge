@@ -270,9 +270,36 @@ document:
 The earlier readings in this document -- first "the trunk, not the head", then
 "the head is the larger cause" -- were each half right, and both were asserted
 from one half of this table. **The work is the trunk's single track.** Its
-INITIAL single already matches (corr 0.991 against the release's), so the
-divergence accumulates across the 48 trunk blocks rather than starting before
-them.
+INITIAL single already matches (corr 0.991 against the release's), and tracing
+the norm after every block shows a steady drift rather than a step: +1.82 per
+block with a standard deviation of 1.54 and no outlier. A drift like that is
+a convention every block shares, not one bad block.
+
+**Three found, and they are worth 13 points.** Against the reference's chai
+branch, our parallel block's single track had three differences:
+
+| convention | ours, before |
+|---|---|
+| the single reads the pair ENTERING the block | read the block's own updated pair |
+| the single attention gates with `sigmoid(g + 1)` | no offset |
+| that attention's residual is masked, so padded rows stay zero | unmasked |
+
+The gate offset is the one that cannot be absorbed: a sigmoid does not fold
+into the linear map that produces its logits, so a missing +1 shrinks every
+block's attention and the shortfall compounds over 48 of them. Restoring all
+three moves pLDDT 41.87 -> **54.93** and the single's scale 0.581 -> **0.675**
+of the release's. They ride on `single_attention_gate_bias` and
+`mask_single_attention_residual`, both default-off, and every other family
+folds bit-identically after the change.
+
+**What is left is not the single alone.** The correlation barely moved --
+0.9221 -> 0.9238 -- so the scale is closer and the content is not, and the
+PAIR reads 0.939 on the same input. Two tracks drifting together points at
+something the block shares rather than at the single track, which is where to
+look next. Ruled out already: the `gating_query` bias (the reference's
+`bias_init=1.0` never fires, since its `Linear` defaults to `use_bias=False`,
+and the blob carries no such record) and `MASK_TRANSITIONS` (chai1 is not a
+member, and we do not mask).
 
 The reference **deliberately did not gate this**: it compared LOGITS rather
 than derived scores so that no assumption about Chai-1's bin centres entered,

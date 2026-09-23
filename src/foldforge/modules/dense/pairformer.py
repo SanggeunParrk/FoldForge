@@ -107,11 +107,17 @@ class PairformerBlock(nn.Module):
         #: results are summed into it, where AF3 threads each update through the
         #: running activation.
         self.parallel = spec.parallel_pairformer_block
+        self.mask_single_attention_residual = (
+            spec.mask_single_attention_residual
+        )
         if self.with_single is True:
             self.single_pair_logits_norm = fastnn.LayerNorm(c_pair)
             self.single_pair_logits_projection = nn.Linear(c_pair, n_heads, bias=False)
             self.single_attention_ = SelfAttention(
-                c_x=c_single, num_head=n_heads, use_single_cond=False
+                c_x=c_single,
+                num_head=n_heads,
+                use_single_cond=False,
+                gate_bias=spec.single_attention_gate_bias,
             )
             # The single transition normally widens by the same factor as the
             # pair one. A stack that narrows only its pair transition says so.
@@ -162,6 +168,7 @@ class PairformerBlock(nn.Module):
                 )
             pair = pair_in + updates + self.pair_transition(pair_in)
         else:
+            pair_in = pair
             pair = triangle_residual(
                 self.triangle_multiplication_outgoing, pair, pair_mask
             )
@@ -177,8 +184,12 @@ class PairformerBlock(nn.Module):
             if single is None or seq_mask is None:
                 message = "Single-track pairformer requires single features and a mask"
                 raise ValueError(message)
+            # A parallel block's single reads the pair ENTERING it, not the one
+            # its own pair track just produced. Sequential blocks thread the
+            # updated pair through, which is the other schedule entirely.
+            logits_source = pair_in if self.parallel else pair
             pair_logits = self.single_pair_logits_projection(
-                self.single_pair_logits_norm(pair)
+                self.single_pair_logits_norm(logits_source)
             )
 
             pair_logits = pair_logits.permute(2, 0, 1)
@@ -188,6 +199,12 @@ class PairformerBlock(nn.Module):
             attention_update: torch.Tensor = self.single_attention_(
                 single, seq_mask, pair_logits=pair_logits
             )
+            if self.mask_single_attention_residual:
+                # Padded rows stay exactly zero rather than carrying whatever
+                # the attention left there.
+                attention_update = attention_update * seq_mask[:, None].to(
+                    attention_update.dtype
+                )
             if self.parallel:
                 # Both single updates read the single entering the block.
                 return pair, single + attention_update + self.single_transition(single)

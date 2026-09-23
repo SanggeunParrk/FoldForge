@@ -287,11 +287,16 @@ class SelfAttention(nn.Module):
         norm_eps: float = 1e-5,
         gating_query: bool = True,
         project_output: bool = True,
+        gate_bias: float = 0.0,
     ) -> None:
 
         super().__init__()
         self.kq_norm = kq_norm
         self.use_gating_query = gating_query
+        # Added to the gate LOGITS, before the sigmoid. A bias there cannot be
+        # folded into the projection that produces them, because a sigmoid does
+        # not commute with a linear map.
+        self.gate_bias = gate_bias
         if kq_norm:
             self.query_layer_norm = fastnn.LayerNorm(c_x)
             self.key_layer_norm = fastnn.LayerNorm(c_x)
@@ -376,6 +381,8 @@ class SelfAttention(nn.Module):
         weighted_avg = einops.rearrange(weighted_avg, "... h q c -> ... q (h c)")
 
         gate_logits = self.gating_query(x) if self.use_gating_query else None
+        if gate_logits is not None and self.gate_bias:
+            gate_logits = gate_logits + self.gate_bias
         return self.adaptive_zero_init(
             weighted_avg, single_cond, gate_logits=gate_logits
         )

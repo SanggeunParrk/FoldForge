@@ -201,6 +201,17 @@ class DenseSpec:
     #: pair exactly as its PAE head does. Summing a logit with its transpose
     #: doubles an expectation, so the wrong one is not a small error.
     pde_symmetrise: str = "logits"
+    #: Bias added to the single-attention GATE logits in a pairformer block,
+    #: before the sigmoid. Chai-1's parallel block opens its gate by 1.0, and no
+    #: weight can express that -- a sigmoid does not fold into a linear map.
+    #: Missing it, every block's attention contributes less, and the shortfall
+    #: compounds: over 48 blocks the trunk's single reaches the confidence head
+    #: at 0.58x the released scale.
+    single_attention_gate_bias: float = 0.0
+    #: Whether a parallel block masks the single-attention residual, so padded
+    #: rows stay exactly zero rather than carrying whatever the attention put
+    #: there.
+    mask_single_attention_residual: bool = False
     #: Separate intra- and inter-chain heads for the distance error and the PAE.
     #: Boltz-2 established the re-embedded pair; a family can take that path
     #: without splitting its heads, so the two are stated apart.
@@ -630,7 +641,14 @@ CHAI1 = replace(
         }
     ),
     per_block_pair_layer_norm=True,
-    parallel_pairformer_block=True,
+parallel_pairformer_block=True,
+    # Its parallel block opens the single-attention gate by 1.0 and masks that
+    # attention's residual. Neither can be expressed as a weight, and both were
+    # missing: over 48 blocks the single reached the confidence head at 0.58x
+    # the released scale, which cost the released head 16 pLDDT points and ours
+    # 52.
+    single_attention_gate_bias=1.0,
+    mask_single_attention_residual=True,
     parallel_msa_block=True,
     untransposed_column_pair_output=True,
     msa_pair_mask_logits=True,

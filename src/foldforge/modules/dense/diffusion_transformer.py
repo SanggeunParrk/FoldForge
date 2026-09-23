@@ -16,6 +16,7 @@ from typing import Any
 
 import einops
 import torch
+import torch.nn.functional as F
 import torch.nn as nn
 from team_gm.modules.blocks.composition import conditioned_residual
 from team_gm.modules.checkpoints.af_family import (
@@ -182,10 +183,15 @@ class AdaLNZero(nn.Module):
             if self.c_single_cond is None:
                 message = "Conditioned layers require a conditioning channel count"
                 raise ValueError(message)
-            cond = self.adaptive_zero_cond(single_cond)
-            # A gate taken RAW, from a conditioning already through SiLU. AF3
-            # squashes it through a sigmoid and offsets it by -2, and no weight
-            # can undo either: a sigmoid does not fold into a linear map.
+            # A gate taken RAW, from a conditioning already through SiLU. Both
+            # halves matter: the vendor's fused modulation produces the scale,
+            # the shift AND the gate from one projection of silu(c), so the
+            # gate reads the SAME activated conditioning the scale does. AF3
+            # squashes its gate through a sigmoid and offsets it by -2, and no
+            # weight can undo either -- a sigmoid does not fold into a linear
+            # map.
+            context = F.silu(single_cond) if self.raw_gate else single_cond
+            cond = self.adaptive_zero_cond(context)
             output = (cond if self.raw_gate else torch.sigmoid(cond)) * output
         return output
 

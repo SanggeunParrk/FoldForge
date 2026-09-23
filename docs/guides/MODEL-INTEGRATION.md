@@ -205,12 +205,21 @@ appears in a fold log. What remains is the `transformer_engine` LayerNorm
 fusion, and FoldForge replaces that module with its own FP32-norm version,
 which is the same arithmetic TE performs. The folds run in FP32 throughout.
 
-**The control that settles "weaker than it should be"** is the released
-implementation on the SAME target. `transformers` ships the Biohub ESMFold2, so
-it costs one GPU job rather than converting a 5.5 GB tower:
-`runs/native-oracle-20260923/tools/native.py`. Until that number exists, "the
-LM pair is weaker than the reference's" rests on a different paper's target
-(6MRR) and should not be read as more than a direction.
+**The control settles it: the port reproduces the release.** `transformers`
+ships the Biohub implementation, so the released model can fold the SAME target
+(`runs/native-oracle-20260923/tools/native.py`). 1UBQ with no alignment, five
+seeds, the released model's own 3 loops / 200 steps:
+
+| | best | mean |
+|---|---|---|
+| released ESMFold2 | 5.781 A | 7.345 A |
+| FoldForge ESMFold2 | **5.776 A** | 7.621 A |
+
+So an ESMFold2 folding ubiquitin from the language model alone lands near 6-9 A
+in the RELEASE too. The LM-only numbers are not a porting defect; they are what
+this family does on this target without an alignment, and the reference's
+1.243 A for `esmfold2_fast` is 6MRR, a different and evidently easier target for
+it.
 
 Ruled out for the trunk: the recycle combination, which matches the reference
 term for term (`decay * z_prev + prev_embedding(norm(z_inject))`, with

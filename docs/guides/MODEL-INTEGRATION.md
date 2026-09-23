@@ -103,15 +103,37 @@ templates, measured against the deposited structure:
 | esmfold2 | 0 / 75 | 0 | 1.517 A (1.065 A at the release's own 3 loops / 14 steps) | 78.6 |
 | esmfold2-fast | 0 / 75 | 0 | **7.528 A** | 59.6 |
 
-**ESMFold2-Fast is not accepted.** Its tree is exact and its geometry is clean,
-but 7.5 A on ubiquitin is not a weak model -- the reference implementation
-folds this release as well as the full one. Its row differs from `esmfold2` in
-`trunk_layers` (48 -> 24) and `msa_layers` (4 -> 0) and in nothing else, which
-matches the released configs and the reference's own registry, so the defect is
-in a path the full release never takes. Ruled out so far: the loop and step
-counts (the release's own 3 / 14 is worse still, 13.4 A) and the per-release LM
-shim (the two `.lm.npz` files are correctly distinct and each is loaded from
-beside its own blob).
+**ESMFold2-Fast is not accepted.** Its tree is exact and its geometry is
+clean, but it is systematically wrong: five samples give 7.53 / 9.28 / 9.60 /
+17.57 / 17.96 A, where the full release on the same input gives 0.74 to 1.52 A.
+The reference implementation folds this release about as well as the full one
+(6MRR best 1.243, mean 1.699, against native's 1.646), so 7.5 A on ubiquitin is
+a defect and not a weak model.
+
+The row differs from `esmfold2` in `trunk_layers` (48 -> 24) and `msa_layers`
+(4 -> 0) and in nothing else, matching both the released configs and the
+reference's own registry.
+
+Located, not yet fixed: **the trunk does not know the structure.** Of the
+confidence head's 100 most confident long-range residue pairs, 10 are real
+contacts, against a 4.7% baseline -- barely better than chance; the full
+release scores 84 of 100 on the same input. Mean PAE is 15.4 A against 4.7 A.
+So the defect is upstream of the diffusion head.
+
+Ruled out: sampling (all five samples are wrong); the loop and step counts (the
+release's own 3 loops / 14 steps is worse still, 13.4 A, while the full release
+improves to 1.065 A there); the per-release LM shim (the two `.lm.npz` files are
+correctly distinct, each loaded from beside its own blob, and both mix the ESM-C
+layers with the same profile); and the blob (both were produced by the
+reference's own converter, and the Haiku layer-stack indices shift correctly --
+the full release's coda is `__layer_stack_no_per_layer_2` where the fast
+release's is `_1`, because only the full one has an MSA stack ahead of it).
+
+The working hypothesis is that the LM pair injection is subtly wrong for both
+releases and only shows here: with no MSA and no templates, the language model
+is the fast release's ONLY structural signal, so the full release's MSA encoder
+would hide the same error. The control that decides it is the full release with
+its MSA removed.
 
 ## Acceptance per model
 

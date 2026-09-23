@@ -257,3 +257,21 @@ def test_native_bf16_clears_a_projection_s_fp32_compute_override(dtype):
     loading.clear_native_compute_override(nn.Sequential(nn.LayerNorm(4), layer), dtype)
 
     assert layer.compute_dtype == (None if dtype == torch.bfloat16 else torch.float32)
+
+
+def test_every_registered_family_names_a_distinct_default_checkpoint():
+    """A default filename is a claim about which blob holds that family.
+
+    Two families sharing one file is almost always a mistake rather than a
+    fact: ESMFold2-Fast is a separate 24-block release with its own blob, and
+    pointing it at ESMFold2's would make the strict load fail at the first
+    missing trunk block instead of at the table that lied.
+    """
+    from foldforge.models import registered_models
+    from foldforge.models.checkpoints import DEFAULT_FILES
+
+    # Protenix names its blob by release, so `--variant` supplies the name.
+    named = {name for name in registered_models() if name != "protenix"}
+    assert named <= set(DEFAULT_FILES)
+    files = [DEFAULT_FILES[name] for name in named]
+    assert len(set(files)) == len(files), sorted(files)

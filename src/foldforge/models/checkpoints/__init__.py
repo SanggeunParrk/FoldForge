@@ -34,7 +34,7 @@ DEFAULT_FILES = {
     "boltz2": "boltz2.bin.zst",
     "chai1": "chai1.bin.zst",
     "esmfold2": "esmfold2.bin.zst",
-    "esmfold2-fast": "esmfold2.bin.zst",
+    "esmfold2-fast": "esmfold2_fast.bin.zst",
     "intellifold2": "intellifold2.bin.zst",
     "openfold3": "openbind0.bin.zst",
     "openfold3-preview2": "openfold3.bin.zst",

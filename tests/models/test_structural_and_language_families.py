@@ -116,6 +116,41 @@ def test_rigid_align_recovers_a_known_rotation_and_translation():
     assert torch.allclose(aligned, reference, atol=1e-4)
 
 
+def test_rigid_align_gives_every_sample_its_own_rotation():
+    """A leading axis is a separate structure, not more atoms of this one.
+
+    The alignment flattened all leading axes into the atom list, so a request
+    for five diffusion samples crashed -- 5x3072 weighted against 3072 -- and
+    the crash was the lucky outcome. Had the shapes broadcast it would have
+    solved one Kabsch problem across every sample at once, silently.
+    """
+    from foldforge.models.architectures.af3 import weighted_rigid_align
+
+    torch.manual_seed(11)
+    reference = torch.randn(4, 5, 3)
+    weight = (torch.rand(4, 5) > 0.3).float()
+    rotations = []
+    for _ in range(3):
+        rotation, _ = torch.linalg.qr(torch.randn(3, 3))
+        if torch.linalg.det(rotation) < 0:
+            rotation[:, 0] *= -1
+        rotations.append(rotation)
+    samples = torch.stack(
+        [reference @ r + float(i) for i, r in enumerate(rotations)]
+    )
+
+    batched = weighted_rigid_align(samples, reference.expand(3, 4, 5, 3), weight)
+    looped = torch.stack(
+        [weighted_rigid_align(samples[i], reference, weight) for i in range(3)]
+    )
+    assert batched.shape == samples.shape
+    assert torch.equal(batched, looped)
+    # Each sample came back to the reference, which one shared rotation across
+    # three different rotations could not do.
+    assert torch.allclose(batched * weight[..., None],
+                          reference * weight[..., None], atol=1e-4)
+
+
 def test_structural_diffusion_output_returns_to_the_residue_layout():
     """Exact, not a choice: every residue atom sits in one structural slot."""
     from foldforge.models.architectures.af3 import _to_residue_layout

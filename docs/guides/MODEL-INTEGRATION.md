@@ -64,6 +64,55 @@ The command writes per-sample CIF and a JSON recording the LM source,
 precision, seeds, MSA depth, sampling settings and the actual compile/CUDA-graph
 settings. This correctness runner uses compile off and CUDA graphs off.
 
+## One graph — 2026-09-23
+
+Every registered family is a `DenseSpec` row on `models/architectures/af3.py`.
+Two kinds of evidence are recorded, because the first does not imply the second.
+
+**Parameter trees.** `scripts/diff_dense_checkpoint.py` compares what the graph
+wants against what the blob supplies. Eleven of twelve rows are exact with no
+discrepancy in either direction: alphafold3 404, boltz2 440, chai1 397,
+esmfold2 343, esmfold2-fast 303, intellifold2 404, openbind0 404, openfold3
+404, protenix1 402, protenix2 402, rosettafold3 444. OpenDDE's blob is a raw
+`.pt` the tool does not read; it is verified by folding instead.
+
+**Folds.** A tree diff cannot see a convention -- a function applied to a
+tensor owns no parameter -- and this project has three cases of an exact tree
+folding to garbage. So a family is accepted by folding it. 5I28, PyTorch
+backend, `af3_default` precision, 10 recycles, 200 steps, seeds 0/0, with AF3
+as the control on the identical input:
+
+| family | peptide C-N | clashes | CA vs AF3 | pLDDT |
+|---|---|---|---|---|
+| af3 (control) | 0 / 127 | 0 | -- | 96.11 |
+| boltz2 | 0 / 127 | 0 | 0.667 A | 97.18 |
+| intellifold2 | 0 / 127 | 0 | 0.148 A | 95.78 |
+| openfold3 | 0 / 127 | 0 | 0.203 A | 95.06 |
+| openfold3-preview2 | 0 / 127 | 0 | 0.209 A | 84.95 |
+| rosettafold3 | 0 / 127 | 0 | 0.208 A | 86.87 |
+
+Chai-1 on the same input folds 0 / 127 with 31 clashes at pLDDT 41; its
+remaining gap is recorded separately. OpenDDE folds 0 / 127 on 5I28 and
+0 / 75, 0 / 222, 0 / 591 on 1UBQ, 3PTB and 4YX2.
+
+The two ESMFold2 releases have no template stack, so they take 1UBQ without
+templates, measured against the deposited structure:
+
+| family | peptide C-N | clashes | CA vs deposited 1UBQ | pLDDT |
+|---|---|---|---|---|
+| esmfold2 | 0 / 75 | 0 | 1.517 A (1.065 A at the release's own 3 loops / 14 steps) | 78.6 |
+| esmfold2-fast | 0 / 75 | 0 | **7.528 A** | 59.6 |
+
+**ESMFold2-Fast is not accepted.** Its tree is exact and its geometry is clean,
+but 7.5 A on ubiquitin is not a weak model -- the reference implementation
+folds this release as well as the full one. Its row differs from `esmfold2` in
+`trunk_layers` (48 -> 24) and `msa_layers` (4 -> 0) and in nothing else, which
+matches the released configs and the reference's own registry, so the defect is
+in a path the full release never takes. Ruled out so far: the loop and step
+counts (the release's own 3 / 14 is worse still, 13.4 A) and the per-release LM
+shim (the two `.lm.npz` files are correctly distinct and each is loaded from
+beside its own blob).
+
 ## Acceptance per model
 
 1. Pin model source, released configuration and weight conversion; require strict

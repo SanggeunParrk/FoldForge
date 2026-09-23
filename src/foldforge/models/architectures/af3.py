@@ -40,18 +40,31 @@ from foldforge.modules.dense.template import TemplateEmbedding
 def weighted_rigid_align(
     mobile: torch.Tensor, reference: torch.Tensor, weight: torch.Tensor
 ) -> torch.Tensor:
-    """Kabsch-align ``mobile`` onto ``reference`` over the dense atom layout."""
+    """Kabsch-align ``mobile`` onto ``reference`` over the dense atom layout.
+
+    The last three axes are the layout -- token, atom-in-token, xyz -- and the
+    weight covers exactly those. Any axis in front of them is a separate
+    structure that gets its own rotation, so only the layout is flattened.
+    Flattening everything would fold the samples into the atom list and solve
+    one Kabsch problem across all of them, which is a different question and,
+    for more than one sample, not even a well-shaped one.
+    """
     w = weight[..., None].to(mobile.dtype)
     total = w.sum((-3, -2), keepdim=True)
     centre_m = (mobile * w).sum((-3, -2), keepdim=True) / total
     centre_r = (reference * w).sum((-3, -2), keepdim=True) / total
-    a = (mobile - centre_m).reshape(-1, 3)
-    b = (reference - centre_r).reshape(-1, 3)
-    u, _, vt = torch.linalg.svd((a * w.reshape(-1, 1)).T.float() @ b.float())
+    lead = mobile.shape[:-3]
+    a = (mobile - centre_m).reshape(*lead, -1, 3)
+    b = (reference - centre_r).reshape(*lead, -1, 3)
+    covariance = torch.einsum("...nc,...nd->...cd", a * w.reshape(-1, 1), b).float()
+    u, _, vt = torch.linalg.svd(covariance)
     # Reflections are not rotations: flip the least significant axis when the
     # determinant says the naive product is one.
     sign = torch.sign(torch.linalg.det(u @ vt))
-    flip = torch.diag(torch.stack([torch.ones_like(sign), torch.ones_like(sign), sign]))
+    flip = torch.zeros_like(u)
+    flip[..., 0, 0] = 1
+    flip[..., 1, 1] = 1
+    flip[..., 2, 2] = sign
     rotation = (u @ flip @ vt).to(mobile.dtype)
     return (a @ rotation).reshape(mobile.shape) + centre_r
 

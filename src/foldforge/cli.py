@@ -34,3 +34,10 @@ def main(argv: list[str] | None = None) -> int:
             args.model, args.arguments
         )
     return import_module("foldforge.models.io.cli").run(args.model, args.arguments)
+
+
+if __name__ == "__main__":
+    # `python -m foldforge.cli` must do what the `foldforge` script does.
+    # Without this it exits 0 having run nothing, which reads as a fold that
+    # produced no output rather than as a command that never started.
+    raise SystemExit(main())

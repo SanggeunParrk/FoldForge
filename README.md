@@ -2,10 +2,11 @@
 
 **Many structure predictors, one environment, one set of kernels.**
 
-AF3, Protenix v1/v2, ESMFold2 and OpenDDE share MiniWorld-format inputs,
-one CCD LMDB, team-gm block compositions and miniworld-engine kernels.
-Released model equations, checkpoint layouts and confidence heads remain explicit
-in each adapter. Boltz-2 and Chai-1 are planned and are not implemented.
+Eleven AF3-family predictors share MiniWorld-format inputs, one CCD LMDB,
+team-gm block compositions and miniworld-engine kernels — and one graph. A
+family is a `DenseSpec` row stating where its release disagrees with AF3;
+where a release's equations, checkpoint layout or confidence head differ, the
+difference is a field in that row rather than a second implementation.
 
 Start with the [documentation index](docs/README.md) and
 [benchmark results](docs/benchmark_results.md): 5I28 replicated to 512 tokens and
@@ -60,9 +61,9 @@ uv sync --extra cu12    # CUDA 12.8   (or --extra cu13 for CUDA 13)
 
 For an existing checkout: `git submodule update --init --recursive`.
 The checked-in submodule revision is the validated dependency: team-gm
-`92a50c9` on branch `foldforge/msa-bucket-1024` with engine `d2266a03`. Keep that
-revision when reproducing the recorded results; newer `exp/miniworld` commits use
-a different engine/patch set.
+`0c3baa1` on branch `foldforge/dense-families`. Keep that revision when
+reproducing the recorded results; newer `exp/miniworld` commits use a
+different engine/patch set.
 
 The pinned Biohub ESMFold2 processor requires **Python 3.12**. For
 A5000/A6000/A100, the complete environment includes FA2, Quack 0.5.0 and
@@ -100,13 +101,13 @@ revision, validation results, and FlashAttention setup required for GPU SWA.
 ## Layout
 
 ```
-libs/team-gm/            submodule, pinned; branch foldforge/msa-bucket-1024
+libs/team-gm/            submodule, pinned; branch foldforge/dense-families
 src/foldforge/
   cli.py                 foldforge models / ccd / fold <model>
   prediction.py          the one output type every predictor returns
   models/                architectures, config, checkpoints, io adapters and the
                          single loading / execution / sampling / precision lifecycle
-  modules/               dense, sequence and flat layout blocks, ops, ESMC backbone
+  modules/               the dense AF3 graph's blocks, shared ops, the ESM-C backbone
   data/                  CCD, features, MSA, templates and MiniWorld input preparation
   eval/                  RMSD / lDDT / TM, confidence metrics, permutation matching
   training/  utils/      losses; geometry, seeding, logging and tensor helpers
@@ -148,43 +149,42 @@ and the next person changing it has to prove nothing else depends on it.
 
 ## Status
 
-Every predictor has a package from the start — the port is where the boundary
-decisions get made, and they belong next to the model rather than in an issue.
-`known_models()` is the plan; `registered_models()` is what actually loads.
+Every family is a ROW of one graph, not a copy of it: `modules/dense/spec.py`
+holds a `DenseSpec` per family and `models/architectures/af3.py` is the only
+architecture in the tree. `known_models()` is the plan and `registered_models()`
+is what actually loads; they are now the same set.
 
-| predictor | state |
+| family | what its row says |
 |---|---|
-| ESMFold2 | ported; live ESMC → folding → CIF runs through the public CLI; see [integration verification](docs/guides/MODEL-INTEGRATION.md) |
-| AF3 | ported; strict released weights, full 1UBQ inference and PyTorch comparison verified |
-| Protenix v1/v2 | ported; both variants passed full 1UBQ inference and PyTorch comparison |
-| OpenDDE | ported; strict released weights, full 1UBQ inference and PyTorch comparison verified |
-| Boltz-2, Chai-1 | not ported |
+| AF3 | the reference the other rows are stated against |
+| Protenix v1 / v2 | `--variant` picks the release |
+| OpenDDE | folds on structural tokens: the diffusion axis is re-tokenised, the trunk stays on residues |
+| ESMFold2 | pair-only trunk, SSM recycle, ESM-C 6B into the pair track |
+| ESMFold2-Fast | the same row at 24 trunk blocks and no MSA stack |
+| Boltz-2, Chai-1, IntelliFold-v2, OpenFold3 (v0.5.0 / preview-2), RoseTTAFold3 | the AF3 graph with that release's conventions |
 
-### Run ESMFold2
+`foldforge models` lists them with their sources. Per-family checkpoint
+evidence and validation scope are in
+[the integration record](docs/guides/MODEL-INTEGRATION.md).
 
-On an allocated GPU node:
+### Run a fold
+
+On an allocated GPU node, every family takes the same MiniWorld YAML and the
+same flags — there is one CLI, not one per predictor:
 
 ```bash
 source scripts/activate_env.sh
 foldforge models
-foldforge fold esmfold2 --target 1ubq --lm-source compute \
-  --out runs/esmfold2-live
-```
-
-Targets use prepared `validation/inputs/data/<target>/target.json` and MSA files.
-`--lm-source compute` runs the ESMC checkpoint; `cache` explicitly reuses an existing
-embedding file. The command writes CIF and JSON with actual precision, sampling,
-compile and CUDA-graph settings. See [the integration record](docs/guides/MODEL-INTEGRATION.md)
-for the additional models' source/checkpoint status and validation scope.
-All four predictors use the MiniWorld BioMol LMDB at
-`data/ccd/preprocessed_CCD.lmdb`. Use the same MiniWorld YAML with each model:
-
-```bash
-foldforge fold af3 --spec configs/inference/1ubq.yaml --out runs/af3
+foldforge fold af3      --spec configs/inference/1ubq.yaml --out runs/af3
 foldforge fold protenix --spec configs/inference/1ubq.yaml --out runs/protenix
-foldforge fold opendde --spec configs/inference/1ubq.yaml --out runs/opendde
+foldforge fold opendde  --spec configs/inference/1ubq.yaml --out runs/opendde
 foldforge fold esmfold2 --spec configs/inference/1ubq.yaml --out runs/esmfold2
 ```
+
+`--checkpoint` is optional when the release's default file is in
+`model_checkpoints/<model>/`. The command writes CIF and JSON recording the
+actual precision, sampling, compile and CUDA-graph settings. Every family
+reads the MiniWorld BioMol LMDB at `data/ccd/preprocessed_CCD.lmdb`.
 
 See [MiniWorld formats](docs/guides/MINIWORLD-FORMAT.md) for database migration,
 nested model settings, data conventions and checkpoint-specific capabilities.

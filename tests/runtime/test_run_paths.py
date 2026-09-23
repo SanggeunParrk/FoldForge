@@ -7,6 +7,7 @@ import pytest
 import torch
 from conftest import cli
 
+import foldforge
 from foldforge.models.io import paths
 from foldforge.models.io.cli import parse
 from foldforge.models.io.output import Decoded, write_output
@@ -108,3 +109,14 @@ def test_spec_cli_rejects_external_directory_before_preparation(
             "af3", ["--spec", "input.yaml", "--out", str(tmp_path / "outside")]
         )
     reader.assert_not_called()
+
+
+def test_module_entry_point_dispatches_like_the_console_script():
+    """``python -m foldforge.cli`` must not exit 0 having run nothing.
+
+    A module with no ``__main__`` guard is silent and successful, which reads
+    as a fold that produced no output rather than a command that never ran.
+    """
+    source = (Path(foldforge.__file__).parent / "cli.py").read_text()
+    assert 'if __name__ == "__main__":' in source
+    assert "raise SystemExit(main())" in source

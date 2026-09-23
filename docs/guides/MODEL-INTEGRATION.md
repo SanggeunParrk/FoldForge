@@ -146,14 +146,46 @@ Ruled out, each measured rather than reasoned about:
   `pde_logits` at corr 0.999938 and 0.999916 against captured native I/O.
 - **The language model.** Alive: 128 distinct ESM2 embeddings for 128 tokens.
 
-**What would settle it is the released Chai-1, and it is not on this machine.**
-`chai_lab` is not installed and `model_checkpoints/chai1/models_v2/` is empty,
-so there is no native arm to ask whether the release also reports ~41 here.
-Note too that the reference **deliberately did not gate this**: it compared
-LOGITS rather than derived scores precisely so that no assumption about
-Chai-1's bin centres entered the gate, and it excluded pLDDT because, unlike
-PAE and PDE, it is per atom and needs atom-layout agreement. So this is
-unverified there as well, not merely here.
+**The release was downloaded and run, and the gap is real.** `chai_lab` is at
+`/public_data/thalkak_envs/chai-lab`; `models_v2/` (1.1 GB) and
+`conformers_v1.apkl` come from `chaiassets.com`. Pin `antipickle==0.2.0`: 0.2.2
+ships a built-in `torch` adapter whose typestring collides with the one
+`chai_lab` registers, and the collision is an assertion, not a warning.
+
+On 5I28, same sequence, 3 recycles and 200 steps:
+
+| | pLDDT mean | range | vs deposited |
+|---|---|---|---|
+| released Chai-1 | **97.45** | 75.8 - 98.9 | 0.692 A |
+| FoldForge Chai-1 | **42.03** | 23.0 - 50.6 | 0.919 A |
+| FoldForge AF3 | 98.28 | 90.7 - 99.0 | 0.674 A |
+
+The two structures agree to 0.581 A, so the fold is right and only the
+confidence is wrong -- by more than a factor of two.
+
+Also cleared, by weight comparison against the released TorchScript: the pLDDT
+projection is **bit-identical**, `max|diff| = 0.0` and corr 1.00000000, in the
+atom-major layout we use. Matching it bin-major instead reads corr 0.408, so
+the `(n_atom n_bins)` reshape convention is confirmed too.
+
+**Not the cause: the head norms.** The released `confidence_head.pt` carries
+five non-block parameters -- all bare projection weights, no norm tensor -- and
+the converter invents `scale=1/offset=0` for `logits_ln`, `pae_logits_ln` and
+`plddt_logits_ln`. That looked decisive, since a scale-1/offset-0 LayerNorm
+still centres and rescales, and the reference records exactly that reasoning
+for boltz2 in `NO_HEAD_NORM` while leaving Chai-1 out of it. Removing the three
+norms moved pLDDT from 42.03 to **37.78** -- slightly worse, structure
+unchanged -- so the reading was wrong: **no parameters does not mean no
+normalisation.** An affine-free LayerNorm has zero parameters and still
+normalises, which is what the converter's ones and zeros faithfully represent.
+The change was reverted.
+
+The reference **deliberately did not gate this**: it compared LOGITS rather
+than derived scores so that no assumption about Chai-1's bin centres entered,
+and excluded pLDDT because, unlike PAE and PDE, it is per atom and needs
+atom-layout agreement. So the gap is unverified there as well, and the next
+place to look is what reaches `plddt_logits` -- the single the confidence
+pairformer emits -- rather than the projection or its norm.
 
 ### The one real defect this found
 

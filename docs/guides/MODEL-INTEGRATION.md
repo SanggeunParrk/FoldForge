@@ -198,11 +198,19 @@ top layers (78/79/80 holding 0.58); and FoldForge's ESM-C fallback blocks,
 whose maths matches the `transformers` originals exactly (same SwiGLU order)
 and differ only by forcing FP32 in the norm.
 
-Not yet checked, and now the leading suspect: the ESM-C tower's own numerics.
-This machine has neither `transformer_engine` nor `xformers`, and the package
-warns that both fallbacks differ on **the unnormalized residual stream** by
-~O(10) and ~O(100) respectively -- which is precisely the quantity the shim
-reads, at all 81 layers.
+The tower's numerics were the next suspect and are now mostly cleared. On a
+GPU node only ONE of the package's two fallbacks fires -- flash-attn is
+installed, so the attention path is fused, and the warning about it never
+appears in a fold log. What remains is the `transformer_engine` LayerNorm
+fusion, and FoldForge replaces that module with its own FP32-norm version,
+which is the same arithmetic TE performs. The folds run in FP32 throughout.
+
+**The control that settles "weaker than it should be"** is the released
+implementation on the SAME target. `transformers` ships the Biohub ESMFold2, so
+it costs one GPU job rather than converting a 5.5 GB tower:
+`runs/native-oracle-20260923/tools/native.py`. Until that number exists, "the
+LM pair is weaker than the reference's" rests on a different paper's target
+(6MRR) and should not be read as more than a direction.
 
 Ruled out for the trunk: the recycle combination, which matches the reference
 term for term (`decay * z_prev + prev_embedding(norm(z_inject))`, with

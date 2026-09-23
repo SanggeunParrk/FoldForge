@@ -82,7 +82,7 @@ def pair_representation(
     aatype: torch.Tensor,
     asym_id: torch.Tensor,
     residue_index: torch.Tensor,
-    mol_type: torch.Tensor,
+    is_protein: torch.Tensor,
     mask: torch.Tensor,
     dtype: torch.dtype,
 ) -> torch.Tensor:
@@ -127,7 +127,7 @@ def pair_representation(
                 batched(aatype),
                 batched(asym_id),
                 batched(residue_index),
-                batched(mol_type),
+                batched(is_protein),
                 batched(mask),
             )
     finally:

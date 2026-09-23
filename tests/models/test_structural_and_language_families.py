@@ -234,6 +234,44 @@ def test_the_language_model_shim_mixes_the_tower_s_last_layers():
     assert bool(torch.isfinite(pair).all())
 
 
+def test_the_language_model_packs_the_protein_tokens_it_is_given():
+    """The selector is a BOOLEAN, and an empty pack is an error, not a fold.
+
+    It used to be a molecule-type CLASS compared against ``PROTEIN_MOL_TYPE``,
+    which is 0, while the caller had ``is_protein``, which is 1 on protein.
+    So the comparison selected exactly the tokens it meant to drop: on an
+    all-protein input nothing was packed, the tower saw nothing, and the shim
+    turned its zeros into ONE constant vector repeated at all 16384 pair
+    positions. Every ESMFold2 fold ran without its language model and still
+    produced a structure, which is why nothing caught it.
+    """
+    from foldforge.modules.language_model import build_lm_inputs
+
+    protein = torch.tensor([[True, True, True, False]])
+    ids = torch.tensor([[5, 7, 9, 3]])
+    asym = torch.zeros(1, 4, dtype=torch.long)
+    residue = torch.tensor([[0, 1, 2, 3]])
+    mask = torch.ones(1, 4, dtype=torch.bool)
+
+    packed, _sequence_id, position_map = build_lm_inputs(
+        ids, asym, residue, protein, mask
+    )
+    # The three protein tokens reached the tower and the fourth did not.
+    assert (position_map[0, :3] >= 0).all()
+    assert int(position_map[0, 3]) == -1
+    assert packed.shape[0] == 1
+
+    # An all-protein input is the common case and must pack everything.
+    everything = build_lm_inputs(
+        ids, asym, residue, torch.ones(1, 4, dtype=torch.bool), mask
+    )[2]
+    assert (everything[0] >= 0).all()
+
+    # Nothing to pack is an error: silence here is what hid the mix-up.
+    with pytest.raises(ValueError, match="No protein token"):
+        build_lm_inputs(ids, asym, residue, torch.zeros(1, 4, dtype=torch.bool), mask)
+
+
 def test_pair_only_families_build_neither_single_track_nor_pair_attention():
     from foldforge.models.architectures.af3 import Evoformer
 

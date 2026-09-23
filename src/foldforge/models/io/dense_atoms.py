@@ -37,7 +37,7 @@ def _language_features(
                 name,
                 checkpoint,
                 residue_index=tensors["residue_index"],
-                mol_type=tensors["is_protein"].long(),
+                is_protein=tensors["is_protein"].bool(),
                 **common,
             )
         }

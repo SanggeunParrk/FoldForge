@@ -44,8 +44,6 @@ ESM2_VOCAB: tuple[str, ...] = tuple((_COMMON + " <null_1> <mask>").split())
 ESMC_VOCAB: tuple[str, ...] = tuple((_COMMON + " | <mask>").split())
 
 BOS, PAD, EOS, MASK = 0, 1, 2, 32
-#: ``mol_type`` value marking a protein token; only these reach a tower.
-PROTEIN_MOL_TYPE = 0
 
 #: One-letter code of each protein residue type, indexed as the structure side
 #: numbers them; everything past the protein types has no residue letter.
@@ -306,7 +304,7 @@ def build_lm_inputs(
     input_ids: Int[torch.Tensor, "B L"],
     asym_id: Int[torch.Tensor, "B L"],
     residue_index: Int[torch.Tensor, "B L"],
-    mol_type: Int[torch.Tensor, "B L"],
+    is_protein: Bool[torch.Tensor, "B L"],
     mask: Bool[torch.Tensor, "B L"],
     pad_to_multiple: int | None = None,
 ) -> tuple[
@@ -320,8 +318,15 @@ def build_lm_inputs(
         Per-token residue ids.
     asym_id, residue_index : Tensor
         Chain id and residue number; together they identify a residue.
-    mol_type : Tensor
-        Molecule type per token; non-protein tokens are dropped.
+    is_protein : Tensor
+        True on the protein tokens; only those reach a tower.
+
+        A BOOLEAN, not a molecule-type class. It was a class, compared
+        against ``PROTEIN_MOL_TYPE == 0``, and every caller had the boolean --
+        so ``mol_type == 0`` selected exactly the tokens it meant to drop. On
+        an all-protein input that left nothing to pack, and the tower returned
+        zeros that the shim turned into one constant vector repeated at every
+        pair position. The fold still ran, and looked like a fold.
     mask : Tensor
         Token validity.
     pad_to_multiple : int or None
@@ -337,12 +342,17 @@ def build_lm_inputs(
     """
     batch, length = input_ids.shape
     device = input_ids.device
-    is_protein = (mol_type == PROTEIN_MOL_TYPE) & mask
+    protein = is_protein.bool() & mask
+    if not bool(protein.any()):
+        # Silence here is what hid the class-versus-flag mix-up above: an empty
+        # pack gives zero hidden states, a constant pair, and a fold.
+        message = "No protein token reached the language model"
+        raise ValueError(message)
 
     packed: list[torch.Tensor] = []
     position_maps: list[torch.Tensor] = []
     for index in range(batch):
-        keep = is_protein[index]
+        keep = protein[index]
         ids = input_ids[index][keep]
         chains = asym_id[index][keep]
         residues = residue_index[index][keep]
@@ -484,7 +494,7 @@ def compute_lm_hidden_states(
     input_ids: torch.Tensor,
     asym_id: torch.Tensor,
     residue_index: torch.Tensor,
-    mol_type: torch.Tensor,
+    is_protein: torch.Tensor,
     mask: torch.Tensor,
     *,
     mask_fraction: float = 0.0,
@@ -497,7 +507,7 @@ def compute_lm_hidden_states(
     ----------
     language_model : LanguageModel
         Anything matching the :class:`LanguageModel` protocol.
-    input_ids, asym_id, residue_index, mol_type, mask : Tensor
+    input_ids, asym_id, residue_index, is_protein, mask : Tensor
         Structure-token features; see :func:`build_lm_inputs`.
     mask_fraction : float
         Residue masking probability applied before the LM runs.
@@ -512,7 +522,7 @@ def compute_lm_hidden_states(
         ``[B, L, n_layers + 1, d_model]`` hidden states, detached.
     """
     lm_input_ids, sequence_id, position_map = build_lm_inputs(
-        input_ids, asym_id, residue_index, mol_type, mask, pad_to_multiple
+        input_ids, asym_id, residue_index, is_protein, mask, pad_to_multiple
     )
     lm_input_ids = mask_lm_inputs(lm_input_ids, mask_fraction, generator=generator)
     output = language_model(

@@ -5,22 +5,18 @@ The dated validation sections below describe the state when those checks ran.
 
 # FoldForge model integration
 
-Working tree: `main`; shared team-gm member: branch `foldforge/msa-bucket-1024`
-(the validated `exp/miniworld` runtime `a823f69` plus the 1024-row MSA bucket).
+Working tree: `main`; shared team-gm member: branch `foldforge/dense-families`.
 All predictors must use FoldForge's environment, team-gm blocks, and
 miniworld-engine ops. A package name or a subprocess launching an untouched
 upstream model is not a completed shared-engine port.
 
-| Predictor | Current implementation | Strict checkpoint evidence |
-| --- | --- | --- |
-| ESMFold2 | Live ESMC and folding through the public CLI | Released ESMFold2 and ESMC-6B weights |
-| AF3 | Xfold PyTorch model, official AF3 features, shared engine ops | 405 source records: 404 parameters/buffers plus identifier metadata; 368,384,666 parameters |
-| Protenix v1 / v2 | Pinned official models with shared engine ops | 4,174 state entries each; 368,484,735 / 464,442,431 parameters |
-| OpenDDE | Pinned official model with shared engine ops | 4,482 state entries; 655,791,538 parameters |
+**As of 2026-09-23 there is one graph.** `models/architectures/af3.py` is the
+only architecture in the tree, and a predictor is a `DenseSpec` row in
+`modules/dense/spec.py` stating where its release disagrees with AF3. The flat
+and sequence layouts, and the per-model architectures that lived on them, are
+deleted. Sections dated before this describe the separate ports they replaced.
 
-These are in-process FoldForge ports, including the model-specific diffusion and
-confidence heads. They preserve released weight names and load strictly. They do
-not yet replace every upstream operation with an engine kernel.
+See **One graph — 2026-09-23** below for each family's evidence.
 
 Source pins and original licenses are retained in each model's `SOURCE.json` and
 `UPSTREAM-LICENSE`:
@@ -42,47 +38,31 @@ Current CCD and module-boundary status is recorded in
 [code unification](../archive/CODE-UNIFICATION-20260913.md). The original port validation
 below establishes execution, not complete migration to team-gm blocks.
 
-## ESMFold2 command
+## Running a fold
 
-On an allocated GPU node, after installing the environment:
+Every family takes the same MiniWorld YAML and the same flags -- there is one
+CLI, not one per predictor. On an allocated GPU node:
 
 ```bash
 source scripts/activate_env.sh
 foldforge models
-foldforge fold esmfold2 --target 1ubq --lm-source compute \
-  --out runs/esmfold2-live
+foldforge fold af3      --spec configs/inference/1ubq.yaml --out runs/af3
+foldforge fold esmfold2 --spec configs/inference/1ubq.yaml --out runs/esmfold2
 ```
 
-`compute` loads ESMC-6B and computes embeddings from the input sequence; it is the
-default. `--lm-source cache` explicitly uses the existing target embedding file.
-That legacy file has no source-version manifest and is not treated as proof that
-the current LM was executed. `--checkpoint` and `--lm-checkpoint` override the
-checkpoint resolver. Input targets currently use `validation/inputs/data/<target>/`
-with `target.json` and prepared MSA files; this command does not run an MSA search.
+`--checkpoint` is optional when the release's default blob sits in
+`model_checkpoints/<model>/` or in its family's directory. `--config` takes a
+YAML of backend, precision, seeds, recycles, steps and execution settings; see
+`runs/*/tools/config.yaml` in any recorded run for the shape.
 
-The registry loader converts and strictly loads the released folding weights.
-The command writes `<target>.cif` and `<target>.json`, recording the LM source,
-precision, seed, MSA depth, sampling settings, and actual compile/graph settings.
-Native BF16 retains norm parameters in FP32; no autocast is used.
-This correctness runner uses compile off and CUDA graphs off. The earlier SWA
-module graph check does not establish full-model graph coverage or performance.
+A family with no template stack (`template_layers == 0`, both ESMFold2
+releases) refuses a templated input, and one with no MSA stack
+(`msa_layers == 0`, ESMFold2-Fast) ignores the alignment. Both rules are read
+from the family row, so a new release needs no code.
 
-During full-model verification, the noise-conditioning LayerNorm exposed a
-missing semantic length dimension. The conditioning path now passes `[BS, 1, D]`
-to LayerNorm. A GPU regression compares the complete conditioning module with
-PyTorch. Feature preparation no longer injects fake `team_gm.core`, Lightning,
-or cuEquivariance modules into `sys.modules`.
-
-The original scoring helper incorrectly selected `distogram_atom_idx` (usually
-CB) while comparing with CA coordinates. It now selects explicit protein CA
-atoms and matches residue identity. CIF parsing also supports prediction files
-without occupancy columns. The former CB-vs-CA numbers are invalid; the original
-JSON files are preserved with `.before-ca-fix.json` suffixes.
-
-The public ESMC loader retains its upstream RoPE `_apply` hook (including meta
-buffer materialization and FP32 frequency regeneration). Its PyTorch fallback
-normalizers explicitly reduce in FP32 before native-BF16 projections; tiny-model
-regressions cover FP32 parity and BF16 loading.
+The command writes per-sample CIF and a JSON recording the LM source,
+precision, seeds, MSA depth, sampling settings and the actual compile/CUDA-graph
+settings. This correctness runner uses compile off and CUDA graphs off.
 
 ## Acceptance per model
 

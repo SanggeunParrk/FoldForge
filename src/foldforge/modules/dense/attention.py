@@ -24,6 +24,43 @@ from foldforge.modules import ops as fastnn
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 
 
+def _row_chunked_attention(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    *,
+    mask: torch.Tensor | None,
+    bias: torch.Tensor | None,
+    budget: int = 450_000_000,
+) -> torch.Tensor:
+    """Attention over the row axis, in batches small enough to allocate.
+
+    The logits are (rows, heads, n, n) and the row count IS the token count, so
+    the temporary grows as the CUBE of it: 594 tokens asks for 9 GiB and 1140
+    for 68. The bound is a platform-neutral budget on the N-squared score
+    batch, rounded down to a power of two, which is the vendor's own rule.
+
+    The bias is shared across rows -- it is a per-head pair term, not a per-row
+    one -- so it rides each batch whole rather than being sliced.
+    """
+    rows, _, tokens, _ = q.shape
+    chunk = max(1, budget // max(1, tokens * tokens))
+    chunk = 1 << (chunk.bit_length() - 1)
+    if chunk >= rows:
+        return fastnn.dot_product_attention(q, k, v, mask=mask, bias=bias)
+    parts = [
+        fastnn.dot_product_attention(
+            q[start : start + chunk],
+            k[start : start + chunk],
+            v[start : start + chunk],
+            mask=None if mask is None else mask[start : start + chunk],
+            bias=bias,
+        )
+        for start in range(0, rows, chunk)
+    ]
+    return torch.concatenate(parts, dim=0)
+
+
 class GridSelfAttention(nn.Module):
     """Represent grid self attention."""
 
@@ -104,7 +141,7 @@ class GridSelfAttention(nn.Module):
                 raise TypeError(message)
             weighted_avg = vendor_output.squeeze(0)
         else:
-            weighted_avg = fastnn.dot_product_attention(q, k, v, mask=mask, bias=bias)
+            weighted_avg = _row_chunked_attention(q, k, v, mask=mask, bias=bias)
 
         weighted_avg = einops.rearrange(weighted_avg, "b h n d -> b n (h d)")
 

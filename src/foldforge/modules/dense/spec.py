@@ -711,7 +711,11 @@ OPENDDE = replace(
     structural_tokens=True,
     confidence_records="opendde",
     dedupe_self_msa=False,
-    empty_template_gap="all",
+    # MEASURED, not read: the whole-block form appears in `make_dummy_feature`
+    # but that path runs only when the template featuriser returns nothing at
+    # all. Its own featuriser emits [31, 0, 0, 0] -- one gap template, three
+    # zero slots -- on a no-template input, which is Protenix's pattern.
+    empty_template_gap="first",
     pair_channel=384,
     #: The trunk is 384 wide but the denoiser conditions on a 128-wide pair,
     #: which is what makes it compress the trunk pair before concatenating.

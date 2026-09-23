@@ -55,15 +55,33 @@ def _registry() -> dict[str, dict]:
 
 
 def _roots(model: str) -> list[Path]:
-    """Candidate directories for ``model``, most specific first."""
+    """Candidate directories for ``model``, most specific first.
+
+    A release is usually downloaded into a directory named after the model,
+    but two releases of one project often land in one directory: both
+    OpenFold3 blobs sit under ``openfold3/``, so ``openfold3-preview2`` has
+    no directory of its own. The family name is therefore a fallback, which
+    keeps this a rule about how releases are stored rather than a table of
+    which model borrows whose folder.
+    """
+    from foldforge.models import entry as registered  # noqa: PLC0415 - import cycle
+
+    names = [model]
+    try:
+        family = registered(model).family
+    except (KeyError, ValueError):
+        family = None
+    if family and family not in names:
+        names.append(family)
     candidates: list[Path] = []
     override = os.environ.get("FOLDFORGE_CHECKPOINT_DIR")
-    if override:
-        candidates.append(Path(override) / model)
-    candidates.append(DEFAULT_DIR / model)
-    entry = _registry().get(model) or {}
-    if entry.get("path"):
-        candidates.append(Path(entry["path"]))
+    for name in names:
+        if override:
+            candidates.append(Path(override) / name)
+        candidates.append(DEFAULT_DIR / name)
+    manifest = _registry().get(model) or {}
+    if manifest.get("path"):
+        candidates.append(Path(manifest["path"]))
     return candidates
 
 

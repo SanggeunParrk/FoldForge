@@ -275,3 +275,29 @@ def test_every_registered_family_names_a_distinct_default_checkpoint():
     assert named <= set(DEFAULT_FILES)
     files = [DEFAULT_FILES[name] for name in named]
     assert len(set(files)) == len(files), sorted(files)
+
+
+@pytest.mark.skipif(
+    not (Path(foldforge.__file__).parents[2] / "model_checkpoints").is_dir(),
+    reason="weights are not downloaded on this machine",
+)
+def test_every_registered_family_resolves_its_checkpoint():
+    """A distinct filename is not enough; it has to be findable.
+
+    Two releases of one project often land in one directory -- both OpenFold3
+    blobs sit under `openfold3/` -- so `openfold3-preview2` named the right
+    file in a directory that does not exist. Naming the file was checked;
+    finding it was not, and the gap only showed up as a failed Slurm job.
+    """
+    from foldforge.models import registered_models
+    from foldforge.models.checkpoints import DEFAULT_FILES, resolve
+
+    missing = []
+    for name in sorted(registered_models()):
+        if name == "protenix":
+            continue  # --variant supplies the filename
+        try:
+            resolve(name, DEFAULT_FILES[name])
+        except FileNotFoundError as error:
+            missing.append(f"{name}: {str(error).splitlines()[0]}")
+    assert not missing, "\n".join(missing)

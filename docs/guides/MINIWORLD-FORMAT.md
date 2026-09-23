@@ -67,17 +67,23 @@ protein, RNA, DNA and CCD ligands. No model chooses another CCD release implicit
 
 `--config` is a nested Pydantic `Config` with `trunk` and `diffusion` sections.
 The default is native BF16 learned parameters with FP32 normalization parameters,
-explicit checkpoint-specific FP32 calculations, and no autocast. A null recycle or
-step setting preserves the released default: AF-family 10/200, ESMFold2 3/14.
+explicit checkpoint-specific FP32 calculations, and no autocast. A null recycle
+or step setting means 10 recycles and 200 steps, for every family: the
+per-family defaults left with the sequence layout, and ESMFold2's own 3/14 is
+now something a config asks for rather than something it gets by omission.
 `trunk.msa_depth` caps prepared alignment rows for every adapter; null means the
 shared policy value of 16384 rows, the AF3 `msa_crop_size`. Inside the model,
 every trunk pass embeds a fresh uniformly random subset of 1024 valid rows and
 re-draws it on each recycle, as the AF3 MSA module does. FoldForge applies this
-one rule to all four predictors at load time (`foldforge.models.msa_policy`)
-instead of each checkpoint's released consumption: OpenDDE sampled 1280 rows,
+one rule to every predictor, from its `DenseSpec` row's `msa_subsample`
+(`foldforge.models.msa_policy` carries the record and the constants; the
+`apply_flat`/`apply_esmfold2` appliers went with the layouts they configured).
+It replaces each checkpoint's released consumption: OpenDDE sampled 1280 rows,
 Protenix drew a random-size subset (Uniform[1, n] rows) on every cycle in
 training and inference alike, and ESMFold2 embedded every prepared row on every
-recurrence loop. Profile and deletion statistics
+recurrence loop. Two families keep a different rule because their releases need
+it -- Chai-1 takes the rows in order and ESMFold2 keeps the query -- and that,
+too, is the row rather than a branch. Profile and deletion statistics
 still come from the full prepared MSA. The sampled rows are padded to the
 1024-row MSA inference bucket (team-gm `MSA_SHAPES`); before that bucket existed
 they were padded to 2048 and the MSA stack ran half on padding. Templates are

@@ -123,6 +123,46 @@ Both land inside the band. The row differs from `esmfold2` in `trunk_layers`
 (48 -> 24) and `msa_layers` (4 -> 0) and in nothing else, matching the released
 configs and the reference's registry, and it folds like it.
 
+### Running a released implementation as the control
+
+Two of this document's findings rest on folding the same target with the
+RELEASE, and neither was reachable from reasoning alone. Both are set up here
+so the next person does not rediscover the setup.
+
+**ESMFold2** ships inside `transformers`, so it needs nothing extra:
+
+```python
+ESMFold2Model.from_pretrained("model_checkpoints/esmfold2")
+```
+
+Use the LOCAL path. `from_pretrained("biohub/ESMFold2")` fails in this build --
+`DiffusionStructureHeadConfig.__init__() got an unexpected keyword argument
+'architectures'` -- because the published config parses differently. Call it
+with `num_diffusion_samples=1` and `num_sampling_steps=200`; asking for five
+samples in one call hits a degenerate SVD inside the model's own Kabsch align.
+
+**Chai-1** needs its weights and a few packages:
+
+- Source: `/public_data/thalkak_envs/chai-lab` (already on this machine).
+- Weights: `models_v2/*.pt` (1.1 GB) and `conformers_v1.apkl` (119 MB) from
+  `https://chaiassets.com/chai1-inference-depencencies/`, into
+  `model_checkpoints/chai1/`. Point `CHAI_DOWNLOADS_DIR` at that directory.
+- Missing packages: `gemmi`, `antipickle==0.2.0`, `modelcif`, `typer`,
+  `pandera`, `numba`. Install them to a directory and reach them with
+  `PYTHONPATH` rather than into `.venv` -- they are for a control, not for
+  FoldForge.
+- **Pin `antipickle==0.2.0`.** 0.2.2 ships a built-in `torch` adapter whose
+  typestring collides with the one `chai_lab` registers, and the collision is a
+  bare `assert`, not a warning.
+- `run_inference` refuses a non-empty output directory.
+
+`ScriptModule` refuses `register_forward_hook`, and the traced blocks expose no
+callable `forward`. The call site is ordinary Python, so wrap
+`chai_lab.chai1.ModuleWrapper.forward` to capture any component's inputs and
+outputs. Discriminate by an argument only one component has --
+`atom_within_token_index` for the confidence head, `msa_input_feats` for the
+trunk -- because both take a `token_single_trunk_repr`.
+
 ### Chai-1's confidence, narrowed and still open
 
 Chai-1 folds 5I28 to 0.89 A CA-RMSD with 0 broken bonds -- a good structure --

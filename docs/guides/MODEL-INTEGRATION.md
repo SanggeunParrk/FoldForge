@@ -170,10 +170,39 @@ For comparison the full release on a real alignment reads 74 at the injection
 and **100** at the trunk output, and folds to 0.99 A.
 
 So the fast release hands its structure head a pair carrying 71 of 100 and gets
-12 A. Either the structure head is far more sensitive to that gap than it looks,
-or its own conditioning is wrong -- and the two are separable, because the full
-release driven by the language model alone puts the SAME 48-block trunk and the
-SAME structure head in the fast release's position.
+12 A. The control that separates "the structure head is wrong" from "the pair is
+weak" is the full release with no alignment: same 48-block trunk, same structure
+head, driven by the language model alone, exactly as the fast release always is.
+
+| driven by | injection | trunk | fold vs deposited 1UBQ |
+|---|---|---|---|
+| `esmfold2`, real alignment | 74 | **100** | 0.70 - 1.48 A |
+| `esmfold2`, language model alone | 50 | 65 | 5.78 - 9.03 A |
+| `esmfold2-fast`, language model alone | 50 | 71 | 6.72 - 17.71 A |
+
+The two LM-driven rows agree across different checkpoints, different trunk
+depths and the presence or absence of an MSA encoder. **There is no
+fast-specific defect downstream of the trunk**: the structure head behaves the
+same for both, and what is common to the failing rows is that the language
+model, not an alignment, is supplying the pair.
+
+So the remaining gap is the QUALITY of the LM pair. It is informative -- 50 of
+100 at the injection against a 4.7% baseline -- but the alignment path supplies
+74, and the reference folds `esmfold2_fast` at 1.243 A best / 1.699 mean on
+6MRR from the language model alone, which is a far better pair than ours.
+
+Checked and not the cause: the shim's arithmetic, which matches the reference
+operation for operation; the per-release shim weights, which are correctly
+distinct and each loaded from beside its own blob, sum to 1.0 and mix the same
+top layers (78/79/80 holding 0.58); and FoldForge's ESM-C fallback blocks,
+whose maths matches the `transformers` originals exactly (same SwiGLU order)
+and differ only by forcing FP32 in the norm.
+
+Not yet checked, and now the leading suspect: the ESM-C tower's own numerics.
+This machine has neither `transformer_engine` nor `xformers`, and the package
+warns that both fallbacks differ on **the unnormalized residual stream** by
+~O(10) and ~O(100) respectively -- which is precisely the quantity the shim
+reads, at all 81 layers.
 
 Ruled out for the trunk: the recycle combination, which matches the reference
 term for term (`decay * z_prev + prev_embedding(norm(z_inject))`, with

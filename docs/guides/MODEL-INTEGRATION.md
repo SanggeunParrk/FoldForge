@@ -152,22 +152,39 @@ true contacts against a 4.7% baseline, where before the fix it was 2 -- and 46
 of them survive the four `lm_encoder` blocks. For the fast release the LM is
 91% of the injection by RMS.
 
-**Still wrong: the trunk does not use it.** `esmfold2-fast` is unchanged at
-best 6.72 A, mean 12.33 A, and its confidence head still ranks only 10 of 100
-pairs correctly, exactly as before. So an injection carrying 46 of 100 becomes
-a trunk output carrying 10 of 100. `esmfold2` is likewise unchanged at 0.99 A,
-which now reads as its MSA doing all the work either way.
+**Still wrong, and the trunk is not where.** `esmfold2-fast` is unchanged at
+best 6.72 A, mean 12.33 A. Reading its confidence head suggested the trunk had
+lost the signal -- 10 of 100 -- but this family's confidence head RE-EMBEDS the
+pair from s_inputs and the predicted coordinates, so PAE cannot answer for the
+trunk. Tapping the trunk's own output instead says the opposite: it does not
+lose the signal, it sharpens it.
 
-Ruled out for the trunk so far: the recycle combination, which matches the
-reference term for term (`decay * z_prev + prev_embedding(norm(z_inject))`,
-with `recycle_from_initial` off for both releases as the reference has it), and
-the injection's scale -- `esmfold2` folds correctly with an injection of RMS
-1187 on a real MSA and 583 on a depth-1 one, so the fast release's 7.25 is not
+| tensor (1UBQ, no alignment) | top-100 holds |
+|---|---|
+| `lm_pair`, the shim's output | 60 true contacts |
+| the injection the trunk reads | 50 |
+| `pair_pre_coda`, 24 blocks later | **73** |
+| after the coda, what the structure head gets | **71** |
+
+For comparison the full release on a real alignment reads 74 at the injection
+and **100** at the trunk output, and folds to 0.99 A.
+
+So the fast release hands its structure head a pair carrying 71 of 100 and gets
+12 A. Either the structure head is far more sensitive to that gap than it looks,
+or its own conditioning is wrong -- and the two are separable, because the full
+release driven by the language model alone puts the SAME 48-block trunk and the
+SAME structure head in the fast release's position.
+
+Ruled out for the trunk: the recycle combination, which matches the reference
+term for term (`decay * z_prev + prev_embedding(norm(z_inject))`, with
+`recycle_from_initial` off for both releases as the reference has it), and the
+injection's scale -- `esmfold2` folds correctly with an injection of RMS 1187 on
+a real alignment and 583 on a depth-1 one, so the fast release's 7.25 is not
 anomalous by itself.
 
-The next step is the reference as an oracle on the same input, which means
-converting the ESM-C tower to its blob format (5.5 GB) and comparing the trunk
-stage by stage. It has not been taken.
+Beyond that the next step is the reference as an oracle on the same input,
+which means converting the ESM-C tower to its blob format (5.5 GB). It has not
+been taken.
 
 ## Acceptance per model
 

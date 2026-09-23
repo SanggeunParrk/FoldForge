@@ -23,40 +23,6 @@ class TinyModel(nn.Module):
 
 
 @pytest.mark.parametrize(
-    ("name", "container"),
-    # OpenDDE is the last model on the flat checkpoint path; everything else
-    # loads through the dense graph.
-    [("opendde", "state_dict"), ("opendde", None)],
-)
-def test_flat_checkpoint_uses_strict_native_precision(
-    tmp_path, monkeypatch, name, container
-):
-    reference = TinyModel()
-    with torch.no_grad():
-        reference.norm.weight.fill_(1.000123)
-    state = {"module." + key: value for key, value in reference.state_dict().items()}
-    checkpoint = tmp_path / "weights.pt"
-    torch.save({container: state} if container else state, checkpoint)
-    constructor = "OpenDDE"
-    monkeypatch.setattr(
-        loading, "import_module", lambda _: SimpleNamespace(**{constructor: TinyModel})
-    )
-    config = SimpleNamespace(model_name="opendde_v1", data={"msa": {}})
-    model = load(name, checkpoint, configs=config, backend="pytorch", device="cpu")
-    assert model.projection.weight.dtype == torch.bfloat16
-    assert model.norm.weight.dtype == torch.float32
-    torch.testing.assert_close(model.norm.weight, reference.norm.weight, atol=0, rtol=0)
-    assert not model.training
-    assert not model.projection.weight.requires_grad
-    assert model.foldforge_load_report["strict"] is True
-    assert model.foldforge_load_report["backend"] == "pytorch"
-    state.pop("module.projection.weight")
-    torch.save({container: state} if container else state, checkpoint)
-    with pytest.raises(RuntimeError, match="Missing key"):
-        load(name, checkpoint, configs=config, backend="pytorch", device="cpu")
-
-
-@pytest.mark.parametrize(
     ("backend", "expected"),
     [
         ("pytorch", "pytorch"),
@@ -267,28 +233,18 @@ def test_af3_recycles_are_additional_trunk_passes(
 
 
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32])
-def test_projection_compute_override_follows_native_policy(
-    tmp_path, monkeypatch, dtype
-):
-    class GeometryModel(TinyModel):
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            super().__init__(*args, **kwargs)
-            self.projection.compute_dtype = torch.float32
+def test_native_bf16_clears_a_projection_s_fp32_compute_override(dtype):
+    """Native BF16 has to reach the GEMM, not only the stored weights.
 
-    checkpoint = tmp_path / "geometry.pt"
-    torch.save(GeometryModel().state_dict(), checkpoint)
-    monkeypatch.setattr(
-        loading, "import_module", lambda _: SimpleNamespace(OpenDDE=GeometryModel)
-    )
-    model = load(
-        "opendde",
-        checkpoint,
-        configs=SimpleNamespace(model_name="opendde_v1", data={"msa": {}}),
-        backend="pytorch",
-        device="cpu",
-        dtype=dtype,
-    )
-    expected = None if dtype == torch.bfloat16 else torch.float32
-    assert model.projection.compute_dtype == expected
-    assert model.projection.weight.dtype == dtype
-    assert model.norm.weight.dtype == torch.float32
+    A released geometry or conditioning projection may carry an FP32 compute
+    override; under a BF16 policy that override would quietly keep the matmul
+    in FP32 while the weights say otherwise. The rule is layout-independent, so
+    it is asked directly rather than through whichever loader still exists.
+    """
+    from team_gm.modules.precision import NativeLinear
+
+    layer = NativeLinear(4, 4, bias=False)
+    layer.compute_dtype = torch.float32
+    loading.clear_native_compute_override(nn.Sequential(nn.LayerNorm(4), layer), dtype)
+
+    assert layer.compute_dtype == (None if dtype == torch.bfloat16 else torch.float32)

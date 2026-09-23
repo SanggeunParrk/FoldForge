@@ -15,12 +15,28 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from team_gm.modules.checkpoints.layers import skip_random_init
 
 from foldforge.models import entry
 from foldforge.models.checkpoints import DEFAULT_FILES, resolve
-from foldforge.models.config import PROTENIX_FAMILIES, VARIANTS, configuration
-from foldforge.models.msa_policy import RECORD, apply_esmfold2, apply_flat
+from foldforge.models.config import PROTENIX_FAMILIES, VARIANTS
+from foldforge.models.msa_policy import RECORD, apply_esmfold2
+
+
+def clear_native_compute_override(model: Any, dtype: Any) -> None:
+    """Under native BF16, drop a projection's FP32 compute override.
+
+    Native BF16 must apply to the GEMM, not only the stored weights: a released
+    geometry or conditioning projection may carry an FP32 compute override, and
+    left in place it keeps the matmul in FP32 while the weights say otherwise.
+    Nothing here reads the layout -- the rule is the same wherever it applies.
+    """
+    if dtype != torch.bfloat16:
+        return
+    from team_gm.modules.precision import NativeLinear  # noqa: PLC0415 - optional
+
+    for layer in model.modules():
+        if isinstance(layer, NativeLinear):
+            layer.compute_dtype = None
 
 
 def resolve_family(
@@ -147,23 +163,11 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
             model = architecture(configs, implementation_type)
             state = convert_model(load_file(checkpoint / "model.safetensors"), configs)
         else:
-            configs = configuration(name, variant) if configs is None else configs
-            configs = apply_flat(configs)
-            if name == "opendde":
-                configs.triangle_multiplicative = "torch"
-                configs.triangle_attention = "torch"
-            with skip_random_init():
-                model = architecture(configs)
-            blob = torch.load(
-                checkpoint, map_location="cpu", weights_only=True, mmap=True
+            message = (
+                f"{name} has no loader: every family is either a row of the "
+                "dense AF3 graph or the sequence-layout architecture"
             )
-            state = (
-                blob["model"]
-                if name == "protenix"
-                else blob.get("model", blob.get("state_dict", blob))
-            )
-            state = {k.removeprefix("module."): v for k, v in state.items()}
-            report["variant"] = getattr(configs, "model_name", "opendde_v1")
+            raise NotImplementedError(message)
         model.load_state_dict(state, strict=True)
         report["state_entries"] = len(state)
 
@@ -198,13 +202,7 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
             fourier.bias = fourier_fp32[1].to(device)
         model = install_conditioning(install_pairformers(model))
     if dtype == torch.bfloat16 and precision_policy != "af3_default":
-        from team_gm.modules.precision import NativeLinear
-
-        # Native BF16 must apply to the GEMM, not only stored weights. Upstream
-        # geometry/conditioning projections may carry an FP32 compute override.
-        for layer in model.modules():
-            if isinstance(layer, NativeLinear):
-                layer.compute_dtype = None
+        clear_native_compute_override(model, dtype)
     if precision_policy == "model_default":
         from foldforge.models.precision import reference_precision
 

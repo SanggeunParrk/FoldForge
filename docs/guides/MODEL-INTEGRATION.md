@@ -129,29 +129,45 @@ reference's own converter, and the Haiku layer-stack indices shift correctly --
 the full release's coda is `__layer_stack_no_per_layer_2` where the fast
 release's is `_1`, because only the full one has an MSA stack ahead of it).
 
-The full release with its MSA removed breaks the same way -- 9.87 A mean, 24
-of 100 top pairs -- which first looked like proof that the language model is
-the shared defect. **It is not clean evidence**: `esmfold2` still has an MSA
-encoder, so that run puts four MSA blocks on a depth-1 self-MSA, and an
-instrumented pass shows the pair reaching the LM injection at RMS 583 there
-against 7.2 for the fast release. The released encoder masks itself to zero on
-a depth-1 alignment; ours evidently does not, so that control measures a second
-bug rather than the first one.
+### What this found, and what is still wrong
 
-What the same instrumented pass does say about the fast release is that the
-language model IS reaching the trunk at a sane scale: shim output RMS 1.48,
-contribution after the four `lm_encoder` blocks RMS 3.27, against a pair of
-7.25 -- 45% of the injection. So the defect is not a missing or negligible
-injection; it is the CONTENT of what arrives, or the 24-block trunk that reads
-it.
+**Fixed: the language model was dead.** `build_lm_inputs` selected protein
+tokens with `mol_type == PROTEIN_MOL_TYPE`, which is 0, while the caller passed
+`is_protein`, which is 1 on protein -- so it kept exactly the tokens it meant to
+drop. On an all-protein input nothing was packed, the tower saw an empty
+sequence, and the shim turned its zeros into ONE 256-vector repeated at all
+16384 pair positions (1 distinct row of 16384, max deviation exactly 0). Every
+ESMFold2 fold ran with no language model.
 
-Deciding that needs the reference as an oracle on the same input, which means
-converting the ESM-C tower to its blob format (5.5 GB) and comparing `lm_pair`
-tensor to tensor. That is the next step and it has not been taken.
+It was invisible because it still folded. `esmfold2` reached 0.99 A because its
+MSA encoder carried the structure by itself; `esmfold2-fast`, which has no MSA
+encoder, had nothing left. The constant even measured like a contribution --
+45% of the injection by RMS. What gave it away: the reference records that
+disabling the LM dropout costs ~18 A, and disabling ours moved the fold by
+0.1 A.
 
-Two things to fix that this turned up on the way, both filed above as their own
-defects: the depth-1 MSA encoder blow-up, and -- already fixed -- the rigid
-align that folded the sample axis into the atom list.
+After the fix the language model demonstrably works. Its pair carries real
+long-range contacts -- of the 100 pairs a linear read-out ranks highest, 60 are
+true contacts against a 4.7% baseline, where before the fix it was 2 -- and 46
+of them survive the four `lm_encoder` blocks. For the fast release the LM is
+91% of the injection by RMS.
+
+**Still wrong: the trunk does not use it.** `esmfold2-fast` is unchanged at
+best 6.72 A, mean 12.33 A, and its confidence head still ranks only 10 of 100
+pairs correctly, exactly as before. So an injection carrying 46 of 100 becomes
+a trunk output carrying 10 of 100. `esmfold2` is likewise unchanged at 0.99 A,
+which now reads as its MSA doing all the work either way.
+
+Ruled out for the trunk so far: the recycle combination, which matches the
+reference term for term (`decay * z_prev + prev_embedding(norm(z_inject))`,
+with `recycle_from_initial` off for both releases as the reference has it), and
+the injection's scale -- `esmfold2` folds correctly with an injection of RMS
+1187 on a real MSA and 583 on a depth-1 one, so the fast release's 7.25 is not
+anomalous by itself.
+
+The next step is the reference as an oracle on the same input, which means
+converting the ESM-C tower to its blob format (5.5 GB) and comparing the trunk
+stage by stage. It has not been taken.
 
 ## Acceptance per model
 

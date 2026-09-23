@@ -238,8 +238,30 @@ head survives this -- it conditions through its own norms, and the fold is
 0.919 A against the release's 0.692 -- while the confidence head turns it into
 97 against 42.
 
-So the remaining work is the TRUNK, not the head, and it is a fresh
-investigation rather than a last step of this one. Note the trap that cost two
+**That reading was wrong, and the ablation that settles it is cheap.** The
+released head IS callable -- `forward` is undefined but the bucketed
+`forward_256` .. `forward_3072` are all there -- so our tensors can be fed to
+it with every other input held at the release's. Swapping one at a time, all
+atoms, bf16 as the head runs it:
+
+| into the RELEASED head | pLDDT |
+|---|---|
+| released single + released pair | 95.14 |
+| **ours** single + released pair | 79.39 |
+| released single + **ours** pair | 93.39 |
+| **ours** single + **ours** pair | **76.71** |
+
+Our own head on those same tensors gives **41.87**. So the gap splits:
+
+- the trunk costs **18.4 points** (95.14 -> 76.71), almost all of it the single;
+- our confidence head costs **34.8** (76.71 -> 41.87).
+
+**The head is the larger cause**, which the bit-identical projection weights do
+not contradict: identical weights say nothing about how the four confidence
+pairformer blocks in front of them are assembled. And the reference's gate does
+not cover it -- it compared PAE and PDE logits, which are the PAIR path, while
+pLDDT reads the SINGLE that those blocks emit. That path is ungated in both
+implementations. Note the trap that cost two
 runs here: the confidence head and the trunk both take a
 `token_single_trunk_repr` argument, and on the first pass the trunk's copy is
 the recycle carry, not its output. Comparing against the wrong one reads corr

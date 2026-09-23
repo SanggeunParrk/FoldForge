@@ -292,14 +292,27 @@ of the release's. They ride on `single_attention_gate_bias` and
 `mask_single_attention_residual`, both default-off, and every other family
 folds bit-identically after the change.
 
-**What is left is not the single alone.** The correlation barely moved --
-0.9221 -> 0.9238 -- so the scale is closer and the content is not, and the
-PAIR reads 0.939 on the same input. Two tracks drifting together points at
-something the block shares rather than at the single track, which is where to
-look next. Ruled out already: the `gating_query` bias (the reference's
-`bias_init=1.0` never fires, since its `Linear` defaults to `use_bias=False`,
-and the blob carries no such record) and `MASK_TRANSITIONS` (chai1 is not a
-member, and we do not mask).
+**What is left is not the single alone**, and 43 points of it remain. The
+correlation barely moved -- 0.9221 -> 0.9238 -- so the scale is closer and the
+content is not, and the PAIR reads 0.939 on the same input. Two tracks
+drifting together points at something the block shares.
+
+Ruled out, each cheaply and definitively, and listed so no one pays for them
+twice:
+
+| candidate | how it was eliminated |
+|---|---|
+| **precision** | the release's trunk output is exactly representable in bf16, so it runs there and we were comparing against `af3_default`. Matching it moves pLDDT 54.93 -> 54.52, which is nothing. |
+| **dual-output pair attention in the trunk** | the blob carries `output_projection_transposed` under the confidence head and NOT under `trunk_pairformer`. The checkpoint's own shapes answered it without reading a line of reference code. |
+| **the single recycle** | matches the reference term for term: the carry is normed and projected onto `s_init`, and the first pass seeds the carry with `s_init` itself. |
+| **the `gating_query` bias** | the reference's `bias_init=1.0` never fires -- its `Linear` defaults to `use_bias=False` -- and the blob carries no such record. |
+| **`MASK_TRANSITIONS`** | chai1 is not a member, and we do not mask. |
+| **the pair track's assembly** | every delta reads the block's input and they are summed against it, in both. |
+
+Worth keeping from that list: **the release's trunk is bf16 throughout**, which
+is a fact about the target even though it is not this defect. And a
+checkpoint's own tensor shapes settle a question about architecture faster than
+reading either implementation.
 
 The reference **deliberately did not gate this**: it compared LOGITS rather
 than derived scores so that no assumption about Chai-1's bin centres entered,

@@ -75,7 +75,11 @@ _REGISTRY = {
     "esmfold2-fast": Entry(
         "foldforge.models.architectures.af3.AlphaFold3",
         "dense_atoms",
-        "ESMFold2-Fast — the same family at 24 trunk blocks and no MSA stack",
+        # The caveat is in the listing because the fold looks ordinary: clean
+        # geometry, no clashes, a plausible pLDDT. Only the RMSD gives it away,
+        # and a user folding a novel target has nothing to compare against.
+        "ESMFold2-Fast — 24 trunk blocks, no MSA stack; NOT YET ACCURATE, see "
+        "docs/guides/MODEL-INTEGRATION.md",
         "esmfold2-fast",
     ),
     "boltz2": Entry(

@@ -144,7 +144,10 @@ def test_rigid_align_gives_every_sample_its_own_rotation():
         [weighted_rigid_align(samples[i], reference, weight) for i in range(3)]
     )
     assert batched.shape == samples.shape
-    assert torch.equal(batched, looped)
+    # Close, not equal: a batched SVD reduces in a different order from three
+    # separate ones, so on CUDA the two agree to float precision and not to the
+    # bit. Demanding equality here passed on CPU and failed on a GPU node.
+    torch.testing.assert_close(batched, looped, atol=1e-5, rtol=1e-5)
     # Each sample came back to the reference, which one shared rotation across
     # three different rotations could not do.
     assert torch.allclose(batched * weight[..., None],

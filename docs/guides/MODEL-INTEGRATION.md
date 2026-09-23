@@ -180,12 +180,35 @@ normalisation.** An affine-free LayerNorm has zero parameters and still
 normalises, which is what the converter's ones and zeros faithfully represent.
 The change was reverted.
 
+**Located: the trunk hands the head a different representation.** Wrapping
+`ModuleWrapper.forward` -- the call site is ordinary Python even though the
+traced blocks have no callable `forward`, and a ScriptModule refuses
+`register_forward_hook` -- captures the released head's inputs. Against ours on
+the same target, over the 128 real tokens:
+
+| tensor into the confidence head | corr | ours RMS | released RMS | best scale | residual |
+|---|---|---|---|---|---|
+| `single` | +0.922 | 137.1 | 217.5 | 0.58 | 0.387 |
+| `pair` | +0.942 | 96.9 | 97.3 | 0.94 | 0.335 |
+
+Close but not equal: the pair's scale matches and the single's is 0.58x, and
+best-fit scaling still leaves 39% and 33% of the energy unexplained. The
+reference's own gates aim at 0.999, so 0.92 is not agreement. The diffusion
+head survives this -- it conditions through its own norms, and the fold is
+0.919 A against the release's 0.692 -- while the confidence head turns it into
+97 against 42.
+
+So the remaining work is the TRUNK, not the head, and it is a fresh
+investigation rather than a last step of this one. Note the trap that cost two
+runs here: the confidence head and the trunk both take a
+`token_single_trunk_repr` argument, and on the first pass the trunk's copy is
+the recycle carry, not its output. Comparing against the wrong one reads corr
+0.065 and invites the conclusion that the two graphs share nothing.
+
 The reference **deliberately did not gate this**: it compared LOGITS rather
 than derived scores so that no assumption about Chai-1's bin centres entered,
 and excluded pLDDT because, unlike PAE and PDE, it is per atom and needs
-atom-layout agreement. So the gap is unverified there as well, and the next
-place to look is what reaches `plddt_logits` -- the single the confidence
-pairformer emits -- rather than the projection or its norm.
+atom-layout agreement.
 
 ### The one real defect this found
 

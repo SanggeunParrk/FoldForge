@@ -12,10 +12,10 @@ from team_gm.diffusion.edm.sampling import EulerSampler
 from team_gm.modules.execution import ExecutedCallable
 from torch import nn
 
+from foldforge.models import is_dense
 from foldforge.models.config import Config, ExecutionConfig
 from foldforge.models.io.cli import parse
 from foldforge.models.io.request import Request
-from foldforge.models import is_dense
 from foldforge.models.sampling import bind_sampling_seed
 from foldforge.utils.seed import RNGState, conformer_seed, seed_all, seed_context
 

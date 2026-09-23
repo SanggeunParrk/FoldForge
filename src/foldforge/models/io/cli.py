@@ -16,7 +16,9 @@ from foldforge.models.io.request import Request
 def parse(model: str, argv: list[str] | None = None) -> Request:  # noqa: PLR0915 - translate compatibility flags at one boundary
     """Parse ."""
     parser = argparse.ArgumentParser(prog=f"foldforge fold {model}")
-    sequence_layout = model == "esmfold2"
+    from foldforge.models import entry
+
+    sequence_layout = entry(model).layout == "sequence_atoms"
     parser.add_argument("--ccd-db", type=Path, default=default_path())
     parser.add_argument("--checkpoint", type=Path, required=not sequence_layout)
     parser.add_argument(

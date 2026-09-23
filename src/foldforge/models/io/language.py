@@ -111,16 +111,27 @@ def pair_representation(
         )
         raise FileNotFoundError(message)
 
-    tower = tower.load_esmc(
+    model = tower.load_esmc(
         str(checkpoints.resolve("esmc-6b")), device=aatype.device, dtype=dtype
     )
+
+    # The tower is written for the sequence layout, which carries a leading
+    # batch axis; the dense one does not.
+    def batched(x: torch.Tensor) -> torch.Tensor:
+        return x[None] if x.ndim == 1 else x
+
     try:
         with torch.no_grad():
             hidden = tower.compute_lm_hidden_states(
-                tower, aatype, asym_id, residue_index, mol_type, mask
+                model,
+                batched(aatype),
+                batched(asym_id),
+                batched(residue_index),
+                batched(mol_type),
+                batched(mask),
             )
     finally:
-        del tower
+        del model
         torch.cuda.empty_cache()
 
     shim = lm.load_pair_shim(shims[0]).to(aatype.device)

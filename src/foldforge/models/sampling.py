@@ -17,7 +17,7 @@ from team_gm.diffusion.augmentation import centre_random_augmentation
 from team_gm.diffusion.edm.sampling import EulerSampler
 from team_gm.diffusion.edm.training import sample_training
 
-from foldforge.models import is_dense
+from foldforge.models import entry, is_dense
 from foldforge.utils.seed import seed_context
 
 if TYPE_CHECKING:
@@ -209,12 +209,11 @@ def bind_sampling_seed(model: torch.nn.Module, family: str, seed: int) -> None:
     This host boundary encloses initial noise, augmentation, churn and guidance.
     The denoiser's compiled/CUDA-graph boundary stays inside it.
     """
-    if family == "esmfold2":
+    sequence = entry(family).layout == "sequence_atoms"
+    if sequence:
         owner, method = model.get_submodule("structure_head"), "sample"
-    elif is_dense(family):
-        owner, method = model, "_sample_diffusion"
     else:
-        owner, method = model, "sample_diffusion"
+        owner, method = model, "_sample_diffusion"
     original = getattr(owner, method)
     device = next(model.parameters()).device
 
@@ -222,7 +221,7 @@ def bind_sampling_seed(model: torch.nn.Module, family: str, seed: int) -> None:
     @wraps(original)
     def sample(*args: Any, **kwargs: Any) -> Any:
         with seed_context(seed):
-            if family == "esmfold2":
+            if sequence:
                 # Do not consume the explicit generator already used by the trunk.
                 kwargs["generator"] = torch.Generator(device=device).manual_seed(seed)
             elif not is_dense(family):

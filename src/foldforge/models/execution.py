@@ -1,5 +1,4 @@
 # Optional chemistry/GPU backends load at the selected execution boundary.
-# ruff: noqa: PLC0415
 """Model-specific execution boundaries and complete-forward measurements."""
 
 from __future__ import annotations
@@ -15,7 +14,7 @@ from team_gm.modules.execution import (
 )
 from torch._dynamo.utils import counters
 
-from foldforge.models import is_dense
+from foldforge.models import entry
 from foldforge.utils.seed import RNGState
 
 if TYPE_CHECKING:
@@ -39,47 +38,24 @@ class Execution:
         self.autocast_scopes = getattr(model, "reference_autocast_scopes", [])
         self.config = config
         self.wrappers = []
-        self.bucket_adapter = None
-        self.bucket_model = None
         self.initial_graphs = counters["stats"]["unique_graphs"]
-        # The flat graph buckets by padding its denoiser; the dense one buckets
-        # its own inputs. Keyed on the layout, so a family that moves between
-        # them needs nothing here.
-        flat_buckets = config.bucketing and not is_dense(family)
-        if flat_buckets:
-            if config.scope != "denoiser":
-                msg = "Flat-atom bucketing requires scope=denoiser"
-                raise ValueError(msg)
-            from team_gm.modules.checkpoints.stacks import PairformerStack
-            from team_gm.modules.checkpoints.triangle import TriangleAttention
-
-            setattr(model, "inference_bucketing", True)  # noqa: B010 - runtime metadata
-            self.bucket_model = model
-            for layer in model.modules():
-                if isinstance(layer, (PairformerStack, TriangleAttention)):
-                    setattr(layer, "inference_bucketing", True)  # noqa: B010 - runtime metadata
-        if not (config.compile or config.cuda_graph or flat_buckets):
+        # Bucketing by PADDING the denoiser belonged to the flat layout, which
+        # no family is on any more: the dense graph buckets its own inputs and
+        # the sequence one does not bucket at all.
+        if not (config.compile or config.cuda_graph):
             return
         if config.scope == "model":
             owner, method = model, "forward"
-        elif family == "esmfold2":
+        elif entry(family).layout == "sequence_atoms":
             owner, method = (
                 model.get_submodule("structure_head.diffusion_module"),
                 "denoise",
             )
-        elif is_dense(family):
-            owner, method = model.get_submodule("diffusion_head"), "forward"
         else:
-            owner, method = model.get_submodule("diffusion_module"), "forward"
+            owner, method = model.get_submodule("diffusion_head"), "forward"
         label = f"{family}.{config.scope}"
         wrapped = ExecutedCallable(getattr(owner, method), config, label)
-        if flat_buckets:
-            from team_gm.modules.checkpoints.padding import BucketedDenoiser
-
-            self.bucket_adapter = BucketedDenoiser(wrapped)
-            setattr(owner, method, self.bucket_adapter)
-        else:
-            setattr(owner, method, wrapped)
+        setattr(owner, method, wrapped)
         self.wrappers.append(wrapped)
 
     def report(self) -> dict[str, Any]:
@@ -89,25 +65,7 @@ class Execution:
             message = "Compilation was requested but no compiled graph executed"
             raise RuntimeError(message)
         replays = sum(x.replays for x in self.wrappers)
-        buckets = {}
-        if self.bucket_model is not None:
-            buckets = {
-                "denoiser_buckets": None
-                if self.bucket_adapter is None or self.bucket_adapter.shape is None
-                else vars(self.bucket_adapter.shape),
-                "pair_buckets": {
-                    name: layer.inference_pair_shape
-                    for name, layer in self.bucket_model.named_modules()
-                    if hasattr(layer, "inference_pair_shape")
-                },
-                "sampled_msa_buckets": {
-                    name: layer.inference_msa_shape
-                    for name, layer in self.bucket_model.named_modules()
-                    if hasattr(layer, "inference_msa_shape")
-                },
-            }
         return {
-            **buckets,
             "autocast": bool(self.autocast_scopes),
             "autocast_scopes": self.autocast_scopes,
             "float32_matmul_precision": torch.get_float32_matmul_precision(),

@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 
@@ -15,6 +16,24 @@ from foldforge.data.inputs.build import Input, limit_msa, load, write_adapter_in
 from foldforge.models.config import Config
 from foldforge.models.io.paths import run_directory
 from foldforge.models.msa_policy import PREPARED_ROWS
+
+if TYPE_CHECKING:
+    from foldforge.modules.dense.spec import DenseSpec
+
+
+def _is_sequence(model: str) -> bool:
+    """Whether ``model`` is served by the sequence-layout implementation."""
+    from foldforge.models import entry
+
+    return entry(model).layout == "sequence_atoms"
+
+
+def _family(model: str) -> DenseSpec:
+    """Return the dense family row for ``model``, whichever layout serves it."""
+    from foldforge.models import entry
+    from foldforge.modules.dense.spec import SPECS
+
+    return SPECS[entry(model).family or "alphafold3"]
 
 
 def _validate_input(
@@ -25,14 +44,14 @@ def _validate_input(
     parser: argparse.ArgumentParser,
 ) -> None:
     """Validate checkpoint capabilities before creating output artifacts."""
-    if model == "esmfold2" and target.spec.template:
-        msg = "ESMFold2 checkpoint has no template conditioning path"
+    if not _family(model).template_layers and target.spec.template:
+        msg = f"the {model} checkpoint has no template conditioning path"
         raise ValueError(msg)
     if config.variant is not None and model != "protenix":
         msg = "variant applies only to Protenix"
         raise ValueError(msg)
-    if args.lm_cache and model != "esmfold2":
-        parser.error("--lm-cache applies only to ESMFold2")
+    if args.lm_cache and not _is_sequence(model):
+        parser.error("--lm-cache applies only to the sequence-layout predictor")
     if target.spec.save_trajectory:
         msg = "Released adapters write final structures; set save_trajectory: false"
         raise ValueError(msg)
@@ -126,7 +145,7 @@ def run(model: str, argv: list[str]) -> int:
     from foldforge.models.io.runtime import run as predict
 
     checkpoint = args.checkpoint
-    if checkpoint is None and model != "esmfold2":
+    if checkpoint is None and not _is_sequence(model):
         from foldforge.models.checkpoints import DEFAULT_FILES, resolve
         from foldforge.models.config import VARIANTS
 
@@ -137,7 +156,7 @@ def run(model: str, argv: list[str]) -> int:
             else resolve(model, DEFAULT_FILES[model])
         )
     path = None
-    if model != "esmfold2":
+    if not _is_sequence(model):
         path = args.out / "input.adapter.json"
         write_adapter_input(target, model, path, config.trunk_seed)
     return predict(
@@ -156,11 +175,13 @@ def run(model: str, argv: list[str]) -> int:
             trunk_seed=config.trunk_seed,
             diffusion_seed=config.diffusion_seed,
             samples=target.spec.n_diffusion_samples,
+            # The sequence implementation carries its own defaults in its
+            # config; the dense graph takes AF3's.
             recycles=config.trunk.recycles
-            if model == "esmfold2"
+            if _is_sequence(model)
             else (config.trunk.recycles or 10),
             steps=config.diffusion.steps
-            if model == "esmfold2"
+            if _is_sequence(model)
             else (config.diffusion.steps or 200),
             msa_depth=config.trunk.msa_depth or PREPARED_ROWS,
             templates=bool(target.spec.template),

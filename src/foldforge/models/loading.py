@@ -32,7 +32,7 @@ def clear_native_compute_override(model: Any, dtype: Any) -> None:
     """
     if dtype != torch.bfloat16:
         return
-    from team_gm.modules.precision import NativeLinear  # noqa: PLC0415 - optional
+    from team_gm.modules.precision import NativeLinear
 
     for layer in model.modules():
         if isinstance(layer, NativeLinear):

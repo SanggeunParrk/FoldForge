@@ -70,6 +70,10 @@ _REGISTRY = {
         "foldforge.models.architectures.esmfold2.ESMFold2Model",
         "sequence_atoms",
         "ESMFold2 — biohub/ESMFold2 + ESMC-6B",
+        # Named even while the sequence implementation is the routed one: the
+        # family's FACTS -- that it has no template stack, for one -- are the
+        # checkpoint's, not the layout's.
+        "esmfold2",
     ),
     "boltz2": Entry(
         "foldforge.models.architectures.af3.AlphaFold3",

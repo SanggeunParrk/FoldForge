@@ -73,10 +73,15 @@ class Request:
         ):
             msg = "samples, recycles, steps and msa-depth must be positive"
             raise ValueError(msg)
-        if self.model != "esmfold2" and (self.input is None or self.checkpoint is None):
+        # The sequence layout reads both from its own released config; every
+        # other layout is told. Asked by LAYOUT, because a family can move.
+        from foldforge.models import entry  # noqa: PLC0415 - avoids an import cycle
+
+        sequence = entry(self.model).layout == "sequence_atoms"
+        if not sequence and (self.input is None or self.checkpoint is None):
             msg = "This checkpoint layout requires input and checkpoint paths"
             raise ValueError(msg)
-        if self.model != "esmfold2" and (self.recycles is None or self.steps is None):
+        if not sequence and (self.recycles is None or self.steps is None):
             msg = "This checkpoint layout requires explicit recycles and steps"
             raise ValueError(msg)
         if (

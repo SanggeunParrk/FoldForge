@@ -10,22 +10,25 @@ from team_gm.modules.checkpoints.af_family import configure_model, triangle_resi
 from team_gm.modules.exceptions import ImplementationType
 
 from foldforge.models.config import Config
-from foldforge.modules.sequence.atom_transformer import SWAAtomTransformer
+from foldforge.modules.dense.attention import GridSelfAttention
 
 
 @pytest.mark.parametrize("backend", ["pytorch", "cuequivariance", "miniworld"])
-def test_backend_reaches_atom_attention(backend):
-    impl = (
+def test_backend_reaches_the_executed_operator(backend):
+    """The requested backend reaches the layer, not only the config object."""
+    expected = (
         ImplementationType.MINIWORLD_ENGINE
         if backend == "miniworld"
         else ImplementationType(backend)
     )
     assert Config(backend=backend).backend == backend
-    model = SWAAtomTransformer(
-        SWAAtomTransformer.Config(implementation=impl, n_block=1)
+    layer = configure_model(
+        GridSelfAttention(c_pair=32, num_head=4, transpose=False),
+        backend,
+        torch.float32,
+        "cpu",
     )
-    expected = "miniworld" if backend == "miniworld" else "pytorch"
-    assert model.blocks[0].attn.implementation.value == expected
+    assert layer.foldforge_implementation == expected
 
 
 @pytest.mark.parametrize("family", ["af3", "protenix", "opendde"])

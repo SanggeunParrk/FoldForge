@@ -63,7 +63,7 @@ class Runtime:
             image_model.save_distogram = True
             if hasattr(model, "distogram_head"):
                 image_model.distogram_head.save_distogram = True
-        bind_sampling_seed(model, self.request.model, self.request.diffusion_seed)
+        bind_sampling_seed(model, self.request.diffusion_seed)
         self.execution = Execution(model, self.request.model, self.request.execution)
         return self.execution
 

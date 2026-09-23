@@ -17,7 +17,6 @@ from team_gm.diffusion.augmentation import centre_random_augmentation
 from team_gm.diffusion.edm.sampling import EulerSampler
 from team_gm.diffusion.edm.training import sample_training
 
-from foldforge.models import entry, is_dense
 from foldforge.utils.seed import seed_context
 
 if TYPE_CHECKING:
@@ -203,33 +202,19 @@ def sample_diffusion_training(
     )
 
 
-def bind_sampling_seed(model: torch.nn.Module, family: str, seed: int) -> None:
+def bind_sampling_seed(model: torch.nn.Module, seed: int) -> None:
     """Isolate the complete diffusion trajectory from trunk and confidence RNGs.
 
     This host boundary encloses initial noise, augmentation, churn and guidance.
     The denoiser's compiled/CUDA-graph boundary stays inside it.
     """
-    sequence = entry(family).layout == "sequence_atoms"
-    if sequence:
-        owner, method = model.get_submodule("structure_head"), "sample"
-    else:
-        owner, method = model, "_sample_diffusion"
+    owner, method = model, "_sample_diffusion"
     original = getattr(owner, method)
-    device = next(model.parameters()).device
 
     @torch.compiler.disable
     @wraps(original)
     def sample(*args: Any, **kwargs: Any) -> Any:
         with seed_context(seed):
-            if sequence:
-                # Do not consume the explicit generator already used by the trunk.
-                kwargs["generator"] = torch.Generator(device=device).manual_seed(seed)
-            elif not is_dense(family):
-                # The flat graph carries an optional seed in its feature
-                # dictionary; override it. Asked by LAYOUT rather than by name,
-                # because the same family now has a dense graph that takes its
-                # seed from the context above and has no such argument.
-                kwargs["rollout_seed"] = seed
             return original(*args, **kwargs)
 
     setattr(owner, method, sample)

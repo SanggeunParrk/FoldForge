@@ -9,10 +9,10 @@ alignments while profile and deletion statistics keep the full prepared MSA.
 Released adapters differed: AF3 already behaves this way, OpenDDE sampled 1280
 rows per pass, Protenix drew a random-size subset (Uniform[1, n] rows, capped at
 16384) per pass in training and inference alike, and ESMFold2 embedded every
-prepared row on every recurrence loop. FoldForge
-applies the AF3 rule to all four at load time, so a benchmark row records
-``msa_policy`` rather than each checkpoint's own default. Templates are capped
-at ``TEMPLATES_PER_CHAIN`` by the input spec, the AF3 ``max_templates``.
+prepared row on every recurrence loop. Every family now reads the rule from its
+``DenseSpec`` row instead, so a benchmark row records ``msa_policy`` rather than
+each checkpoint's own default. Templates are capped at ``TEMPLATES_PER_CHAIN``
+by the input spec, the AF3 ``max_templates``.
 """
 
 from __future__ import annotations
@@ -29,15 +29,3 @@ RECORD: dict[str, Any] = {
     "sampled_rows_per_recycle": SAMPLED_ROWS,
     "templates_per_chain": TEMPLATES_PER_CHAIN,
 }
-
-
-def apply_flat(configs: Any) -> Any:
-    """Route Protenix/OpenDDE through the shared valid-first sampler at 1024 rows."""
-    configs.data["msa"]["msa_depth"] = SAMPLED_ROWS
-    return configs
-
-
-def apply_esmfold2(configs: Any) -> Any:
-    """Resample the ESMFold2 MSA encoder input on every recurrence loop."""
-    configs.msa_rows_per_loop = SAMPLED_ROWS
-    return configs

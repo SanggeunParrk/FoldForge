@@ -5,6 +5,7 @@ import json
 import numpy as np
 import pytest
 import torch
+from conftest import cli
 
 from foldforge.models.config import Config, OutputConfig
 from foldforge.models.io import images, paths
@@ -20,7 +21,7 @@ def test_selection_defaults_validation_and_cli():
     assert len(OutputConfig(images=("all",)).image_names) == 6
     with pytest.raises(ValueError, match="images"):
         Config.model_validate({"output": {"images": ["paee"]}})
-    assert parse("esmfold2", ["--save-images", "pae", "msa"]).output.image_names == (
+    assert parse("esmfold2", cli("--save-images", "pae", "msa")).output.image_names == (
         "pae",
         "msa",
     )

@@ -143,7 +143,7 @@ known-third-party = ["wandb"]
 "src/foldforge/data/{parser,filter}.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
 "src/foldforge/data/features/atoms.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
 "src/foldforge/data/msa/featurizer.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
-"src/foldforge/data/inputs/{entities,features,serialize,prepare_sequence}.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
+"src/foldforge/data/inputs/{entities,features,serialize}.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
 "src/foldforge/data/template/{features,featurizer,parser}.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
 
 [tool.pytest.ini_options]

@@ -14,7 +14,6 @@ from team_gm.modules.execution import (
 )
 from torch._dynamo.utils import counters
 
-from foldforge.models import entry
 from foldforge.utils.seed import RNGState
 
 if TYPE_CHECKING:
@@ -40,17 +39,11 @@ class Execution:
         self.wrappers = []
         self.initial_graphs = counters["stats"]["unique_graphs"]
         # Bucketing by PADDING the denoiser belonged to the flat layout, which
-        # no family is on any more: the dense graph buckets its own inputs and
-        # the sequence one does not bucket at all.
+        # no family is on any more: the dense graph buckets its own inputs.
         if not (config.compile or config.cuda_graph):
             return
         if config.scope == "model":
             owner, method = model, "forward"
-        elif entry(family).layout == "sequence_atoms":
-            owner, method = (
-                model.get_submodule("structure_head.diffusion_module"),
-                "denoise",
-            )
         else:
             owner, method = model.get_submodule("diffusion_head"), "forward"
         label = f"{family}.{config.scope}"

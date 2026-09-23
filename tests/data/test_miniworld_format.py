@@ -284,28 +284,6 @@ def test_serialization_is_readable_by_older_miniworld_biomol():
     assert "atoms" in header["template"]
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="engine batch regression")
-def test_esm_trunk_two_samples_match_individual_kernel_calls():
-    from team_gm.modules.exceptions import ImplementationType
-
-    from foldforge.models.precision import inference_precision
-    from foldforge.modules.sequence.trunk import FoldingTrunk
-
-    trunk = FoldingTrunk(
-        FoldingTrunk.Config(
-            d_pair=32, n_block=1, implementation=ImplementationType.MINIWORLD_ENGINE
-        )
-    )
-    inference_precision(trunk, torch.device("cuda"), torch.bfloat16)
-    x = torch.randn(2, 8, 8, 32, device="cuda", dtype=torch.bfloat16)
-    mask = torch.ones(2, 8, device="cuda", dtype=torch.bool)
-    mask[1, -2:] = False
-    with torch.inference_mode():
-        expected = torch.cat([trunk(x[i : i + 1], mask[i : i + 1]) for i in range(2)])
-        actual = trunk(x, mask)
-    torch.testing.assert_close(actual, expected, atol=0.02, rtol=0.01)
-
-
 @pytest.mark.parametrize("family", ["protenix", "opendde"])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
 def test_triangle_attention_bias_order_matches_frozen_source(family, dtype):

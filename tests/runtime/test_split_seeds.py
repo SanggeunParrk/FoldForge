@@ -8,6 +8,7 @@ from typing import Any, Never
 import numpy as np
 import pytest
 import torch
+from conftest import cli
 from team_gm.diffusion.edm.sampling import EulerSampler
 from team_gm.modules.execution import ExecutedCallable
 from torch import nn
@@ -26,7 +27,15 @@ def test_invalid_seed_rejected_before_execution(seed, field, tmp_path):
     with pytest.raises(ValueError, match="seed"):
         Config.model_validate({field: seed})
     with pytest.raises(ValueError, match="seed"):
-        Request(model="esmfold2", ccd_db=tmp_path, **{field: seed})
+        Request(
+            model="esmfold2",
+            ccd_db=tmp_path,
+            input=tmp_path / "input.json",
+            checkpoint=tmp_path / "weights.pt",
+            recycles=10,
+            steps=200,
+            **{field: seed},
+        )
 
 
 def test_legacy_config_and_cli_are_unambiguous():
@@ -36,12 +45,12 @@ def test_legacy_config_and_cli_are_unambiguous():
     for options in ({"seed": 19, "trunk_seed": 7}, {"seed": 19, "diffusion_seed": 8}):
         with pytest.raises(ValueError, match="not both"):
             Config.model_validate(options)
-    request = parse("esmfold2", ["--trunk-seed", "7", "--diffusion-seed", "19"])
+    request = parse("esmfold2", cli("--trunk-seed", "7", "--diffusion-seed", "19"))
     assert (request.trunk_seed, request.diffusion_seed) == (7, 19)
-    request = parse("esmfold2", ["--seed", "19"])
+    request = parse("esmfold2", cli("--seed", "19"))
     assert (request.trunk_seed, request.diffusion_seed) == (19, 19)
     with pytest.raises(SystemExit):
-        parse("esmfold2", ["--seed", "19", "--trunk-seed", "7"])
+        parse("esmfold2", cli("--seed", "19", "--trunk-seed", "7"))
 
 
 def test_seed_context_restores_all_rngs_on_failure():

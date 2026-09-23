@@ -19,7 +19,7 @@ import torch
 from foldforge.models import entry
 from foldforge.models.checkpoints import DEFAULT_FILES, resolve
 from foldforge.models.config import PROTENIX_FAMILIES, VARIANTS
-from foldforge.models.msa_policy import RECORD, apply_esmfold2
+from foldforge.models.msa_policy import RECORD
 
 
 def clear_native_compute_override(model: Any, dtype: Any) -> None:
@@ -89,19 +89,15 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     if backend not in {"miniworld", "pytorch", "cuequivariance"}:
         message = f"Unknown backend: {backend}"
         raise ValueError(message)
-    dense = entry(name).layout == "dense_atoms"
     if precision_policy == "model_default":
-        if dense:
-            precision_policy = "af3_default"
-            dtype = torch.bfloat16
-        else:
-            dtype = torch.float32
+        precision_policy = "af3_default"
+        dtype = torch.bfloat16
     dtype = torch.bfloat16 if dtype is None else dtype
     if precision_policy not in {None, "bf16", "fp32", "af3_default", "model_default"}:
         message = f"Unsupported precision policy: {precision_policy}"
         raise ValueError(message)
-    if precision_policy == "af3_default" and (not dense or dtype != torch.bfloat16):
-        message = "af3_default requires a dense AF3-graph family with a BF16 trunk"
+    if precision_policy == "af3_default" and dtype != torch.bfloat16:
+        message = "af3_default requires a BF16 trunk"
         raise ValueError(message)
 
     spec = entry(name)
@@ -112,95 +108,62 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         filename = {
             **DEFAULT_FILES,
             **({"protenix": f"{variant}.bin.zst"} if name == "protenix" else {}),
-            "esmfold2": None,
         }[name]
-        checkpoint = resolve(name) if filename is None else resolve(name, filename)
+        checkpoint = resolve(name, filename)
     checkpoint = Path(checkpoint)
     package, _, symbol = spec.architecture.rpartition(".")
     architecture = getattr(import_module(package), symbol)
     report = {"checkpoint": str(checkpoint), "strict": True}
 
-    if spec.layout == "dense_atoms":
-        from foldforge.models.checkpoints.haiku import import_jax_weights_
-        from foldforge.modules.dense.spec import SPECS
+    if spec.layout != "dense_atoms":
+        message = f"{name} has no loader: every family is a row of the dense graph"
+        raise NotImplementedError(message)
+    from foldforge.models.checkpoints.haiku import import_jax_weights_
+    from foldforge.modules.dense.spec import SPECS
 
-        dense_spec = SPECS[family or "alphafold3"]
-        override = os.environ.get("FOLDFORGE_DENSE_SPEC_OVERRIDE")
-        if override:
-            # Porting aid: flip forward conventions of a family to price each one.
-            # Fields that change a parameter shape make the strict load fail loudly.
-            dense_spec = dataclasses.replace(dense_spec, **json.loads(override))
-            report["dense_spec_override"] = override
-        model = architecture(
-            num_recycles=recycles,
-            num_samples=samples,
-            diffusion_steps=steps,
-            spec=dense_spec,
-        )
-        report["family"] = dense_spec.family
-        report.update(
-            import_jax_weights_(model, checkpoint, preserve_dtype=True)
-            if precision_policy == "af3_default"
-            else import_jax_weights_(model, checkpoint)
-        )
-    else:
-        if spec.layout == "sequence_atoms":
-            from safetensors.torch import load_file
-            from team_gm.modules.exceptions import ImplementationType
-
-            from foldforge.models.checkpoints.sequence import convert_model
-            from foldforge.models.config.sequence import ESMFold2Config
-
-            configs = (
-                ESMFold2Config.from_json(checkpoint) if configs is None else configs
-            )
-            configs = apply_esmfold2(configs)
-            implementation_type = (
-                ImplementationType.MINIWORLD_ENGINE
-                if backend == "miniworld"
-                else ImplementationType(backend)
-            )
-            model = architecture(configs, implementation_type)
-            state = convert_model(load_file(checkpoint / "model.safetensors"), configs)
-        else:
-            message = (
-                f"{name} has no loader: every family is either a row of the "
-                "dense AF3 graph or the sequence-layout architecture"
-            )
-            raise NotImplementedError(message)
-        model.load_state_dict(state, strict=True)
-        report["state_entries"] = len(state)
+    dense_spec = SPECS[family or "alphafold3"]
+    override = os.environ.get("FOLDFORGE_DENSE_SPEC_OVERRIDE")
+    if override:
+        # Porting aid: flip forward conventions of a family to price each one.
+        # Fields that change a parameter shape make the strict load fail loudly.
+        dense_spec = dataclasses.replace(dense_spec, **json.loads(override))
+        report["dense_spec_override"] = override
+    model = architecture(
+        num_recycles=recycles,
+        num_samples=samples,
+        diffusion_steps=steps,
+        spec=dense_spec,
+    )
+    report["family"] = dense_spec.family
+    report.update(
+        import_jax_weights_(model, checkpoint, preserve_dtype=True)
+        if precision_policy == "af3_default"
+        else import_jax_weights_(model, checkpoint)
+    )
 
     setattr(model, "foldforge_load_report", report)  # noqa: B010 - runtime metadata
-    if spec.layout == "sequence_atoms":
-        from foldforge.models.precision import inference_precision
+    from team_gm.modules.checkpoints.af_family import configure_model
+    from team_gm.modules.checkpoints.conditioning import install_conditioning
+    from team_gm.modules.checkpoints.pairformer import install_pairformers
 
-        model = inference_precision(model, torch.device(device), dtype)
+    source = model.get_submodule("diffusion_head.fourier_embeddings")
+    fourier_fp32 = (source.weight.float().clone(), source.bias.float().clone())
+    if precision_policy == "af3_default":
+        model.reference_precision = True
+        # Configure shared wrappers in FP32, preserving every released FP32
+        # value. Restore only originally BF16 tensors; their round trip via
+        # FP32 is exact. This also preserves FP32 input/output projections.
+        released_dtypes = {id(p): p.dtype for p in model.parameters()}
+        model = configure_model(model, backend, torch.float32, device)
+        for parameter in model.parameters():
+            parameter.data = parameter.data.to(released_dtypes[id(parameter)])
     else:
-        from team_gm.modules.checkpoints.af_family import configure_model
-        from team_gm.modules.checkpoints.conditioning import install_conditioning
-        from team_gm.modules.checkpoints.pairformer import install_pairformers
-
-        if spec.layout == "dense_atoms":
-            source = model.get_submodule("diffusion_head.fourier_embeddings")
-            fourier_fp32 = (source.weight.float().clone(), source.bias.float().clone())
-        if precision_policy == "af3_default":
-            model.reference_precision = True
-            # Configure shared wrappers in FP32, preserving every released FP32
-            # value. Restore only originally BF16 tensors; their round trip via
-            # FP32 is exact. This also preserves FP32 input/output projections.
-            released_dtypes = {id(p): p.dtype for p in model.parameters()}
-            model = configure_model(model, backend, torch.float32, device)
-            for parameter in model.parameters():
-                parameter.data = parameter.data.to(released_dtypes[id(parameter)])
-        else:
-            model = configure_model(model, backend, dtype, device)
-        if spec.layout == "dense_atoms":
-            # Noise Fourier features stay FP32 whatever the parameter dtype.
-            fourier = model.get_submodule("diffusion_head.fourier_embeddings")
-            fourier.weight = fourier_fp32[0].to(device)
-            fourier.bias = fourier_fp32[1].to(device)
-        model = install_conditioning(install_pairformers(model))
+        model = configure_model(model, backend, dtype, device)
+    # Noise Fourier features stay FP32 whatever the parameter dtype.
+    fourier = model.get_submodule("diffusion_head.fourier_embeddings")
+    fourier.weight = fourier_fp32[0].to(device)
+    fourier.bias = fourier_fp32[1].to(device)
+    model = install_conditioning(install_pairformers(model))
     if dtype == torch.bfloat16 and precision_policy != "af3_default":
         clear_native_compute_override(model, dtype)
     if precision_policy == "model_default":

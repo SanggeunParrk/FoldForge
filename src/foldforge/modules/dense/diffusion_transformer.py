@@ -16,8 +16,8 @@ from typing import Any
 
 import einops
 import torch
-import torch.nn.functional as F
 import torch.nn as nn
+import torch.nn.functional as F
 from team_gm.modules.blocks.composition import conditioned_residual
 from team_gm.modules.checkpoints.af_family import (
     reference_adaln,

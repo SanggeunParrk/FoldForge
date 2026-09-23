@@ -23,44 +23,53 @@ class TinyModel(nn.Module):
 
 
 @pytest.mark.parametrize(
-    ("backend", "expected"),
+    ("requested", "recorded"),
     [
         ("pytorch", "pytorch"),
-        ("miniworld", "miniworld_engine"),
-        ("miniworld_engine", "miniworld_engine"),
+        ("miniworld", "miniworld"),
+        ("miniworld_engine", "miniworld"),
         ("cuequivariance", "cuequivariance"),
     ],
 )
-def test_sequence_checkpoint_uses_same_loader(tmp_path, monkeypatch, backend, expected):
-    from safetensors.torch import save_file
+def test_every_backend_spelling_reaches_one_loading_lifecycle(
+    tmp_path, monkeypatch, requested, recorded
+):
+    """One loader, whatever the backend is called and whoever asks for it.
 
-    from foldforge.models.checkpoints import sequence
-    from foldforge.models.config.sequence import ESMFold2Config
+    ``miniworld_engine`` is the engine package's own name for the backend that
+    the CLI and the report call ``miniworld``; the loader normalises it once
+    so a benchmark row never carries two spellings of one backend.
+    """
+    from foldforge.models.checkpoints import haiku
 
-    reference = TinyModel()
-    save_file(reference.state_dict(), tmp_path / "model.safetensors")
-    monkeypatch.setattr(ESMFold2Config, "from_json", lambda _: SimpleNamespace())
-    monkeypatch.setattr(sequence, "convert_model", lambda state, _config: state)
-    selected = []
+    class DenseModel(TinyModel):
+        def __init__(self, **kwargs: Any) -> None:
+            super().__init__(**kwargs)
+            self.diffusion_head = nn.Module()
+            fourier = nn.Module()
+            fourier.register_buffer("weight", torch.zeros(4))
+            fourier.register_buffer("bias", torch.zeros(4))
+            self.diffusion_head.fourier_embeddings = fourier
 
-    def construct(config, implementation) -> TinyModel:
-        from team_gm.modules.exceptions import ImplementationType
+    seen = []
 
-        assert isinstance(implementation, ImplementationType)
-        selected.append(implementation.value)
-        return TinyModel(config, implementation)
+    def import_weights(model, checkpoint) -> dict[str, int]:
+        seen.append((checkpoint, len(model.state_dict())))
+        return {"state_entries": len(model.state_dict())}
 
+    monkeypatch.setattr(haiku, "import_jax_weights_", import_weights)
     monkeypatch.setattr(
-        loading, "import_module", lambda _: SimpleNamespace(ESMFold2Model=construct)
+        loading, "import_module", lambda _: SimpleNamespace(AlphaFold3=DenseModel)
     )
-    model = load("esmfold2", tmp_path, backend=backend, device="cpu")
-    assert selected == [expected]
-    assert model.foldforge_load_report["backend"] == (
-        "miniworld" if expected == "miniworld_engine" else expected
-    )
+    model = load("af3", tmp_path / "af3.bin.zst", backend=requested, device="cpu")
+    report = model.foldforge_load_report
+    assert [path for path, _ in seen] == [tmp_path / "af3.bin.zst"]
+    assert report["backend"] == recorded
+    assert report["strict"] is True
+    assert report["state_entries"] == seen[0][1]
+    # The precision split is the loader's, not the backend's.
     assert model.projection.weight.dtype == torch.bfloat16
     assert model.norm.weight.dtype == torch.float32
-    assert model.foldforge_load_report["state_entries"] == len(reference.state_dict())
 
 
 def test_registry_returns_one_loader_and_retired_packages_are_absent():

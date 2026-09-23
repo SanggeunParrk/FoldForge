@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 import torch
+from conftest import cli
 
 from foldforge.models.io import paths
 from foldforge.models.io.cli import parse
@@ -57,18 +58,21 @@ def test_outside_destinations_rejected(selection, runs, tmp_path):
 
 @pytest.mark.parametrize("model", ["af3", "protenix", "opendde", "esmfold2"])
 def test_all_legacy_clis_default_inside_runs(model, runs):
-    arguments = (
-        []
-        if model == "esmfold2"
-        else ["--input", "input.json", "--checkpoint", "weights.pt"]
-    )
-    request = parse(model, arguments)
+    request = parse(model, cli())
     assert request.out.parent == runs / model
     assert not request.out.exists()
 
 
 def test_request_and_writer_share_resolved_destination(runs, tmp_path):
-    request = Request(model="esmfold2", ccd_db=tmp_path, out=Path("case"))
+    request = Request(
+        model="esmfold2",
+        ccd_db=tmp_path,
+        out=Path("case"),
+        input=tmp_path / "input.json",
+        checkpoint=tmp_path / "weights.pt",
+        recycles=10,
+        steps=200,
+    )
     report = write_output(
         Decoded("target", Prediction(torch.zeros(1, 2, 3)), ["data_target\n"]),
         request.out,

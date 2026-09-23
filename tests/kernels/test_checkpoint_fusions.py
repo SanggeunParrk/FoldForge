@@ -139,45 +139,6 @@ def test_af3_unconditioned_transition(width):
     compile_replay(model, (x,))
 
 
-@pytest.mark.parametrize("input_scale", [1.0, 0.01])
-def test_esm_atom_block_nonzero_modulation(input_scale):
-    from miniworld_engine.autotune.builder import _swa_params
-
-    from foldforge.modules.sequence.atom_transformer import SWAAtomBlock
-
-    torch.manual_seed(12)
-    model = SWAAtomBlock(128, 128, 4).cuda().to(torch.bfloat16).eval()
-    with torch.no_grad():
-        model.adaln_modulation[1].weight.normal_(0, 0.02)
-    ref = copy.deepcopy(model)
-    ref.implementation = ImplementationType.PYTORCH
-    ref.ffn.implementation = ImplementationType.PYTORCH
-    # Preserve the same attention core to isolate RMS/modulation and FFN numerics.
-    q, c = [
-        torch.randn(1, 4096, 128, device="cuda", dtype=torch.bfloat16) for _ in range(2)
-    ]
-    q = q * input_scale
-    params = _swa_params(4096, {"d_model": 128, "n_heads": 4}, torch.bfloat16)
-    with (
-        torch.no_grad(),
-        patch.object(
-            ops, "rms_norm_modulation", wraps=ops.rms_norm_modulation
-        ) as called,
-    ):
-        compare(model(q, c, params), ref(q, c, params))
-        assert called.call_count == 2
-        # Compare normalization/modulation directly to the released ESMFold2
-        # _rms_adaln_raw equation, before residuals can hide an epsilon error.
-        shift, scale, gate, *_ = model.adaln_modulation(c).chunk(6, dim=-1)
-        normalized, actual_gate = ops.rms_norm_modulation(
-            *called.call_args_list[0].args
-        )
-        expected = F.rms_norm(q, (q.shape[-1],)) * (1 + scale) + shift
-        compare(normalized, expected)
-        compare(actual_gate, gate)
-    compile_replay(model, (q, c, params))
-
-
 @pytest.mark.parametrize("native", [False, True])
 def test_msa_projection(native):
     if native:

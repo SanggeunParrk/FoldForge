@@ -21,13 +21,6 @@ if TYPE_CHECKING:
     from foldforge.modules.dense.spec import DenseSpec
 
 
-def _is_sequence(model: str) -> bool:
-    """Whether ``model`` is served by the sequence-layout implementation."""
-    from foldforge.models import entry
-
-    return entry(model).layout == "sequence_atoms"
-
-
 def _family(model: str) -> DenseSpec:
     """Return the dense family row for ``model``, whichever layout serves it."""
     from foldforge.models import entry
@@ -36,13 +29,7 @@ def _family(model: str) -> DenseSpec:
     return SPECS[entry(model).family or "alphafold3"]
 
 
-def _validate_input(
-    model: str,
-    target: Input,
-    config: Config,
-    args: argparse.Namespace,
-    parser: argparse.ArgumentParser,
-) -> None:
+def _validate_input(model: str, target: Input, config: Config) -> None:
     """Validate checkpoint capabilities before creating output artifacts."""
     if not _family(model).template_layers and target.spec.template:
         msg = f"the {model} checkpoint has no template conditioning path"
@@ -50,8 +37,6 @@ def _validate_input(
     if config.variant is not None and model != "protenix":
         msg = "variant applies only to Protenix"
         raise ValueError(msg)
-    if args.lm_cache and not _is_sequence(model):
-        parser.error("--lm-cache applies only to the sequence-layout predictor")
     if target.spec.save_trajectory:
         msg = "Released adapters write final structures; set save_trajectory: false"
         raise ValueError(msg)
@@ -87,7 +72,6 @@ def run(model: str, argv: list[str]) -> int:
         help="Save selected diagnostic PNGs (or all); disabled by default",
     )
     parser.add_argument("--out", type=Path, help="Run name or path inside runs/")
-    parser.add_argument("--lm-cache", type=Path)
     parser.add_argument("--engine-cache-dir", type=Path)
     args = parser.parse_args(argv)
     try:
@@ -115,7 +99,7 @@ def run(model: str, argv: list[str]) -> int:
         overrides["output"] = {"images": args.save_images}
     config = Config.model_validate({**config.model_dump(), **overrides})
     target = load(args.spec)
-    _validate_input(model, target, config, args, parser)
+    _validate_input(model, target, config)
     db = CCDDatabase(target.spec.ccd_db)
     for chain in target.chains:
         for ccd in set(chain.ccds):
@@ -145,7 +129,7 @@ def run(model: str, argv: list[str]) -> int:
     from foldforge.models.io.runtime import run as predict
 
     checkpoint = args.checkpoint
-    if checkpoint is None and not _is_sequence(model):
+    if checkpoint is None:
         from foldforge.models.checkpoints import DEFAULT_FILES, resolve
         from foldforge.models.config import VARIANTS
 
@@ -155,10 +139,8 @@ def run(model: str, argv: list[str]) -> int:
             if model == "protenix"
             else resolve(model, DEFAULT_FILES[model])
         )
-    path = None
-    if not _is_sequence(model):
-        path = args.out / "input.adapter.json"
-        write_adapter_input(target, model, path, config.trunk_seed)
+    path = args.out / "input.adapter.json"
+    write_adapter_input(target, path, config.trunk_seed)
     return predict(
         Request(
             model=model,
@@ -167,28 +149,18 @@ def run(model: str, argv: list[str]) -> int:
             checkpoint=checkpoint,
             resolved_input=target,
             input=path,
-            target=target.spec.name or path.stem
-            if path is not None
-            else target.spec.name or "prediction",
+            target=target.spec.name or path.stem,
             backend=config.backend,
             precision=config.precision,
             trunk_seed=config.trunk_seed,
             diffusion_seed=config.diffusion_seed,
             samples=target.spec.n_diffusion_samples,
-            # The sequence implementation carries its own defaults in its
-            # config; the dense graph takes AF3's.
-            recycles=config.trunk.recycles
-            if _is_sequence(model)
-            else (config.trunk.recycles or 10),
-            steps=config.diffusion.steps
-            if _is_sequence(model)
-            else (config.diffusion.steps or 200),
+            recycles=config.trunk.recycles or 10,
+            steps=config.diffusion.steps or 200,
             msa_depth=config.trunk.msa_depth or PREPARED_ROWS,
             templates=bool(target.spec.template),
             variant=config.variant or "protenix_base_default_v1.0.0",
             execution=config.execution,
             output=config.output,
-            lm_cache=args.lm_cache.resolve() if args.lm_cache else None,
-            lm_source="cache" if args.lm_cache else "compute",
         )
     )

@@ -174,12 +174,16 @@ def test_common_adapters(target_files, tmp_path):
     np.testing.assert_array_equal(
         limited.chains[0].alignment.deletions, target.chains[0].alignment.deletions[:2]
     )
+    # A checkpoint with no template stack refuses a templated input. Asked of
+    # the family ROW, so the rule holds for whichever families lack the stack.
+    from foldforge.models.config import Config
+    from foldforge.models.inference import _validate_input
+
     with pytest.raises(ValueError, match="no template conditioning"):
-        target.esmfold2(4)
+        _validate_input("esmfold2", target, Config())
     spec["template"] = {}
     path.write_text(yaml.safe_dump(spec))
-    esm = load(path).esmfold2(3)
-    assert esm.sequences[0].msa.depth == 3
+    _validate_input("esmfold2", load(path), Config())
 
 
 @pytest.mark.parametrize("family", ["protenix", "opendde"])

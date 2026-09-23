@@ -71,8 +71,8 @@ def test_ccd_ligand_id_is_one_code(tmp_path):
             }
         )
     )
-    target = load(path).esmfold2(1)
-    assert target.sequences[0].ccd == ["BEN"]
+    ligand = load(path).af3()["sequences"][0]["ligand"]
+    assert ligand["ccdCodes"] == ["BEN"]
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA graph runtime")

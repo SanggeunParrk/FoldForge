@@ -7,10 +7,9 @@ from team_gm.modules.bucketing import (
     MSA_SHAPES,
     TOKEN_SHAPES,
     BucketShape,
+    pad_axis,
     token_bucket,
 )
-
-from foldforge.models.bucketing import pad_esmfold2, unpad_esmfold2
 
 
 def inputs(length=129, atoms=129, msa=3, device="cpu"):
@@ -105,76 +104,6 @@ def test_af3_featurizer_uses_same_token_policy():
         assert calculate_bucket_size(size, TOKEN_SHAPES) == token_bucket(size)
 
 
-def test_large_esmfold2_token_padding_preserves_data_and_masks():
-    original = inputs(length=1140, atoms=1140, msa=1)
-    padded, shape = pad_esmfold2(original)
-    assert (shape.token_bucket, shape.atom_bucket) == (1152, 2048)
-    assert padded["token_bonds"].shape == (1, 1152, 1152)
-    torch.testing.assert_close(
-        padded["token_bonds"][:, :1140, :1140], original["token_bonds"]
-    )
-    torch.testing.assert_close(
-        padded["lm_hidden_states"][:, :1140], original["lm_hidden_states"]
-    )
-    assert not padded["mask"][:, 1140:].any()
-    assert not padded["msa_mask"][:, :, 1140:].any()
-    assert not padded["atom_mask"][:, 1140:].any()
-
-
-def test_axes_are_semantic_even_when_atom_and_token_counts_match():
-    original = inputs()
-    padded, shape = pad_esmfold2(original)
-    assert (shape.token_bucket, shape.atom_bucket, shape.msa_bucket) == (
-        256,
-        1024,
-        1024,
-    )
-    torch.testing.assert_close(padded["ref_pos"][:, :129], original["ref_pos"])
-    torch.testing.assert_close(
-        padded["token_bonds"][:, :129, :129], original["token_bonds"]
-    )
-    torch.testing.assert_close(
-        padded["lm_hidden_states"][:, :129], original["lm_hidden_states"]
-    )
-    assert not padded["mask"][:, 129:].any()
-    assert not padded["atom_mask"][:, 129:].any()
-    assert not padded["msa_mask"][:, 3:].any()
-    assert not padded["msa_mask"][:, :, 129:].any()
-    assert original["ref_pos"].shape == (1, 129, 3)
-    assert "msa_mask" not in original
-
-
-def test_public_outputs_remove_padding_from_all_tracks():
-    from foldforge.models.architectures.esmfold2 import ESMFold2Output
-    from foldforge.modules.sequence.confidence import ConfidenceOutput
-
-    shape = BucketShape.select(7, 13, 1)
-    token = torch.ones(2, 128)
-    atom = torch.ones(2, 1024)
-    pair = torch.ones(2, 128, 128)
-    confidence = ConfidenceOutput(
-        token,
-        token,
-        atom,
-        atom[..., None],
-        torch.ones(2),
-        torch.ones(2),
-        pair,
-        pair[..., None],
-        pair,
-        pair[..., None],
-        atom[..., None],
-        torch.ones(2),
-        torch.ones(2),
-    )
-    output = ESMFold2Output(torch.ones(2, 1024, 3), None, confidence)
-    actual = unpad_esmfold2(output, shape)
-    assert actual.coords.shape == (2, 13, 3)
-    assert actual.confidence.plddt.shape == (2, 7)
-    assert actual.confidence.pae_logits.shape == (2, 7, 7, 1)
-    assert actual.confidence.resolved_logits.shape == (2, 13, 1)
-
-
 @pytest.mark.skipif(
     not torch.cuda.is_available(), reason="real compile and CUDA capture"
 )
@@ -194,8 +123,11 @@ def test_same_bucket_reuses_graph_with_different_valid_lengths(lengths):
     with torch.no_grad():
         for length in lengths:
             original = inputs(length=length, device="cuda")
-            padded, _ = pad_esmfold2(original)
-            actual = fn(padded["lm_hidden_states"], padded["mask"])
+            bucket = token_bucket(length)
+            actual = fn(
+                pad_axis(original["lm_hidden_states"], 1, bucket),
+                pad_axis(original["mask"], 1, bucket),
+            )
             torch.testing.assert_close(
                 actual, original["lm_hidden_states"].sin().sum(1)
             )

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from foldforge.data.inputs.validation import validate_inference_seed
@@ -13,6 +12,8 @@ from foldforge.models.io.paths import run_directory
 from foldforge.models.msa_policy import PREPARED_ROWS
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from foldforge.data.inputs.build import Input
 
 
@@ -40,16 +41,7 @@ class Request:
     variant: str = "protenix_base_default_v1.0.0"
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
-    # Language-model inputs and optional structure evaluation.
     target: str = "1ubq"
-    data_root: Path = Path("validation/inputs/data")
-    input_spec: Path | None = None
-    lm_cache: Path | None = None
-    lm_checkpoint: Path | None = None
-    lm_source: str = "compute"
-    compare: Path | None = None
-    experimental: Path | None = None
-    chain_map: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("trunk_seed", "diffusion_seed"):
@@ -73,16 +65,11 @@ class Request:
         ):
             msg = "samples, recycles, steps and msa-depth must be positive"
             raise ValueError(msg)
-        # The sequence layout reads both from its own released config; every
-        # other layout is told. Asked by LAYOUT, because a family can move.
-        from foldforge.models import entry  # noqa: PLC0415 - avoids an import cycle
-
-        sequence = entry(self.model).layout == "sequence_atoms"
-        if not sequence and (self.input is None or self.checkpoint is None):
-            msg = "This checkpoint layout requires input and checkpoint paths"
+        if self.input is None or self.checkpoint is None:
+            msg = "A request names an input and a checkpoint"
             raise ValueError(msg)
-        if not sequence and (self.recycles is None or self.steps is None):
-            msg = "This checkpoint layout requires explicit recycles and steps"
+        if self.recycles is None or self.steps is None:
+            msg = "A request states its recycles and steps"
             raise ValueError(msg)
         if (
             self.resolved_input is not None

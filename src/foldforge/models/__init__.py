@@ -67,13 +67,16 @@ _REGISTRY = {
         "opendde",
     ),
     "esmfold2": Entry(
-        "foldforge.models.architectures.esmfold2.ESMFold2Model",
-        "sequence_atoms",
-        "ESMFold2 — biohub/ESMFold2 + ESMC-6B",
-        # Named even while the sequence implementation is the routed one: the
-        # family's FACTS -- that it has no template stack, for one -- are the
-        # checkpoint's, not the layout's.
+        "foldforge.models.architectures.af3.AlphaFold3",
+        "dense_atoms",
+        "ESMFold2 — biohub/ESMFold2 + ESMC-6B; folds from the language model",
         "esmfold2",
+    ),
+    "esmfold2-fast": Entry(
+        "foldforge.models.architectures.af3.AlphaFold3",
+        "dense_atoms",
+        "ESMFold2-Fast — the same family at 24 trunk blocks and no MSA stack",
+        "esmfold2-fast",
     ),
     "boltz2": Entry(
         "foldforge.models.architectures.af3.AlphaFold3",

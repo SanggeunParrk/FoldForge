@@ -4,15 +4,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from esm.utils.structure.input_builder import StructurePredictionInput
-
 import json
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -158,47 +154,6 @@ class Input:
             sequences.append({keys[c.kind]: body})
         return [{"name": self.spec.name, "sequences": sequences}]
 
-    def esmfold2(self, msa_depth: int) -> StructurePredictionInput:
-        """Compute esmfold2."""
-        if self.spec.template:
-            msg = "ESMFold2 checkpoint has no template conditioning path"
-            raise ValueError(msg)
-        if any(c.alignment is not None and c.kind != "protein" for c in self.chains):
-            msg = "ESMFold2 checkpoint consumes protein MSAs only"
-            raise ValueError(msg)
-        from esm.utils.msa.msa import MSA
-        from esm.utils.parsing import FastaEntry
-        from esm.utils.structure.input_builder import (
-            DNAInput,
-            LigandInput,
-            ProteinInput,
-            RNAInput,
-            StructurePredictionInput,
-        )
-
-        from foldforge.modules.sequence.features import read_a3m
-
-        classes = {"protein": ProteinInput, "rna": RNAInput, "dna": DNAInput}
-        sequences = []
-        for c in self.chains:
-            if c.kind == "ligand":
-                sequences.append(LigandInput(id=[c.id], ccd=list(c.ccds)))
-            elif c.kind == "protein":
-                if c.alignment is not None:
-                    lines = c.alignment.a3m(self.msa_species, msa_depth).splitlines()
-                    msa = MSA(
-                        [
-                            FastaEntry(lines[i][1:], lines[i + 1])
-                            for i in range(0, len(lines), 2)
-                        ]
-                    )
-                else:
-                    msa = MSA(read_a3m(c.a3m, msa_depth)) if c.a3m else None
-                sequences.append(ProteinInput(id=[c.id], sequence=c.sequence, msa=msa))
-            else:
-                sequences.append(classes[c.kind](id=[c.id], sequence=c.sequence))
-        return StructurePredictionInput(sequences=sequences)
-
 
 def _resolve_spec(path: Path) -> InferenceSpec:
     """Resolve resource paths and validate the target identity."""
@@ -342,14 +297,10 @@ def load(path: Path) -> Input:
     return Input(spec, chains, aliases)
 
 
-def write_adapter_input(
-    target: Input, model: str, destination: Path, seed: int = 0
-) -> None:
+def write_adapter_input(target: Input, destination: Path, seed: int = 0) -> None:
     """Persist the exact translated input for review and reproduction."""
     destination.parent.mkdir(parents=True, exist_ok=True)
-    from foldforge.models import is_dense
-
-    payload = target.af3(seed) if is_dense(model) else target.af_family()
+    payload = target.af3(seed)
     destination.write_text(json.dumps(payload, indent=2) + "\n")
 
 

@@ -100,26 +100,23 @@ def test_invalid_output_fails_before_creating_prediction_artifacts(tmp_path, err
 
 @pytest.mark.parametrize("model", ["af3", "esmfold2", "protenix", "opendde"])
 def test_legacy_flags_have_one_execution_contract(model, tmp_path):
-    args = [
-        "--compile",
-        "--cuda-graph",
-        "--benchmark-repeats",
-        "0",
-        "--out",
-        str(tmp_path),
-    ]
-    if model == "esmfold2":
-        args += ["--dtype", "bfloat16", "--implementation", "cuequivariance"]
-    else:
-        args += [
+    request = parse(
+        model,
+        [
+            "--compile",
+            "--cuda-graph",
+            "--benchmark-repeats",
+            "0",
+            "--out",
+            str(tmp_path),
             "--input",
             "input.json",
             "--checkpoint",
             "weights.pt",
             "--backend",
             "cuequivariance",
-        ]
-    request = parse(model, args)
+        ],
+    )
     assert request.precision == "bf16"
     assert request.backend == "cuequivariance"
     assert request.execution.compile
@@ -144,7 +141,9 @@ def test_resolved_input_and_msa_limit_reach_runtime_without_reparse(
         model_dump_json=lambda **_kw: "{}",
     )
     original = SimpleNamespace(spec=spec, chains=[])
-    prepared = SimpleNamespace(spec=spec, chains=[], msa_species={}, resources=list)
+    prepared = SimpleNamespace(
+        spec=spec, chains=[], msa_species={}, resources=list, af3=lambda _seed: {}
+    )
     reader = Mock(return_value=original)
     limiter = Mock(return_value=prepared)
     predict = Mock(return_value=0)
@@ -161,13 +160,21 @@ def test_resolved_input_and_msa_limit_reach_runtime_without_reparse(
     )
     inference.run(
         "esmfold2",
-        ["--spec", "original.yaml", "--config", str(config), "--out", str(tmp_path)],
+        [
+            "--spec",
+            "original.yaml",
+            "--config",
+            str(config),
+            "--out",
+            str(tmp_path),
+            "--checkpoint",
+            str(tmp_path / "weights.pt"),
+        ],
     )
     reader.assert_called_once()
     assert limiter.call_args.args[0] is original
     request = predict.call_args.args[0]
     assert request.resolved_input is prepared
-    assert request.input_spec is None
     assert request.msa_depth == 3
     assert request.execution.compile
     assert request.execution.cuda_graph
@@ -180,6 +187,10 @@ def test_runtime_owns_forward_count_and_every_target_output(tmp_path, monkeypatc
         model="esmfold2",
         ccd_db=tmp_path,
         out=tmp_path,
+        input=tmp_path / "input.json",
+        checkpoint=tmp_path / "weights.pt",
+        recycles=10,
+        steps=200,
         execution=ExecutionConfig(benchmark_repeats=0),
     )
     executions, calls = [], []

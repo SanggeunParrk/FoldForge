@@ -38,7 +38,7 @@ DEFAULT_FILES = {
     "intellifold2": "intellifold2.bin.zst",
     "openfold3": "openbind0.bin.zst",
     "openfold3-preview2": "openfold3.bin.zst",
-    "opendde": "opendde.pt",
+    "opendde": "opendde.bin.zst",
     "rosettafold3": "rosettafold3.bin.zst",
 }
 

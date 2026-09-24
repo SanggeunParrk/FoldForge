@@ -326,6 +326,61 @@ BY THE CLI (`runs/release-compare-20260924/tools/ours_blocks.py` does a
 teacher-forced per-block pass inside a real `inference.run`), and swap one input
 at a time into a real fold.
 
+### One architecture, implemented six ways -- why the graph is shared
+
+Every family here is AF3's architecture. What differs between them is mostly
+not design but HOW each team turned AF3's description into code -- and the
+description disagrees with itself. The AF3 Supplementary Information's
+pseudocode and AF3's released code differ in several places, the SI has at
+least one outright typo, and each team resolved those points its own way.
+Their weights were then trained on their resolution, so inference must
+reproduce it exactly.
+
+Measured by resetting one convention at a time to AF3's value and folding with
+the same seed (bit-identical baselines, so every difference is that
+convention's):
+
+| convention | families | where it comes from | reset to AF3 |
+|---|---|---|---|
+| `msa_double_add` | Boltz-2, Chai-1 | **SI typo, implemented literally.** SI Alg. 1 line 10 `{z} += MsaModule(...)`, but Alg. 8 returns the UPDATED pair, so the input is counted twice. AF3's code assigns. The Protenix report lists it as an erratum (Table 1). Boltz-2: `z = z + msa_module(z)`; Chai-1: traced trunk. Neither report mentions it. | Boltz-2 -9 pLDDT |
+| `msa_update_before_opm` | Boltz-2, OpenDDE | **Documented design change.** Boltz-1 report section 3.1 reorders SI Alg. 8 to PairWeightedAveraging -> MSATransition -> OuterProductMean; OpenDDE copies it ("Boltz-style MSA block"). | Boltz-2 -46, OpenDDE -18 |
+| `transposed_column_pair_bias` | Protenix v1/v2, OpenDDE, OF3 preview-2, Boltz-2 | **SI vs AF3 code.** SI Alg. 15 (and AF2/OpenFold) use bias b_ki; AF3's code projects before transposing, b_ik. | -2 to -28 |
+| `pre_trunk_atom_query` | Boltz-2, Chai-1, RF3 | **SI vs AF3 code.** SI Alg. 5 copies q = c (line 7) before adding the trunk single (line 9); AF3's code copies after. | Boltz-2 -43 / 19 A |
+| `parallel_attention_transition` | Chai-1, RF3 | **SI as written.** Alg. 23 `a <- b + Transition(a)`, which the Boltz-1, Protenix and RF3 reports all call a problem. RF3's report says it switched to sequential residuals; its released config (`rf3_net.yaml`) keeps the parallel form. | Chai-1 5.5 A |
+| `untransposed_column_pair_output`, `parallel_pairformer_block`, `atom_cond_norm`, `same_token_atom_attention`, `single_attention_gate_bias` | Chai-1 | **Undocumented**, read from the traced release. | up to -47 |
+| reference-conformer pose | OpenFold3 (random), Chai-1, IntelliFold (fixed) | **SI vs AF3 code.** SI Table 5: ref_pos has "a random rotation and translation applied"; AF3's inference code poses nothing. | see below |
+
+Three consequences, and they are the case for one graph:
+
+- **Each of these is a reading of AF3, not a new architecture.** Written as a
+  separate model per family, every one of them would be a hidden line in its
+  own copy of the network, and nobody would see that six copies disagree about
+  the same algorithm. As DenseSpec rows they are named, documented flags with
+  the family and the source side by side, and a reset measures each one.
+- **The bugs cannot be fixed in inference.** `msa_double_add` is an SI typo,
+  and the weights learned around it; removing it costs Boltz-2 9 pLDDT. They
+  are implemented as the releases have them, commented with their source, and
+  worth reporting upstream.
+- **Paper and code disagree even within one project** (RF3's diffusion
+  transformer). Only the released code decides what the weights saw.
+
+### Reference conformers -- AF3's rule kept
+
+MiniWorld's rule -- CCD model coordinates, centred per residue, randomly posed
+-- was tried against every release. The GEOMETRY is harmless everywhere (CCD
+model coordinates in AF3's pose change nothing measurable). The random POSE is
+family-specific: OpenFold3 preview-2 gains 4.4 pLDDT, Chai-1 loses 2.2 and
+IntelliFold moves 7 away from its release, because the first was trained with
+random rotations and the others with none. AF3's rule stays.
+
+MiniWorld also fills missing CCD model coordinates with 0.0 in training
+(`convert.py`, `to_reference_features`) and inference (`inference/ccd.py`),
+and sets `ref_mask` after the fill, so those atoms reach the model as valid
+atoms at the raw origin -- 12 to 38 A from their residue (e.g. `DRP` O3P,
+`Y7G` O1-O3; `4TJ` loses 45 of 72). About 4% of CCD components are partly
+missing, 0.2% wholly; all sampled cases have ideal coordinates to fall back on.
+Worth reporting to MiniWorld.
+
 ### The one real defect this found
 
 **The language model was dead.** `build_lm_inputs` selected protein tokens with

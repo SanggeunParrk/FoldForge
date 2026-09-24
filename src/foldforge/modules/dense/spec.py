@@ -36,6 +36,9 @@ class DenseSpec:
     #: the feature goes straight into a Linear, so it is not pose-invariant.
     ref_conformers: str = "af3"
     #: Reference conformers are centred per residue before they reach the network.
+    #: The AF3 SI (Table 5) says ref_pos carries "a random rotation and
+    #: translation"; AF3's inference code poses nothing, and this graph follows
+    #: the code. The OpenFold3 releases centre (and randomly rotate) per residue.
     centre_ref_conformers: bool = False
     #: Atom names the vendor's tokenizer never creates on standard residues.
     drop_atoms: tuple[str, ...] = ()
@@ -49,6 +52,14 @@ class DenseSpec:
     #: End policy of the atom-attention key window: "slide", "pad" or "slide_qblock".
     atom_key_window: str = "slide"
     #: Column-wise pair attention takes its pair bias transposed, Linear(z[k, q]).
+    #:
+    #: The AF3 SI and AF3's own code DISAGREE here. SI Algorithm 15 writes the
+    #: ending-node logits as q_ij.k_kj + b_ki, which is also AF2/OpenFold's
+    #: convention (bias taken after transposing the pair). AF3's code projects
+    #: the bias BEFORE transposing, i.e. b_ik -- that is this graph's default
+    #: because it is what AF3's weights saw. Families built from the SI or the
+    #: OpenFold lineage (Protenix, OpenDDE, OpenFold3 preview-2, Boltz-2) set
+    #: this. Off: -2 to -28 pLDDT.
     transposed_column_pair_bias: bool = False
     #: The diffusion transformer norms and projects the pair conditioning in every
     #: block; AF3 norms once and projects once per super block.
@@ -206,7 +217,8 @@ class DenseSpec:
     #: weight can express that -- a sigmoid does not fold into a linear map.
     #: Missing it, every block's attention contributes less, and the shortfall
     #: compounds: over 48 blocks the trunk's single reaches the confidence head
-    #: at 0.58x the released scale.
+    #: at 0.58x the released scale. Undocumented; ``sigmoid(g + CONSTANTS.c0)``
+    #: with c0 = 1 in the traced trunk.
     single_attention_gate_bias: float = 0.0
     #: Whether a parallel block masks the single-attention residual, so padded
     #: rows stay exactly zero rather than carrying whatever the attention put
@@ -226,9 +238,27 @@ class DenseSpec:
     #: A trained attention pooling over each token's pair ROW, projected back
     #: onto the single before the per-token heads read it.
     confidence_row_pool: bool = False
-    #: The pair entering the trunk is added once more after the MSA stack.
+    #: The pair entering the MSA module is added once more after it.
+    #:
+    #: A literal reading of a TYPO in the AF3 Supplementary Information, kept
+    #: because the weights were trained with it. SI Algorithm 1 line 10 writes
+    #: ``{z} += MsaModule(...)`` while Algorithm 8 already returns the UPDATED
+    #: pair (line 15, ``return {z}``), so the input is counted twice. AF3's own
+    #: code assigns (``z = msa_module(z)``) and the Protenix report lists this
+    #: line as an erratum (Table 1: "an additional residual update would be
+    #: redundant"). Boltz-2 (``z = z + msa_module(z)``, boltz2.py) and Chai-1
+    #: (traced trunk) implemented the typo; neither report mentions it. Turning
+    #: it off costs Boltz-2 9 pLDDT on 5I28 -- do not "fix" it here, report it.
     msa_double_add: bool = False
     #: An MSA block updates the MSA before its outer product mean reads it.
+    #:
+    #: A DOCUMENTED design change, not an artifact. AF3 SI Algorithm 8 runs the
+    #: outer product mean first (line 6). Boltz-1 reorders it to
+    #: PairWeightedAveraging -> MSATransition -> OuterProductMean so the MSA
+    #: transition's output reaches the pair in the same block (Boltz-1 report,
+    #: section 3.1 "Architectural modifications"; tested on a smaller model, no
+    #: ablation published). Boltz-2 keeps it; OpenDDE copies it ("Boltz-style
+    #: MSA block" in its pairformer.py). Off: Boltz-2 -46, OpenDDE -18 pLDDT.
     msa_update_before_opm: bool = False
     #: The outer product divides BEFORE its output projection's bias, so that
     #: bias is not scaled by the pair count. Worth bias * (1 - 1/n).
@@ -273,6 +303,12 @@ class DenseSpec:
     atom_features_bias: bool = False
     #: Atom queries are the per-atom features before the trunk single is added;
     #: only the conditioning sees the trunk.
+    #:
+    #: The AF3 SI and AF3's own code DISAGREE here. SI Algorithm 5 copies
+    #: ``q_l = c_l`` (line 7) BEFORE ``c_l += LinearNoBias(LayerNorm(s_trunk))``
+    #: (line 9); AF3's code takes the query from the conditioning AFTER the trunk
+    #: term, which is this graph's default. Boltz-2, Chai-1 and RF3 follow the
+    #: SI. Off: Boltz-2 -43 pLDDT / 19 A.
     pre_trunk_atom_query: bool = False
     #: The reference charge enters raw; AF3 feeds arcsinh(charge).
     raw_ref_charge: bool = False
@@ -284,9 +320,11 @@ class DenseSpec:
     #: Atom attention opens only within a token. AF3 lets every atom attend
     #: across the whole window, spreading the softmax over some eighty keys
     #: where this opens nine; the damage is intra-residue geometry.
+    #: Undocumented Chai-1 behaviour, read from its traced graphs.
     same_token_atom_attention: bool = False
     #: The atom conditioning SUM is normalised, without parameters. No blob
     #: names it, and every adaptive norm downstream scales by (s + 1) off it.
+    #: Undocumented Chai-1 behaviour, read from its traced token embedder.
     atom_cond_norm: bool = False
     #: The atom decoder conditions on a second, affine norm over the encoder's
     #: atom conditioning rather than reusing it unchanged.
@@ -340,6 +378,14 @@ class DenseSpec:
     atom_attention_project_output: bool = True
     #: Diffusion blocks feed the transition the PRE-attention activation and add
     #: both deltas in one residual: x + attention(x) + transition(x).
+    #:
+    #: Follows the AF3 SI's "unusual order" (Algorithm 23: ``a <- b +
+    #: ConditionedTransitionBlock(a)``), which the Boltz-1, Protenix and RF3
+    #: reports all call a problem and replace with two sequential residuals.
+    #: Chai-1 keeps the parallel form (traced code). RF3's RELEASE does too --
+    #: ``no_residual_connection_between_attention_and_transition: true`` in
+    #: rf3_net.yaml -- although its report (appendix A.3.2) says it switched to
+    #: the sequential form: the paper and the released code disagree.
     parallel_attention_transition: bool = False
     #: Triangle attention's gate and output projections carry trained biases.
     triangle_attention_bias: bool = False
@@ -360,6 +406,10 @@ class DenseSpec:
     #: entering the block and their results are summed into it, and the single
     #: attention and transition both read the entering single. AF3 threads each
     #: update through the running activation.
+    #:
+    #: Undocumented (AF3 SI Algorithm 17 is sequential; the Chai-1 report says
+    #: only that it "largely follows" AF3), read from the traced trunk. team-gm's
+    #: install_pairformers must NOT swap such a block for its sequential one.
     parallel_pairformer_block: bool = False
     #: chai-1's MSA block is parallel in two stages, and its pair transition
     #: sits in the FIRST: the two triangle multiplications and the transition
@@ -370,6 +420,9 @@ class DenseSpec:
     #: chai-1's two pair-attention directions are one module whose single output
     #: projection reads them in mixed orientation, so the ending-node direction
     #: is NOT transposed back before the sum.
+    #:
+    #: Undocumented: in neither the AF3 SI nor the Chai-1 report, read from the
+    #: release's traced trunk (trunk.pt forward_256). Off: -47 pLDDT.
     untransposed_column_pair_output: bool = False
     #: The confidence head embeds the predicted structure as this many distance
     #: classes over (min, max); None keeps AF3's own distogram features.

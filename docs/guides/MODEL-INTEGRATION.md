@@ -91,8 +91,11 @@ as the control on the identical input:
 | openfold3-preview2 | 0 / 127 | 0 | 0.209 A | 84.95 |
 | rosettafold3 | 0 / 127 | 0 | 0.208 A | 86.87 |
 
-Chai-1 matches its own release on this input -- pLDDT 95.5 against 95.0-95.2,
-CA within 0.25 A -- recorded separately below. OpenDDE folds 0 / 127 on 5I28 and
+Agreement with AF3 is NOT acceptance: it passed Chai-1 while it was 50 pLDDT
+off and Protenix while its template term was missing. Every family has since
+been folded against its OWN release -- see "Every family against its own
+release" below. Chai-1 matches its release on this input -- pLDDT 95.5 against
+95.0-95.2, CA within 0.25 A -- recorded separately below. OpenDDE folds 0 / 127 on 5I28 and
 0 / 75, 0 / 222, 0 / 591 on 1UBQ, 3PTB and 4YX2.
 
 The two ESMFold2 releases have no template stack, so they take 1UBQ without
@@ -162,6 +165,34 @@ callable `forward`. The call site is ordinary Python, so wrap
 outputs. Discriminate by an argument only one component has --
 `atom_within_token_index` for the confidence head, `msa_input_feats` for the
 trunk -- because both take a `token_single_trunk_repr`.
+
+
+The other releases, all runnable from this machine (details in
+`runs/release-compare-20260924/tools/*.sbatch`):
+
+- **Boltz-2**: `/public_data/thalkak_envs/boltz/bin/boltz predict`, cache = a
+  directory with `boltz2_conf.ckpt` and `mols` linked from
+  `/public_data/thalkak_checkpoints/boltz`. `msa: empty` for no alignment.
+- **Protenix**: `/public_data/thalkak_envs/protenix{,_v2}/bin/protenix pred`
+  with `PROTENIX_ROOT_DIR` holding `checkpoint/` (the params) and a WRITABLE
+  `common/` of links to `/public_data/alphaworld02/protenix_root/common` -- it
+  downloads missing files there. `LAYERNORM_TYPE=torch` avoids compiling its
+  CUDA LayerNorm; `-c` is total passes.
+- **OpenFold3**: source at `/home/hwlee/project/openfold3` (preview-2 weights
+  `/home/hwlee/.openfold3/of3-p2-155k.pt`) or the v0.5.0 tree under
+  `refs/uplifting-biomolecular-modeling/openfold3_ob0/stock/src` with
+  `of3-ob-2025-06-30-174k.pt` from `openfold3-data.s3.amazonaws.com`. Our venv
+  plus `pdbeccdutils kalign-python ijson memory_profiler func_timeout awscrt
+  gemmi` on `PYTHONPATH`. A capture script must guard its CLI call with
+  `__main__`: the data loader SPAWNS workers that re-import it.
+- **RoseTTAFold3**: foundry `4010e3e` (tarball under the reference's
+  `rosettafold3/stock/`), `rf3_foundry_01_24_latest_remapped.ckpt` from
+  `files.ipd.uw.edu`, plus `atomworks==2.2.1` and **`biotite==1.4.0`** on
+  `PYTHONPATH` -- atomworks needs the older biotite.
+- **IntelliFold-v2**: `pip install intellifold==2.0.4` to a directory,
+  `intellifold_v2.pt` and `ccd_v2.pkl` from HF `intelligenAI/intellifold`, and
+  its PyTorch runner `runner/intellifold_inference.py --model v2`. Its summary
+  writer passes numpy scalars to `json.dump`; wrap the encoder, not the model.
 
 ### Chai-1 against its release -- resolved 2026-09-24
 
@@ -233,6 +264,67 @@ takes the conditioning from 16% error to 0.09% -- but is worth 0.03 pLDDT
 - **A separable error is inherited.** 98% of the initial pair's error was
   row + column, i.e. `left_single + right_single` of a wrong single, which sent
   the search upstream instead of into the pair.
+
+### Every family against its own release -- 2026-09-25
+
+5I28, no alignment and no template, the same number of trunk passes (4) and
+200 steps on both sides, 5 samples. pLDDT is the per-atom mean; "CA to release"
+is the mean pairwise CA RMSD from each of our samples to each release sample,
+set against the release's own sample-to-sample spread. Scripts and outputs are
+under `runs/release-compare-20260924/`.
+
+| family | release pLDDT | ours | CA to release | release spread | verdict |
+|---|---|---|---|---|---|
+| boltz2 | 65.52 | 66.56 | 2.97 A | 3.00 A | matches |
+| boltz2, same MSA | 97.04 | 96.93 | 0.63 A | 0.67 A | matches |
+| protenix v1 | 68.43 (fp32) | 68.32 | 1.67 A | 1.46 A | **fixed**, matches |
+| protenix v2 | 62.52 (fp32) | 62.28 | 2.70 A | 2.57 A | **fixed**, matches |
+| rosettafold3 | 72.93 | 72.90 | 2.15 A | 2.23 A | matches |
+| intellifold2 | 61.39 (fp32) | 60.59 | 3.00 A | 2.90 A | matches |
+| openfold3 (v0.5.0 OpenBind) | 65.94 | 68.01 (66.79 on the release's conformer) | 2.78 A | 2.59 A | matches; conformer |
+| openfold3-preview2 | 53.36 | 48.42 (53.97 on the release's conformer) | 3.95 A | 2.44 A | model matches; conformer |
+| chai1 | 95.0-95.2 | 95.5 | 0.20-0.24 A | 0.18-0.69 A | **fixed**, matches |
+
+**Found and fixed on the way, both invisible to the tree diff:**
+
+- **Protenix's template term was missing.** The fused template embedder
+  skipped absent slots and divided by the present count, so a template-free
+  fold got exactly zero. The release runs every slot -- the normed query pair
+  still drives the stack -- and divides by the slot count, adding a pair term
+  of RMS 17 (v1) / 12 (v2) on every recycle. v1 went from CA 4.25 A off the
+  release to inside its spread.
+- **Recycle counting.** Protenix (`range(N_cycle)`), OpenDDE, which inherits
+  it, and RF3 (`range(n_recycles)`) count TOTAL trunk passes, like Chai-1;
+  AF3, Boltz, OpenFold3 (`num_recycles + 1`) and IntelliFold
+  (`recycling_iters + 1`) count additional ones. `recycles_are_total` now says
+  so for each, so one setting means one number of passes.
+
+**Three things that look like defects and are not:**
+
+- **Precision.** Protenix, IntelliFold and Chai-1 default to bf16. Switching
+  the RELEASE alone between bf16 and fp32 moves its pLDDT by 1.5-4 points
+  (Protenix v1 69.93 -> 68.43, v2 58.35 -> 62.52, IntelliFold 65.50 -> 61.39).
+  Compare against the precision we run, not the release's default.
+- **Reference conformers.** OpenFold3 generates a fresh RDKit conformer per run
+  and rotates it at random; the atom encoder reads the offsets, so its input is
+  stochastic. Ours is one cached ETKDGv3 conformer per residue, ~1.2 A off the
+  release's intra-residue distances. Swapping the release's conformer into our
+  batch closes both OpenFold3 gaps (preview-2 48.42 -> 53.97 against 53.36);
+  across five release seeds preview-2 itself ranges 53.2-57.1. Chai-1 and
+  IntelliFold do not move on the same swap.
+- **Release reporting.** IntelliFold's CIF B-factor is not its per-atom
+  pLDDT (64.39 against 61.39 in its own JSON), and it reports one pLDDT for
+  all five samples. RF3 defaults to 50 steps and abandons a fold below pLDDT
+  0.5 (`early_stopping_plddt_threshold`); pass `num_steps=200
+  early_stopping_plddt_threshold=0` to compare.
+
+**How each was localised** -- the same three moves as Chai-1, and they
+generalise: capture the release's stage outputs (a forward pre-hook copies the
+INPUTS, since Protenix and OpenFold3 update in place -- read after the call, an
+input is already the output), feed the release's own inputs to our model LOADED
+BY THE CLI (`runs/release-compare-20260924/tools/ours_blocks.py` does a
+teacher-forced per-block pass inside a real `inference.run`), and swap one input
+at a time into a real fold.
 
 ### The one real defect this found
 

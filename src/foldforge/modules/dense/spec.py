@@ -550,6 +550,8 @@ BOLTZ2 = replace(
 ROSETTAFOLD3 = replace(
     OPENBIND0,
     family="rosettafold3",
+    # The release's n_recycles is the number of trunk passes (range(n_recycles)).
+    recycles_are_total=True,
     centre_ref_conformers=False,
     per_block_pair_layer_norm=True,
     msa_value_dim=32,

@@ -364,7 +364,8 @@ class DenseSpec:
     #: chai-1's MSA block is parallel in two stages, and its pair transition
     #: sits in the FIRST: the two triangle multiplications and the transition
     #: all read the post-OPM pair and are summed in, then both attention
-    #: directions read that result and are summed in turn.
+    #: directions read that result and are summed in turn. The MSA row update is
+    #: parallel as well: its transition reads the MSA entering the block.
     parallel_msa_block: bool = False
     #: chai-1's two pair-attention directions are one module whose single output
     #: projection reads them in mixed orientation, so the ending-node direction
@@ -384,7 +385,8 @@ class DenseSpec:
     msa_pair_mask_logits: bool = False
     #: The MSA feature embedding carries a trained bias.
     msa_activations_bias: bool = False
-    #: The MSA stack's single term is the RECYCLED single, not the target feat.
+    #: The MSA stack's single term is the single after its recycle add -- the
+    #: one the pairformer starts from -- not the target feat.
     msa_single_from_recycle: bool = False
     #: The token-pair stream carries no bond feature, so no bond embedder runs.
     no_bond_embedding: bool = False
@@ -641,7 +643,7 @@ CHAI1 = replace(
         }
     ),
     per_block_pair_layer_norm=True,
-parallel_pairformer_block=True,
+    parallel_pairformer_block=True,
     # Its parallel block opens the single-attention gate by 1.0 and masks that
     # attention's residual. Neither can be expressed as a weight, and both were
     # missing: over 48 blocks the single reached the confidence head at 0.58x

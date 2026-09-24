@@ -270,7 +270,8 @@ class EvoformerBlock(nn.Module):
         #: Two parallel stages: the two triangle multiplications and the
         #: transition all read the post-outer-product pair and are summed into
         #: it, then both attention directions read that result and are summed in
-        #: turn. AF3 threads all five sequentially.
+        #: turn. AF3 threads all five sequentially. The MSA row update is
+        #: parallel too: its transition reads the MSA entering the block.
         self.parallel = spec.parallel_msa_block
 
     def forward(
@@ -284,6 +285,14 @@ class EvoformerBlock(nn.Module):
 
         def update_msa(value, updated_pair):
             """Update msa."""
+            if self.parallel:
+                # The transition reads the MSA entering the block, as the
+                # attention does, and both deltas are summed into it.
+                return (
+                    value
+                    + self.msa_attention1(value, msa_mask, updated_pair, pair_mask)
+                    + self.msa_transition(value)
+                )
             return msa_row_update(
                 value,
                 updated_pair,

@@ -665,18 +665,6 @@ class Evoformer(nn.Module):
             pair_mask=pair_mask,
         )
 
-        pair_activations = self._embed_process_msa(
-            msa_batch=batch.msa,
-            pair_activations=pair_activations,
-            pair_mask=pair_mask,
-            token_features=batch.token_features,
-            target_feat=(
-                prev["single"].to(target_feat.dtype)
-                if self.spec.msa_single_from_recycle
-                else target_feat
-            ),
-        )
-
         single_activations = single_init
         recycled_single = prev["single"]
         if self.spec.recycle_from_initial and first_pass:
@@ -685,6 +673,20 @@ class Evoformer(nn.Module):
             self.prev_single_embedding_layer_norm(
                 recycled_single.to(single_activations.dtype)
             )
+        )
+
+        pair_activations = self._embed_process_msa(
+            msa_batch=batch.msa,
+            pair_activations=pair_activations,
+            pair_mask=pair_mask,
+            token_features=batch.token_features,
+            # The recycled single is the one AFTER its recycle add -- the same
+            # tensor the pairformer starts from -- not the raw carry.
+            target_feat=(
+                single_activations.to(target_feat.dtype)
+                if self.spec.msa_single_from_recycle
+                else target_feat
+            ),
         )
 
         for pairformer_b in self.trunk_pairformer:

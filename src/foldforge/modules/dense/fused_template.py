@@ -19,6 +19,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from team_gm.modules.blocks.composition import template_embedding_mean
 
 from foldforge.data.features import dense as features
 from foldforge.data.features import dense_protein as protein_data_processing
@@ -221,7 +222,13 @@ class FusedTemplateEmbedding(nn.Module):
         padding_mask_2d: torch.Tensor,
         multichain_mask_2d: torch.Tensor,
     ) -> torch.Tensor:
-        """Return the pair update from every present template."""
+        """Return the pair update, averaged over every template SLOT.
+
+        The vendor runs an absent slot like any other -- the normed query pair
+        still drives the stack -- and divides by the slot count, so with no
+        template at all the term is live rather than zero. Skipping absent
+        slots removed a pair term of RMS 12-17 on every recycle.
+        """
         dtype = query_embedding.dtype
         count = templates.aatype.shape[0]
         query = self.z_proj(self.z_norm(query_embedding))
@@ -229,13 +236,10 @@ class FusedTemplateEmbedding(nn.Module):
             return self._single_pass(
                 query, templates, padding_mask_2d, multichain_mask_2d
             )
-        total = torch.zeros_like(query)
-        present = query.new_zeros(())
-        for index in range(count):
+
+        def embed(index: int) -> torch.Tensor:
             template = templates[index]
             mask = template.atom_mask
-            if not bool(mask.any()):
-                continue
             visible = multichain_mask_2d
             if self.spec.template_visibility_by_coverage:
                 # Visibility follows the SOURCE TEMPLATE, not the chain: a template
@@ -258,10 +262,19 @@ class FusedTemplateEmbedding(nn.Module):
                 stacked = block(stacked, padding_mask_2d)
             if self.spec.template_stack_outer_residual and len(self.tmpl_pairformer):
                 stacked = value + stacked
-            total = total + self.v_norm(stacked)
-            present = present + 1
-        mean = total / present.clamp_min(1.0)
-        return self.u_proj(torch.relu(mean))
+            return self.v_norm(stacked)
+
+        return template_embedding_mean(
+            count,
+            embed=embed,
+            empty=torch.zeros_like(query),
+            project=self.u_proj,
+            present=(
+                (lambda index: bool(templates[index].atom_mask.any()))
+                if self.spec.template_present_denominator
+                else None
+            ),
+        )
 
     def _single_pass(
         self,

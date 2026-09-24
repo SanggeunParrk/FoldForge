@@ -682,6 +682,8 @@ CHAI1 = replace(
 PROTENIX2 = replace(
     OPENBIND0,
     family="protenix2",
+    # The release's N_cycle is the number of trunk passes (range(N_cycle)).
+    recycles_are_total=True,
     chained_atom_key_norm=True,
     # Protenix indexes OXT per residue and keeps it, where the OpenFold3
     # releases remove the terminal atoms; inheriting their drop shifts the whole

@@ -91,8 +91,8 @@ as the control on the identical input:
 | openfold3-preview2 | 0 / 127 | 0 | 0.209 A | 84.95 |
 | rosettafold3 | 0 / 127 | 0 | 0.208 A | 86.87 |
 
-Chai-1 on the same input folds 0 / 127 with 31 clashes at pLDDT 41; its
-remaining gap is recorded separately. OpenDDE folds 0 / 127 on 5I28 and
+Chai-1 matches its own release on this input -- pLDDT 95.5 against 95.0-95.2,
+CA within 0.25 A -- recorded separately below. OpenDDE folds 0 / 127 on 5I28 and
 0 / 75, 0 / 222, 0 / 591 on 1UBQ, 3PTB and 4YX2.
 
 The two ESMFold2 releases have no template stack, so they take 1UBQ without
@@ -163,161 +163,76 @@ outputs. Discriminate by an argument only one component has --
 `atom_within_token_index` for the confidence head, `msa_input_feats` for the
 trunk -- because both take a `token_single_trunk_repr`.
 
-### Chai-1's confidence, narrowed and still open
+### Chai-1 against its release -- resolved 2026-09-24
 
-Chai-1 folds 5I28 to 0.89 A CA-RMSD with 0 broken bonds -- a good structure --
-and reports **pLDDT 41** where AF3 on the identical input reports 96, with a
-median PAE of 4.80 A against 1.65. Its pLDDT never exceeds 0.499 across 128
-tokens.
+On 5I28 with no alignment, 200 steps, five samples, both measured the same way
+(mean of the CIF B-factors):
 
-Ruled out, each measured rather than reasoned about:
+| | pLDDT per sample | CA vs release sample 0 |
+|---|---|---|
+| released Chai-1 | 95.00 - 95.17 | 0.18 - 0.69 A (its own spread) |
+| FoldForge Chai-1 | **95.51 - 95.55** | **0.195 - 0.243 A** |
 
-- **The structure the head reads.** Tapping `ConfidenceHead.forward` and
-  matching its `dense_atom_positions` against the written mmCIF gives
-  **0.0005 A** on dense slot 1, for Chai-1 and for AF3 alike. The head is
-  reading exactly the structure that got written.
-- **The 37-slot pLDDT gather.** Chai-1 predicts over ATOM37 and gathers per
-  atom by name; ours matches the reference operation for operation, including
-  the `argmax`-on-no-hit behaviour and the `take_along` axis.
-- **The bin arithmetic.** 50 bins, `bin_width = 1/50`, centres
-  `arange(0.5*w, 1.0, w)`, `sum(softmax * centres) * 100` -- the reference's
-  own lines.
-- **The confidence pairformer.** The reference gated Chai-1's `pae_logits` and
-  `pde_logits` at corr 0.999938 and 0.999916 against captured native I/O.
-- **The language model.** Alive: 128 distinct ESM2 embeddings for 128 tokens.
+An earlier "97.45" for the release came from a different aggregation and was
+compared against our B-factor mean; it overstated the gap by two points.
 
-**The release was downloaded and run, and the gap is real.** `chai_lab` is at
-`/public_data/thalkak_envs/chai-lab`; `models_v2/` (1.1 GB) and
-`conformers_v1.apkl` come from `chaiassets.com`. Pin `antipickle==0.2.0`: 0.2.2
-ships a built-in `torch` adapter whose typestring collides with the one
-`chai_lab` registers, and the collision is an assertion, not a warning.
+**Seven defects, none visible to the tree diff.** In the order found, with the
+5I28 pLDDT each left behind (ours started at 41.87):
 
-On 5I28, same sequence, 3 recycles and 200 steps:
+| defect | fix | pLDDT |
+|---|---|---|
+| single read the block's own updated pair | parallel block reads the pair ENTERING it | |
+| single-attention gate had no offset | `single_attention_gate_bias = 1.0` (`sigmoid(g + 1)`) | |
+| single-attention residual unmasked | `mask_single_attention_residual` | 54.93 |
+| MSA stack projected the raw recycle carry | it reads the single AFTER its recycle add | 64.26 |
+| MSA transition read the post-attention MSA | the row update is parallel too | 64.29 |
+| with no alignment the query still formed the MSA, so the profile was a one-hot of the sequence | `empty_msa_without_alignment`: every row masked, profile and deletion mean zero | 77.66 |
+| **the loader swapped every parallel block for the shared SEQUENTIAL one** | `install_pairformers` keeps a block that declares its own schedule | **95.53** |
 
-| | pLDDT mean | range | vs deposited |
-|---|---|---|---|
-| released Chai-1 | **97.45** | 75.8 - 98.9 | 0.692 A |
-| FoldForge Chai-1 | **42.03** | 23.0 - 50.6 | 0.919 A |
-| FoldForge AF3 | 98.28 | 90.7 - 99.0 | 0.674 A |
+The last is the one to remember. The first three fixes were written into
+`PairformerBlock.forward`, and `install_pairformers` then replaced that block
+with team-gm's sequential composition in every real fold -- only the gate
+offset survived, because it lives inside `SelfAttention`. A harness that built
+the model WITHOUT the loader matched the release to 0.9% after 48 blocks and
+three recycles, while the real fold read corr 0.93. **A comparison harness
+must load the model exactly as the CLI does**, or it validates a graph that
+never runs.
 
-The two structures agree to 0.581 A, so the fold is right and only the
-confidence is wrong -- by more than a factor of two.
+The reference conformer is the one input still different: chai caches its own
+(`conformers_v1.apkl`, deterministic for standard residues), and against ours
+the intra-residue distances differ by 1.1 A median. It accounts for the whole
+of the atom encoder's input difference -- swapping the release's positions in
+takes the conditioning from 16% error to 0.09% -- but is worth 0.03 pLDDT
+(95.53 -> 95.56), so it is left.
 
-Also cleared, by weight comparison against the released TorchScript: the pLDDT
-projection is **bit-identical**, `max|diff| = 0.0` and corr 1.00000000, in the
-atom-major layout we use. Matching it bin-major instead reads corr 0.408, so
-the `(n_atom n_bins)` reshape convention is confirmed too.
+**How it was found, and what to reuse.**
 
-**Not the cause: the head norms.** The released `confidence_head.pt` carries
-five non-block parameters -- all bare projection weights, no norm tensor -- and
-the converter invents `scale=1/offset=0` for `logits_ln`, `pae_logits_ln` and
-`plddt_logits_ln`. That looked decisive, since a scale-1/offset-0 LayerNorm
-still centres and rescales, and the reference records exactly that reasoning
-for boltz2 in `NO_HEAD_NORM` while leaving Chai-1 out of it. Removing the three
-norms moved pLDDT from 42.03 to **37.78** -- slightly worse, structure
-unchanged -- so the reading was wrong: **no parameters does not mean no
-normalisation.** An affine-free LayerNorm has zero parameters and still
-normalises, which is what the converter's ones and zeros faithfully represent.
-The change was reverted.
-
-**Located: the trunk hands the head a different representation.** Wrapping
-`ModuleWrapper.forward` -- the call site is ordinary Python even though the
-traced blocks have no callable `forward`, and a ScriptModule refuses
-`register_forward_hook` -- captures the released head's inputs. Against ours on
-the same target, over the 128 real tokens:
-
-| tensor into the confidence head | corr | ours RMS | released RMS | best scale | residual |
-|---|---|---|---|---|---|
-| `single` | +0.922 | 137.1 | 217.5 | 0.58 | 0.387 |
-| `pair` | +0.942 | 96.9 | 97.3 | 0.94 | 0.335 |
-
-Close but not equal: the pair's scale matches and the single's is 0.58x, and
-best-fit scaling still leaves 39% and 33% of the energy unexplained. The
-reference's own gates aim at 0.999, so 0.92 is not agreement. The diffusion
-head survives this -- it conditions through its own norms, and the fold is
-0.919 A against the release's 0.692 -- while the confidence head turns it into
-97 against 42.
-
-**The 2x2 that settles it.** The released head IS callable -- `forward` is
-undefined but the bucketed `forward_256` .. `forward_3072` are all there -- so
-each side's single and pair can be crossed into each head. Ours by injecting
-into `ConfidenceHead.forward` during a real fold; the release's offline, in
-bf16, with a control confirming the crop-and-pad harness costs nothing (the
-release's own tensors through it still read 95.14).
-
-| single | pair | RELEASED head | OUR head |
-|---|---|---|---|
-| release | release | 95.14 | 97.07 |
-| release | ours | 93.39 | 96.04 |
-| **ours** | release | 79.39 | **44.66** |
-| **ours** | ours | 76.71 | **41.87** |
-
-Three things fall out, and two of them correct claims made earlier in this
-document:
-
-- **The pair is not the problem.** Swapping it moves either head by about two
-  points.
-- **The single is.** It costs the RELEASED head 16 points, so it is genuinely
-  degraded and not merely different -- consistent with corr 0.922 at 0.58x
-  scale against the release's.
-- **Our head is correct, and amplifies.** On the release's single it agrees
-  with the released head to within two points (97.07 against 95.14, 96.04
-  against 93.39). On ours it loses 52 points where the released head loses 16.
-  So the head is not the root cause, but it is about three times as sensitive
-  to a degraded single -- which is worth understanding separately and is not
-  what to fix first.
-
-The earlier readings in this document -- first "the trunk, not the head", then
-"the head is the larger cause" -- were each half right, and both were asserted
-from one half of this table. **The work is the trunk's single track.** Its
-INITIAL single already matches (corr 0.991 against the release's), and tracing
-the norm after every block shows a steady drift rather than a step: +1.82 per
-block with a standard deviation of 1.54 and no outlier. A drift like that is
-a convention every block shares, not one bad block.
-
-**Three found, and they are worth 13 points.** Against the reference's chai
-branch, our parallel block's single track had three differences:
-
-| convention | ours, before |
-|---|---|
-| the single reads the pair ENTERING the block | read the block's own updated pair |
-| the single attention gates with `sigmoid(g + 1)` | no offset |
-| that attention's residual is masked, so padded rows stay zero | unmasked |
-
-The gate offset is the one that cannot be absorbed: a sigmoid does not fold
-into the linear map that produces its logits, so a missing +1 shrinks every
-block's attention and the shortfall compounds over 48 of them. Restoring all
-three moves pLDDT 41.87 -> **54.93** and the single's scale 0.581 -> **0.675**
-of the release's. They ride on `single_attention_gate_bias` and
-`mask_single_attention_residual`, both default-off, and every other family
-folds bit-identically after the change.
-
-**What is left is not the single alone**, and 43 points of it remain. The
-correlation barely moved -- 0.9221 -> 0.9238 -- so the scale is closer and the
-content is not, and the PAIR reads 0.939 on the same input. Two tracks
-drifting together points at something the block shares.
-
-Ruled out, each cheaply and definitively, and listed so no one pays for them
-twice:
-
-| candidate | how it was eliminated |
-|---|---|
-| **precision** | the release's trunk output is exactly representable in bf16, so it runs there and we were comparing against `af3_default`. Matching it moves pLDDT 54.93 -> 54.52, which is nothing. |
-| **dual-output pair attention in the trunk** | the blob carries `output_projection_transposed` under the confidence head and NOT under `trunk_pairformer`. The checkpoint's own shapes answered it without reading a line of reference code. |
-| **the single recycle** | matches the reference term for term: the carry is normed and projected onto `s_init`, and the first pass seeds the carry with `s_init` itself. |
-| **the `gating_query` bias** | the reference's `bias_init=1.0` never fires -- its `Linear` defaults to `use_bias=False` -- and the blob carries no such record. |
-| **`MASK_TRANSITIONS`** | chai1 is not a member, and we do not mask. |
-| **the pair track's assembly** | every delta reads the block's input and they are summed against it, in both. |
-
-Worth keeping from that list: **the release's trunk is bf16 throughout**, which
-is a fact about the target even though it is not this defect. And a
-checkpoint's own tensor shapes settle a question about architecture faster than
-reading either implementation.
-
-The reference **deliberately did not gate this**: it compared LOGITS rather
-than derived scores so that no assumption about Chai-1's bin centres entered,
-and excluded pLDDT because, unlike PAE and PDE, it is per atom and needs
-atom-layout agreement.
+- **The traced release is readable.** `torch.jit.load(...).forward_256.code`
+  is the whole inlined graph, 22,644 lines for the trunk; stripping the
+  attribute fetches leaves the arithmetic. `code_with_constants` gives the
+  literals (`CONSTANTS.c0` is the gate's 1). Every convention above was read
+  from there, not guessed.
+- **Load it as `chai_lab` does**: `torch.jit.set_fusion_strategy([("STATIC", 0),
+  ("DYNAMIC", 0)])`, `torch.jit.load(path).to(device)` -- `map_location` leaves
+  traced CPU constants behind -- and feed floating inputs in bf16.
+- **Bisect by weight surgery.** The traced trunk has no per-block entry point,
+  so zero every residual output projection of blocks >= K
+  (`transition_pair.linear_out`, `triangle_multiplication.linear_z_out`,
+  `triangle_attention.linear_out`, `transition_single.linear_out`,
+  `attention_pair_bias.attention.output_proj`) and compare with our first K
+  blocks on the release's captured inputs.
+  `runs/chai-native-20260923/tools/trunk_bisect.py` does K = 0..48 and three
+  recycles.
+- **Compare values, not names.** Cutting every tensor into vectors along each
+  axis (rounded to bf16) and looking them up on the other side matches through
+  splits, merges and transposes; only fused tensors stay unmatched
+  (`out_scalers * linear_out`, `query_bias` as a q bias).
+- **Invert a projection to reach an unexported tensor.** The initial single is
+  `proj_in_trunk(cat[pooled, TOKEN])`; with `TOKEN` captured, a least-squares
+  solve recovers the release's pooled atom-encoder output.
+- **A separable error is inherited.** 98% of the initial pair's error was
+  row + column, i.e. `left_single + right_single` of a wrong single, which sent
+  the search upstream instead of into the pair.
 
 ### The one real defect this found
 

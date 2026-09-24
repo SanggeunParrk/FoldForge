@@ -877,6 +877,10 @@ class AlphaFold3(nn.Module):
     ) -> dict[str, torch.Tensor | dict[str, torch.Tensor]]:
         """Compute the module output."""
         batch_data = feat_batch.Batch.from_data_dict(batch)
+        if self.spec.empty_msa_without_alignment and not batch_data.msa.has_alignment():
+            # Its profile would otherwise be a one-hot of the sequence, which
+            # moves every token of the initial single.
+            batch_data = replace(batch_data, msa=batch_data.msa.without_alignment())
         num_res = batch_data.num_res
 
         target_feat, structure_feat = self.create_target_feat_embedding(batch_data)

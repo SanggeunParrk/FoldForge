@@ -388,6 +388,9 @@ class DenseSpec:
     #: The MSA stack's single term is the single after its recycle add -- the
     #: one the pairformer starts from -- not the target feat.
     msa_single_from_recycle: bool = False
+    #: With no alignment the MSA is EMPTY -- every row masked, profile and
+    #: deletion mean zero -- rather than the query alone.
+    empty_msa_without_alignment: bool = False
     #: The token-pair stream carries no bond feature, so no bond embedder runs.
     no_bond_embedding: bool = False
     #: The recycle carry starts at the INITIAL representations rather than zeros,
@@ -656,6 +659,7 @@ CHAI1 = replace(
     msa_pair_mask_logits=True,
     msa_activations_bias=True,
     msa_single_from_recycle=True,
+    empty_msa_without_alignment=True,
     no_bond_embedding=True,
     recycle_from_initial=True,
     mask_atom_act_per_block=True,

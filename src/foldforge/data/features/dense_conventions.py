@@ -275,10 +275,10 @@ def apply(example: dict[str, Any], spec: DenseSpec) -> dict[str, Any]:
         centre_conformers(example)
     if spec.drop_atoms:
         drop_atoms(example, spec.drop_atoms)
-    if spec.dedupe_self_msa:
-        dedupe_self_msa(example)
     if spec.empty_template_gap is not None:
         empty_template_gap(example, spec.empty_template_gap)
+    if spec.dedupe_self_msa:
+        dedupe_self_msa(example)
     return example
 
 

@@ -305,8 +305,6 @@ class DenseSpec:
     #: The atom decoder conditions on a second, affine norm over the encoder's
     #: atom conditioning rather than reusing it unchanged.
     post_atom_cond_norm: bool = False
-    #: A padded key atom is masked from every query, not only from padded queries.
-    key_masked_atom_attention: bool = False
     #: The atom attention CHAINS its two adaptive normalisations: the keys are
     #: gathered from the already-normed queries rather than from the raw
     #: activation. Two chained norms are not two parallel ones.
@@ -471,8 +469,6 @@ INTELLIFOLD2 = replace(
     template_channel=256,
     diffusion_pair_channel=512,
     pair_heads=8,
-    key_masked_atom_attention=True,
-    drop_atoms=("OXT", "OP3", "O3P"),
     dedupe_self_msa=True,
 )
 
@@ -483,7 +479,6 @@ OPENBIND0 = replace(
     family="openbind0",
     padded_single_cond=True,
     centre_ref_conformers=True,
-    drop_atoms=("OXT", "OP3", "O3P"),
 )
 
 #: OpenFold3 preview-2, kept because earlier results used it.
@@ -535,8 +530,6 @@ BOLTZ2 = replace(
     atom_features_bias=True,
     pre_trunk_atom_query=True,
     raw_ref_charge=True,
-    key_masked_atom_attention=True,
-    drop_atoms=("OXT",),
     dedupe_self_msa=True,
     # Boltz-2's released sampler is Boltz2DiffusionParams (boltz main.py): AF3's
     # gamma_0/gamma_min/noise_scale/step_scale and rho, with sigma_min 1e-4.
@@ -572,7 +565,6 @@ ROSETTAFOLD3 = replace(
     diffusion_projected_relpos=True,
     pre_trunk_atom_query=True,
     raw_ref_charge=True,
-    key_masked_atom_attention=True,
     per_block_atom_pair_layer_norm=True,
     attention_kq_norm=True,
     parallel_attention_transition=True,
@@ -655,7 +647,6 @@ CHAI1 = replace(
     msa_double_add=True,
     pre_trunk_atom_query=True,
     raw_ref_charge=True,
-    drop_atoms=("OXT",),
     sigma_max=80.0,
     churn_total=80.0,
     # Kept although a same-seed reset moves one sample by only 0.5 A: the churn
@@ -675,11 +666,10 @@ PROTENIX2 = replace(
     # The release's N_cycle is the number of trunk passes (range(N_cycle)).
     recycles_are_total=True,
     chained_atom_key_norm=True,
-    # Protenix indexes OXT per residue and keeps it, where the OpenFold3
-    # releases remove the terminal atoms; inheriting their drop shifts the whole
-    # atom layout against what these weights were trained on.
-    drop_atoms=(),
     dedupe_self_msa=True,
+    # Kept after the release re-fold: without it protenix1 on 5I28 reads 69.93
+    # pLDDT against its release's 68.43. With no template the template term is
+    # still live, and the empty slot's restype changes it.
     empty_template_gap="first",
     pair_channel=256,
     msa_channel=128,
@@ -689,7 +679,6 @@ PROTENIX2 = replace(
     per_block_pair_layer_norm=True,
     per_block_atom_pair_layer_norm=True,
     transposed_column_pair_bias=True,
-    key_masked_atom_attention=True,
     diffusion_projected_relpos=True,
     distogram_bias=True,
     template="protenix2",
@@ -725,11 +714,6 @@ OPENDDE = replace(
     structural_tokens=True,
     confidence_records="opendde",
     dedupe_self_msa=False,
-    # MEASURED, not read: the whole-block form appears in `make_dummy_feature`
-    # but that path runs only when the template featuriser returns nothing at
-    # all. Its own featuriser emits [31, 0, 0, 0] -- one gap template, three
-    # zero slots -- on a no-template input, which is Protenix's pattern.
-    empty_template_gap="first",
     pair_channel=384,
     #: The trunk is 384 wide but the denoiser conditions on a 128-wide pair,
     #: which is what makes it compress the trunk pair before concatenating.

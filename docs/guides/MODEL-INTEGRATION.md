@@ -415,6 +415,16 @@ Chai-1 after the change: pLDDT 95.44 against the release's 95.11 (95.07
 before), CA 0.43 A from the release against its 0.39 A spread -- the 0.4 pLDDT
 is the unified `empty_msa_without_alignment`.
 
+**Second round, judged on the distribution** (1A1K, 4 seeds x 5 samples per
+arm, on vs off compared across seeds): `drop_atoms` (Boltz-2, Chai-1,
+IntelliFold2, both OpenFold3, RF3) and `key_masked_atom_attention` (6 families)
+left the distribution unchanged and were unified -- OXT is kept everywhere but
+ESMFold2, whose fixed atom table has none. `empty_template_gap` also looked
+inert on 1A1K but moved protenix1 on 5I28 by 1.6 pLDDT away from its release,
+so it stays; `chained_atom_key_norm` moves the distribution (cross/within 1.2
+to 1.7) and stays. The confidence selector turned out to be a label -- only
+"boltz2" was ever read -- and is now the boolean `confidence_reembed_pair`.
+
 **Kept -- a reset moved folds** (the table in "One architecture, implemented six
 ways", plus conventions that only fire on some inputs: on 1A1K, Chai-1's
 `parallel_msa_block` is worth 25 pLDDT, `template_coverage_mask` 24 and

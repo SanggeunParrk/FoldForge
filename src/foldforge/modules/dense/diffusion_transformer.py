@@ -550,7 +550,6 @@ class CrossAttention(nn.Module):
         value_dim: int = 128,
         c_single_cond: int = 128,
         num_head: int = 4,
-        key_masked: bool = False,
         kq_norm: bool = False,
         identity_scale: bool = False,
         norm_eps: float = 1e-5,
@@ -561,7 +560,6 @@ class CrossAttention(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.key_masked = key_masked
         self.kq_norm = kq_norm
         self.use_gating_query = gating_query
         if kq_norm:
@@ -637,19 +635,14 @@ class CrossAttention(nn.Module):
             message = f"{mask_k.shape}, {x_k.shape}"
             raise ValueError(message)
 
-        if self.key_masked:
-            # OR form: a padded key is masked from every query. AF3's AND form is
-            # only safe because it slides its key window inside the real atoms.
-            bias = -1e9 * (
-                mask_q.logical_not()[..., None, :, None].float()
-                + mask_k.logical_not()[..., None, None, :].float()
-            )
-        else:
-            bias = (
-                1e9
-                * mask_q.logical_not()[..., None, :, None]
-                * mask_k.logical_not()[..., None, None, :]
-            )
+        # AF3's AND form. Every family now slides AF3's key window inside the
+        # real atoms, so the OR form some releases use (a padded key masked from
+        # every query) changed no fold and was unified away.
+        bias = (
+            1e9
+            * mask_q.logical_not()[..., None, :, None]
+            * mask_k.logical_not()[..., None, None, :]
+        )
 
         if pair_mask is not None:
             # A family may open its atom attention only within a token. AF3 lets
@@ -758,7 +751,6 @@ class DiffusionCrossAttTransformer(nn.Module):
             [
                 CrossAttention(
                     num_head=self.num_head,
-                    key_masked=spec.key_masked_atom_attention,
                     kq_norm=spec.attention_kq_norm,
                     identity_scale=atom_identity,
                     gating_query=spec.atom_attention_gating_query,

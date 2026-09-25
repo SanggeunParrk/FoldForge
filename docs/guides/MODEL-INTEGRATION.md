@@ -479,6 +479,44 @@ RoseTTAFold3 stays 0.15-0.19 A against a release that itself spreads
 `has_atom_level_embedding`, the 384-d atom-level embedding) are all zero at
 release inference, so they are not the cause.
 
+After the fixes, against each release (no MSA, no template, 4 trunk passes,
+200 steps, 5 samples; spread = mean pairwise CA RMSD):
+
+| Family | 3PTB pLDDT rel / ours | 3PTB CA ours-rel (rel-rel) | Benzamidine bonds rel / ours | 1A1K pLDDT rel / ours | 1A1K CA ours-rel (rel-rel) |
+|---|---|---|---|---|---|
+| Boltz-2 | 98.81 / 98.85 | 0.07 (0.07) | 0.01 / 0.01 | 97.43 / 97.28 | 0.51 (0.55) |
+| Chai-1 | 98.06 / 98.21 | 0.15 (0.10) | 0.02 / 0.03 | 95.51 / 96.36 | 0.56 (0.44) |
+| OpenFold3 p2 | 29.83 / 29.42 | 16.5 (16.5) | 0.01 / 0.01 | 86.21 / 85.83 | 0.84 (0.88) |
+| OpenFold3 v0.5 | 34.21 / 33.97 | 15.5 (14.9) | 0.02 / 0.02 | 77.61 / 77.55 | 0.72 (0.60) |
+| IntelliFold2 | 31.11 / 30.73 | 12.3 (12.6) | 0.03 / 0.02 | 85.03 / 84.80 | 1.31 (1.00) |
+| RoseTTAFold3 | 69.95 / 68.72 | 14.7 (14.8) | 0.02 / **0.11** | 84.63 / 84.54 | 0.72 (0.31) |
+| Protenix v1 | 32.59 / 35.79 | 11.0 (12.3) | 0.03 / 0.03 | 72.89 / **81.18** | 12.8 (11.0) |
+| Protenix v2 | 37.71 / 37.52 | 11.8 (8.6) | 0.14 / 0.02 | 85.61 / **78.41** | 7.97 (5.85) |
+
+Without an MSA 3PTB is low-confidence for every family but Boltz-2 and Chai-1,
+in the release as in ours, so the protein columns there only say the two arms
+are equally lost.
+
+Still open:
+
+- **RoseTTAFold3's benzamidine** sits 0.11 A RMS off ideal against the
+  release's 0.02. Not precision (fp32 is bit-identical), not `token_bonds`
+  (the release's matrix is ours), not chirality (the release gives the ligand
+  no chiral rows). Protein bonds match.
+- **RoseTTAFold3's chiral-centre input is dead here.** The release feeds 669
+  protein chiral rows on 3PTB; FoldForge featurises none, so
+  `atom_chiral_features` embeds zeros.
+- **Protenix on 1A1K** is off in pLDDT by a uniform ~7 on every chain, DNA
+  included, in OPPOSITE directions for v1 (+8) and v2 (-7), while the DNA
+  structure matches (0.3-0.5 A). The zinc finger has no MSA and the release
+  itself spreads 5-11 A on it. Every parameter-free Protenix convention was
+  flipped on 1A1K and none closes it. Deciding between a confidence-head
+  difference and different sampled modes needs the release's structures scored
+  by our head.
+- The Protenix control must write identical ions as ONE entry with a count.
+  Three `count: 1` entries are three entities to Protenix, one to AF3's
+  featurisation; that alone moved the v1 release by 8 pLDDT on 1A1K.
+
 **Score every entity by its own geometry, not by the protein around it.**
 `runs/release-compare-20260924/tools/complex_compare.py` reports it per family.
 

@@ -48,6 +48,15 @@ def _language_features(
     }
 
 
+def _attach_chemistry(example: dict, orders: Any, spec: Any, ccd: Any) -> None:
+    """Add what AF3's featurisation drops: bond orders, and chirality if read."""
+    from foldforge.data.features import bond_orders, chirality
+
+    example[bond_orders.KEY] = orders
+    if spec.atom_chiral_features:
+        example.update(chirality.chiral_features(example, ccd))
+
+
 def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[Case]:
     """Prepare ."""
     from alphafold3.constants import chemical_component_sets
@@ -137,7 +146,7 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         zip(fold_input.rng_seeds, examples, strict=True)
     ):
         example = dense_conventions.apply(raw_example, model.spec)
-        example[bond_orders.KEY] = orders[example_index]
+        _attach_chemistry(example, orders[example_index], model.spec, ccd)
         bucket_shape = None
         if args.execution.bucketing:
             example, bucket_shape = bucket_af3(example)

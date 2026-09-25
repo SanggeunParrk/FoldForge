@@ -510,9 +510,18 @@ Still open:
   ours. It also writes a ligand's MSA column as UNK in the query row only
   (`nonprotein_msa_as_query="query"`, vs the Protenix lineage's "rows");
   that one moved pLDDT 0.3 and not the bonds.
-- **RoseTTAFold3's chiral-centre input is dead here.** The release feeds 669
-  protein chiral rows on 3PTB; FoldForge featurises none, so
-  `atom_chiral_features` embeds zeros.
+- ~~RoseTTAFold3's chiral-centre input is dead~~ -- **implemented**: the
+  plane pairs and signed targets of atomworks' `AddAF3ChiralFeatures`
+  (`data/features/chirality.py`; 669 rows on 3PTB, the release's set exactly)
+  and its closed-form dihedral-error gradient on the scaled noisy coordinates
+  (`modules/dense/chirality.py`, matching the release to 1e-6). The term is
+  live at the release's magnitude, yet moved nothing measurable: 5I28 pLDDT
+  72.43 against the release's 72.93 (CA 2.17 A from it, spread 2.23), 3PTB
+  and 1A1K as before. It is kept because it is the release's input.
+- **RoseTTAFold3 on 1A1K** spreads 1.07 A between samples against the
+  release's 0.31, at matching pLDDT (84.5 / 84.6). Chirality is not it; one
+  denoiser step at t = 4 on the release's exact input differs by 0.19 A on
+  protein atoms against a 44 A step, which the release's bf16 may account for.
 - ~~Protenix on 1A1K~~ -- **resolved**, see "Protenix on 1A1K: two inference
   conventions" below.
 - The Protenix control must write identical ions as ONE entry with a count.

@@ -20,6 +20,7 @@ from team_gm.modules.checkpoints.backend_attention import layernorm_projection
 from foldforge.data.features import dense_batch as feat_batch
 from foldforge.modules import ops as fastnn
 from foldforge.modules.dense import atom_layout, utils
+from foldforge.modules.dense.chirality import dihedral_error_gradient
 from foldforge.modules.dense.diffusion_transformer import (
     DiffusionCrossAttTransformer,
 )
@@ -255,8 +256,9 @@ class AtomCrossAttEncoder(nn.Module):
             )
             if spec.atom_chiral_features:
                 # Embeds the gradient of the chiral-centre dihedral error w.r.t. the
-                # noisy coordinates. FoldForge featurises no chiral centres yet, so
-                # the term is zero; the reference measured no effect on any outcome.
+                # noisy coordinates (``_chiral_features``). It sat unused, with its
+                # weights loaded, until the release was found feeding 669 rows on
+                # 3PTB where FoldForge fed none.
                 self.atom_chiral_to_features = nn.Linear(
                     self.c_positions, self.per_atom_channels, bias=False
                 )
@@ -270,6 +272,30 @@ class AtomCrossAttEncoder(nn.Module):
             self.embed_trunk_pair_cond = nn.Linear(
                 self.c_trunk_pair_cond, self.per_atom_pair_channels, bias=False
             )
+
+    def _chiral_features(
+        self, batch: feat_batch.Batch, token_atoms_act: torch.Tensor
+    ) -> torch.Tensor | float:
+        """Embed the chiral-centre dihedral-error gradient of the noisy positions.
+
+        Taken on the same scaled noisy coordinates the position embedding reads,
+        in float32 whatever the trunk runs in, as the release does.
+        """
+        ref = batch.ref_structure
+        if ref.chiral_centres is None or ref.chiral_centres.shape[0] == 0:
+            return 0.0
+        flat = token_atoms_act.flatten(-3, -2)
+        grads = dihedral_error_gradient(
+            flat, ref.chiral_centres.long(), ref.chiral_dihedrals
+        ).nan_to_num()
+        grads = grads.reshape(token_atoms_act.shape).to(token_atoms_act.dtype)
+        return self.atom_chiral_to_features(
+            atom_layout.convert(
+                batch.atom_cross_att.token_atoms_to_queries,
+                grads,
+                layout_axes=(-3, -2),
+            )
+        )
 
     def _per_atom_conditioning(
         self, batch: feat_batch.Batch
@@ -425,6 +451,10 @@ class AtomCrossAttEncoder(nn.Module):
             )
 
             queries_act = self.atom_positions_to_features(queries_act)
+            if self.spec.atom_chiral_features:
+                queries_act = queries_act + self._chiral_features(
+                    batch, token_atoms_act
+                )
             queries_act *= queries_mask[..., None]
             queries_act += query_base
 

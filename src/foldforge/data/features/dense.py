@@ -17,7 +17,7 @@ from typing import Any, Self
 
 import torch
 
-from foldforge.data.features import bond_orders
+from foldforge.data.features import bond_orders, chirality
 from foldforge.modules.dense import atom_layout
 
 type BatchDict = dict[str, torch.Tensor]
@@ -212,6 +212,11 @@ class RefStructure:
     atom_name_chars: torch.Tensor
     # Array with reference space uids, int32, [num_res, max_atoms_per_token]
     ref_space_uid: torch.Tensor
+    #: Chiral plane pairs as flat (token * atoms_per_token + slot) indices,
+    #: [n, 4], and their signed target dihedrals, [n]; see ``chirality``. Only
+    #: the family that embeds chirality gradients is given them.
+    chiral_centres: torch.Tensor | None = None
+    chiral_dihedrals: torch.Tensor | None = None
 
     @classmethod
     def from_data_dict(cls, batch: BatchDict) -> Self:
@@ -223,10 +228,20 @@ class RefStructure:
             charge=batch["ref_charge"],
             atom_name_chars=batch["ref_atom_name_chars"],
             ref_space_uid=batch["ref_space_uid"],
+            chiral_centres=batch.get(chirality.CENTRES),
+            chiral_dihedrals=batch.get(chirality.DIHEDRALS),
         )
 
     def as_data_dict(self) -> BatchDict:
         """Convert to data dict."""
+        chiral = (
+            {}
+            if self.chiral_centres is None
+            else {
+                chirality.CENTRES: self.chiral_centres,
+                chirality.DIHEDRALS: self.chiral_dihedrals,
+            }
+        )
         return {
             "ref_pos": self.positions,
             "ref_mask": self.mask,
@@ -234,6 +249,7 @@ class RefStructure:
             "ref_charge": self.charge,
             "ref_atom_name_chars": self.atom_name_chars,
             "ref_space_uid": self.ref_space_uid,
+            **chiral,
         }
 
 

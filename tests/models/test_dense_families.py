@@ -265,3 +265,28 @@ def test_rosettafold3_names_ligand_atoms_by_element():
     assert names[1, 0].tolist() == chars("C")
     assert SPECS["rosettafold3"].element_ligand_names
     assert not ALPHAFOLD3.element_ligand_names
+
+
+def test_chiral_gradient_is_the_dihedral_error_s_derivative():
+    """RoseTTAFold3's closed-form chirality input equals autograd's derivative."""
+    from foldforge.modules.dense.chirality import dihedral_error_gradient
+
+    torch.manual_seed(0)
+    xyz = torch.randn(2, 12, 3, dtype=torch.float64)
+    centres = torch.tensor([[0, 1, 2, 3], [4, 5, 6, 7], [0, 8, 9, 10]])
+    targets = torch.tensor([0.6155, -0.6155, 0.6155], dtype=torch.float64)
+
+    x = xyz.clone().requires_grad_()
+    a, b, c, d = x[:, centres].unbind(-2)
+    eps = 1e-6
+    b0, b1, b2 = a - b, c - b, d - c
+    b1n = b1 / (b1.norm(dim=-1, keepdim=True) + eps)
+    v = b0 - (b0 * b1n).sum(-1, keepdim=True) * b1n
+    w = b2 - (b2 * b1n).sum(-1, keepdim=True) * b1n
+    y = (torch.cross(b1n, v, dim=-1) * w).sum(-1)
+    dih = torch.atan2(y + eps, (v * w).sum(-1) + eps)
+    ((dih - targets) ** 2).sum().backward()
+
+    closed = dihedral_error_gradient(xyz, centres, targets)
+    torch.testing.assert_close(closed, x.grad.float(), rtol=1e-3, atol=1e-4)
+    assert SPECS["rosettafold3"].atom_chiral_features

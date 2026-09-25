@@ -69,13 +69,11 @@ class PairformerBlock(nn.Module):
         self.triangle_multiplication_outgoing = TriangleMultiplication(
             c_pair=c_pair,
             _outgoing=True,
-            divide_by_length=spec.triangle_mul_divide_by_length,
             hidden_dim=tri_hidden_dim,
         )
         self.triangle_multiplication_incoming = TriangleMultiplication(
             c_pair=c_pair,
             _outgoing=False,
-            divide_by_length=spec.triangle_mul_divide_by_length,
             hidden_dim=tri_hidden_dim,
         )
         # A family that folds from a language model keeps only the triangle
@@ -107,9 +105,6 @@ class PairformerBlock(nn.Module):
         #: results are summed into it, where AF3 threads each update through the
         #: running activation.
         self.parallel = spec.parallel_pairformer_block
-        self.mask_single_attention_residual = (
-            spec.mask_single_attention_residual
-        )
         if self.with_single is True:
             self.single_pair_logits_norm = fastnn.LayerNorm(c_pair)
             self.single_pair_logits_projection = nn.Linear(c_pair, n_heads, bias=False)
@@ -199,12 +194,6 @@ class PairformerBlock(nn.Module):
             attention_update: torch.Tensor = self.single_attention_(
                 single, seq_mask, pair_logits=pair_logits
             )
-            if self.mask_single_attention_residual:
-                # Padded rows stay exactly zero rather than carrying whatever
-                # the attention left there.
-                attention_update = attention_update * seq_mask[:, None].to(
-                    attention_update.dtype
-                )
             if self.parallel:
                 # Both single updates read the single entering the block.
                 return pair, single + attention_update + self.single_transition(single)
@@ -234,29 +223,23 @@ class EvoformerBlock(nn.Module):
             c_msa=c_msa,
             num_output_channel=c_pair,
             num_outer_channel=spec.opm_channel,
-            bias_after_norm=spec.opm_bias_after_norm,
-            clamped_norm=spec.opm_clamped_norm,
             projection_bias=spec.opm_projection_bias,
             groups=spec.opm_groups,
-            sum_without_norm=spec.opm_sum_without_norm,
         )
         self.msa_attention1 = MSAAttention(
             c_msa=c_msa,
             c_pair=c_pair,
             value_dim=spec.msa_value_dim,
-            pair_mask_logits=spec.msa_pair_mask_logits,
         )
         self.msa_transition = Transition(c_x=c_msa)
 
         self.triangle_multiplication_outgoing = TriangleMultiplication(
             c_pair=c_pair,
             _outgoing=True,
-            divide_by_length=spec.triangle_mul_divide_by_length,
         )
         self.triangle_multiplication_incoming = TriangleMultiplication(
             c_pair=c_pair,
             _outgoing=False,
-            divide_by_length=spec.triangle_mul_divide_by_length,
         )
         self.with_pair_attention = spec.pair_attention
         if self.with_pair_attention:
@@ -290,15 +273,13 @@ class EvoformerBlock(nn.Module):
                 # attention does, and both deltas are summed into it.
                 return (
                     value
-                    + self.msa_attention1(value, msa_mask, updated_pair, pair_mask)
+                    + self.msa_attention1(value, msa_mask, updated_pair)
                     + self.msa_transition(value)
                 )
             return msa_row_update(
                 value,
                 updated_pair,
-                attention_delta=lambda m, z: self.msa_attention1(
-                    m, msa_mask, z, pair_mask
-                ),
+                attention_delta=lambda m, z: self.msa_attention1(m, msa_mask, z),
                 transition_residual=lambda m: transition_residual(
                     self.msa_transition, m
                 ),

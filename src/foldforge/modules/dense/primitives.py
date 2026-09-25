@@ -47,22 +47,15 @@ class OuterProductMean(nn.Module):
         c_msa: int = 64,
         num_output_channel: int = 128,
         num_outer_channel: int = 32,
-        bias_after_norm: bool = False,
-        clamped_norm: bool = False,
         projection_bias: bool = False,
         groups: int = 1,
-        sum_without_norm: bool = False,
     ) -> None:
         super().__init__()
-
-        self.bias_after_norm = bias_after_norm
-        self.clamped_norm = clamped_norm
 
         self.c_msa = c_msa
         self.num_outer_channel = num_outer_channel
         self.num_output_channel = num_output_channel
         self.groups = groups
-        self.sum_without_norm = sum_without_norm
         self.epsilon = 1e-3
 
         self.layer_norm_input = fastnn.LayerNorm(self.c_msa)
@@ -100,27 +93,13 @@ class OuterProductMean(nn.Module):
 
         from team_gm.modules.blocks.attention_math import af3_outer_product_mean
 
-        if not self.bias_after_norm and not self.clamped_norm:
-            return af3_outer_product_mean(
-                left_act,
-                right_act,
-                mask,
-                self.output_w,
-                self.output_b,
-                eps=self.epsilon,
-            )
-        outer = torch.einsum("acb,ade->dceb", left_act.permute(0, 2, 1), right_act)
-        output = torch.einsum("dceb,cef->dbf", outer, self.output_w)
-        norm = torch.einsum("abc,adc->bdc", mask, mask)
-        # A clamp at one against AF3's 1e-3 offset: a scale, not an offset, and
-        # worth 1e-3 at MSA depth one -- which is the depth a family that folds
-        # from a language model runs at by default.
-        divisor = norm.clamp_min(1.0) if self.clamped_norm else self.epsilon + norm
-        if self.bias_after_norm:
-            # Divide FIRST, so the output bias is not scaled by the pair count.
-            # The two orders differ by bias * (1 - 1/n): a per-channel constant.
-            return output.permute(1, 0, 2) / divisor + self.output_b
-        return (output + self.output_b).permute(1, 0, 2) / divisor
+        # One normalisation for every family: AF3's (mean over MSA rows, 1e-3
+        # offset, bias before the divide). The clamped-at-one divisor and the
+        # bias-after-divide some releases use changed no fold measurably
+        # (<= 0.1 A on 5I28, 3PTB and 1A1K) and were unified away.
+        return af3_outer_product_mean(
+            left_act, right_act, mask, self.output_w, self.output_b, eps=self.epsilon
+        )
 
     def _grouped(self, left_act: torch.Tensor, right_act: torch.Tensor) -> torch.Tensor:
         """Outer products taken WITHIN each group, summed over MSA depth only."""

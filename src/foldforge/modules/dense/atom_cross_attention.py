@@ -126,7 +126,6 @@ class AtomCrossAttEncoder(nn.Module):
         super().__init__()
 
         self.spec = spec
-        self.key_masked_offsets = spec.key_masked_offsets
         self.with_token_atoms_act = with_token_atoms_act
         self.with_trunk_single_cond = with_trunk_single_cond
         self.with_trunk_pair_cond = with_trunk_pair_cond
@@ -411,9 +410,6 @@ class AtomCrossAttEncoder(nn.Module):
                 queries_single_cond, queries_single_cond.shape[-1:]
             )
 
-        if self.key_masked_offsets:
-            queries_single_cond = queries_single_cond * queries_mask[..., None]
-            query_base = query_base * queries_mask[..., None]
         if not self.spec.pre_trunk_atom_query:
             query_base = queries_single_cond
 
@@ -507,8 +503,6 @@ class AtomCrossAttEncoder(nn.Module):
         offsets_valid = (
             queries_ref_space_uid[:, :, None] == keys_ref_space_uid[:, None, :]
         )
-        if self.key_masked_offsets:
-            offsets_valid = offsets_valid & keys_mask[:, None, :].to(torch.bool)
         offsets = queries_ref_pos[:, :, None, :] - keys_ref_pos[:, None, :, :]
 
         sq_dists = torch.sum(torch.square(offsets), dim=-1)

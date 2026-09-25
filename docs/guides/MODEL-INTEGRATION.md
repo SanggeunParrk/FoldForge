@@ -220,6 +220,12 @@ compared against our B-factor mean; it overstated the gap by two points.
 | with no alignment the query still formed the MSA, so the profile was a one-hot of the sequence | `empty_msa_without_alignment`: every row masked, profile and deletion mean zero | 77.66 |
 | **the loader swapped every parallel block for the shared SEQUENTIAL one** | `install_pairformers` keeps a block that declares its own schedule | **95.53** |
 
+Two of these were later REMOVED (2026-09-25). Once the loader bug was fixed,
+resetting `mask_single_attention_residual` changed no output bit on any input
+(padded rows are masked downstream), and `empty_msa_without_alignment` moved
+Chai-1 by 0.4 pLDDT -- its 13 points above were measured on a trunk the loader
+had already broken. See "Unified conventions" below.
+
 The last is the one to remember. The first three fixes were written into
 `PairformerBlock.forward`, and `install_pairformers` then replaced that block
 with team-gm's sequential composition in every real fold -- only the gate
@@ -363,6 +369,58 @@ Three consequences, and they are the case for one graph:
   worth reporting upstream.
 - **Paper and code disagree even within one project** (RF3's diffusion
   transformer). Only the released code decides what the weights saw.
+
+### Unified conventions -- 2026-09-25
+
+Every convention that owns no parameter was reset to AF3's value one at a time,
+per family, and folded with the same seed on three inputs: 5I28 (no MSA, low
+confidence, chaotic), 3PTB (protein + Ca + benzamidine, MSA and template) and
+1A1K (two DNA strands + protein). Baselines repeated bit-identically, so every
+difference is that convention's. Runs: `runs/release-compare-20260924/abl/`,
+scores `convention_table.txt`.
+
+**Removed -- no output bit changed on any input**, and the code shows why each
+is redundant: `key_masked_offsets` (7 families), `mask_single_attention_residual`,
+`mask_atom_act_per_block`, `msa_pair_mask_logits`, `opm_sum_without_norm`
+(Chai-1's grouped OPM never read it). Padded atoms, tokens and masked MSA rows
+are masked again downstream, and masked MSA rows reach the pair only through
+the outer product mean, which masks them itself.
+
+**Unified to AF3 -- effect below the noise on all three inputs** (at most 0.2
+pLDDT / 0.3 A on the stable inputs): `atom_key_window` (7 families; the pad,
+q-block and circular windows are gone), `symmetric_bonds` (7),
+`opm_clamped_norm` and `opm_bias_after_norm` (OPM is AF3's everywhere),
+`triangle_mul_divide_by_length` (RF3), `template_stack_outer_residual` and
+`template_visibility_by_coverage` (Boltz-2), `template_gap_uncovered` and
+`template_mask_class` (Chai-1), `empty_msa_without_alignment` and
+`adaptive_norm_eps` (Chai-1), and Boltz-2's sampler constants (gamma_0,
+gamma_min, noise_scale, step_scale).
+
+A same-seed reset measures how far ONE sample moves, not how widely the samples
+spread, so every family was re-folded against its release after the change
+(5I28, no alignment, 5 samples). All stayed inside the release's spread except
+two sampler findings:
+
+- **Chai-1's churn window and variance floor are kept.** Without them its
+  samples spread 0.55 A against the release's 0.39 A.
+- **Boltz-2 matches its release BETTER on AF3's constants.** With its own
+  gamma_0/gamma_min/noise_scale/step_scale our samples were too tight -- 0.245 A
+  apart with its MSA against the release's 0.665 A; on AF3's they are 0.629 A,
+  and 0.585 A from the release instead of 0.634. Our use of Boltz-2's released
+  sampler constants was therefore not Boltz-2's sampler; worth a look at how
+  its release applies them.
+
+Chai-1 after the change: pLDDT 95.44 against the release's 95.11 (95.07
+before), CA 0.43 A from the release against its 0.39 A spread -- the 0.4 pLDDT
+is the unified `empty_msa_without_alignment`.
+
+**Kept -- a reset moved folds** (the table in "One architecture, implemented six
+ways", plus conventions that only fire on some inputs: on 1A1K, Chai-1's
+`parallel_msa_block` is worth 25 pLDDT, `template_coverage_mask` 24 and
+`recycle_from_initial` 9). Also kept without a measurement: conventions that
+act only on outputs these folds did not score (`distogram_mean_symmetrised`,
+`confidence`, `pde_symmetrise`), and `template_present_denominator`, which a
+fully populated 3PTB template stack never triggers.
 
 ### Reference conformers -- AF3's rule kept
 

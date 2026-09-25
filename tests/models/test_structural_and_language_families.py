@@ -449,8 +449,12 @@ def test_the_relative_chain_bucket_flips_every_pair_of_a_monomer():
     assert families == _LANGUAGE_MODEL_FAMILY
 
 
-def test_the_outer_product_divisor_and_its_bias_placement_are_stated_apart():
-    """One family takes the clamped divisor without the bias placement."""
+def test_the_outer_product_mean_is_afs_for_every_family():
+    """One OPM normalisation: AF3's mean over rows, 1e-3 offset, bias first.
+
+    The clamped divisor and the bias-after-divide some releases use were
+    unified: resetting either moved no fold beyond 0.1 A.
+    """
     from foldforge.modules.dense import primitives
 
     torch.manual_seed(0)
@@ -476,21 +480,6 @@ def test_the_outer_product_divisor_and_its_bias_placement_are_stated_apart():
     out, count = parts(af3)
     expected = (out + af3.output_b).permute(1, 0, 2) / (af3.epsilon + count)
     assert torch.allclose(af3(msa, mask), expected, atol=1e-6)
-
-    clamped = build(clamped_norm=True)
-    out, count = parts(clamped)
-    expected = (out + clamped.output_b).permute(1, 0, 2) / count.clamp_min(1.0)
-    assert torch.allclose(clamped(msa, mask), expected, atol=1e-6)
-
-    both = build(bias_after_norm=True, clamped_norm=True)
-    out, count = parts(both)
-    expected = out.permute(1, 0, 2) / count.clamp_min(1.0) + both.output_b
-    assert torch.allclose(both(msa, mask), expected, atol=1e-6)
-
-    assert SPECS["esmfold2"].opm_clamped_norm
-    assert not SPECS["esmfold2"].opm_bias_after_norm
-    assert SPECS["boltz2"].opm_clamped_norm
-    assert SPECS["boltz2"].opm_bias_after_norm
 
 
 def test_every_pde_symmetrisation_is_named():

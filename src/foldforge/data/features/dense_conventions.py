@@ -236,53 +236,6 @@ def dedupe_self_msa(example: dict[str, Any]) -> None:
         example["num_alignments"] = np.asarray(count - 1, dtype=count.dtype)
 
 
-def key_window(example: dict[str, Any], policy: str, prefix: str = "") -> None:
-    """Rewrite the atom-attention key window of a FINISHED example.
-
-    Each block of queries takes a key window centred on it; the policies differ at
-    the ends. AF3 ("slide") shifts an out-of-range window back inside the real
-    atoms. "pad" clips and masks, so edge blocks see fewer neighbours at different
-    key slots. "slide_qblock" slides against the atom count rounded up to a whole
-    query block. "circular" wraps the window modulo the real atom count, so the
-    first block's leading keys are the last atoms. Runs after bucketing, which
-    rebuilds the window AF3's way.
-    """
-    query_mask = np.asarray(example[prefix + "token_atoms_to_queries:gather_mask"])
-    subsets, query_size = query_mask.shape
-    padded = subsets * query_size
-    name = prefix + "queries_to_keys:gather_idxs"
-    key_size = np.asarray(example[name]).shape[1]
-    starts = np.arange(subsets) * query_size + (query_size - key_size) // 2
-    flat_mask = query_mask.reshape(-1)
-    real = max(int(flat_mask.sum()), 1)
-    if policy == "slide_qblock":
-        bound = -(-real // query_size) * query_size
-        starts = np.clip(starts, 0, max(bound - key_size, 0))
-    elif policy not in ("pad", "circular"):
-        message = f"unknown key-window policy {policy!r}"
-        raise ValueError(message)
-    window = starts[:, None] + np.arange(key_size)[None]
-    if policy == "circular":
-        # Modulo the REAL atom count, so no slot is padding and the ends wrap.
-        window = np.mod(window, real)
-        keep = np.ones_like(window, dtype=bool)
-    else:
-        inside = (window >= 0) & (window < padded)
-        window = np.clip(window, 0, padded - 1)
-        keep = inside & flat_mask[window]
-    example[name] = window.astype(np.asarray(example[name]).dtype)
-    example[prefix + "queries_to_keys:gather_mask"] = keep
-    tokens = np.asarray(example[prefix + "tokens_to_queries:gather_idxs"]).reshape(-1)
-    target = prefix + "tokens_to_keys:gather_idxs"
-    example[target] = tokens[window].astype(np.asarray(example[target]).dtype)
-    token_mask = np.asarray(example[prefix + "tokens_to_queries:gather_mask"]).reshape(
-        -1
-    )
-    example[prefix + "tokens_to_keys:gather_mask"] = (
-        keep if policy == "pad" else token_mask[window]
-    )
-
-
 def empty_template_gap(example: dict[str, Any], slots: str) -> None:
     """Fill an ABSENT template's restype with the gap class rather than zero.
 
@@ -333,10 +286,4 @@ def apply_after_bucketing(example: dict[str, Any], spec: DenseSpec) -> dict[str,
     """Conventions that act on the final atom-attention gathers."""
     if spec.atom_keys_subset != 128:  # noqa: PLR2004 - AF3's own key subset size
         widen_key_subset(example, spec.atom_keys_subset)
-    if spec.atom_key_window != "slide":
-        key_window(example, spec.atom_key_window)
-        if any(key.startswith("struct/") for key in example):
-            # The structural layout has its own atom windows, and it is the one
-            # the diffusion runs on, so both need the convention.
-            key_window(example, spec.atom_key_window, prefix="struct/")
     return example

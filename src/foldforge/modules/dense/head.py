@@ -195,7 +195,6 @@ class ConfidenceReembedding(nn.Module):
         positions: torch.Tensor,
         pair_mask: torch.Tensor,
         batch: feat_batch.Batch,
-        symmetric_bonds: bool,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Return the re-embedded (pair, single)."""
         dtype = pair.dtype
@@ -204,7 +203,7 @@ class ConfidenceReembedding(nn.Module):
         inputs = self.s_inputs_norm(target_feat)
         single = self.s_norm(single) + self.s_input_to_s(inputs)
 
-        bonds = token_bond_types(batch, symmetric=symmetric_bonds)
+        bonds = token_bond_types(batch)
         pair = self.z_norm(pair)
         pair = pair + self.rel_pos_project(
             featurization.create_relative_encoding(
@@ -521,7 +520,6 @@ class ConfidenceHead(nn.Module):
                 positions.to(dtype),
                 pair_mask,
                 batch,
-                self.spec.symmetric_bonds,
             )
         else:
             pair_act += self._embed_features(

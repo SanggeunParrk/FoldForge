@@ -456,7 +456,6 @@ class DiffusionTransformer(nn.Module):
                     use_single_cond=True,
                     kq_norm=spec.attention_kq_norm,
                     identity_scale=spec.adaptive_identity_scale,
-                    norm_eps=spec.adaptive_norm_eps,
                     gating_query=spec.token_attention_gating_query,
                 )
                 for _ in range(self.num_blocks)
@@ -469,7 +468,6 @@ class DiffusionTransformer(nn.Module):
                     self.c_single_cond,
                     use_single_cond=True,
                     identity_scale=spec.adaptive_identity_scale,
-                    norm_eps=spec.adaptive_norm_eps,
                 )
                 for _ in range(self.num_blocks)
             ]
@@ -725,7 +723,6 @@ class DiffusionCrossAttTransformer(nn.Module):
 
         self.per_block_pair = spec.per_block_atom_pair_layer_norm
         self.parallel = spec.parallel_attention_transition
-        self.mask_act_per_block = spec.mask_atom_act_per_block
         self.chained_key_norm = spec.chained_atom_key_norm
         if self.per_block_pair:
             self.pair_input_layer_norm = nn.ModuleList(
@@ -764,7 +761,6 @@ class DiffusionCrossAttTransformer(nn.Module):
                     key_masked=spec.key_masked_atom_attention,
                     kq_norm=spec.attention_kq_norm,
                     identity_scale=atom_identity,
-                    norm_eps=spec.adaptive_norm_eps,
                     gating_query=spec.atom_attention_gating_query,
                     project_output=spec.atom_attention_project_output,
                     zero_bias=spec.atom_adaptive_zero_bias,
@@ -781,7 +777,6 @@ class DiffusionCrossAttTransformer(nn.Module):
                     c_single_cond=self.c_single_cond,
                     use_single_cond=True,
                     identity_scale=atom_identity,
-                    norm_eps=spec.adaptive_norm_eps,
                     zero_bias=spec.atom_adaptive_zero_bias,
                     rms_conditioning=spec.atom_rms_conditioning,
                 )
@@ -819,13 +814,6 @@ class DiffusionCrossAttTransformer(nn.Module):
             )
 
         for block_idx in range(self.num_blocks):
-            if self.mask_act_per_block:
-                # Re-pad the atom axis with zeros before the key gather, so a
-                # padded slot cannot carry one block's output into the next
-                # block's keys.
-                queries_act = queries_act * queries_mask[..., None].to(
-                    queries_act.dtype
-                )
             gather = functools.partial(
                 atom_layout.convert, queries_to_keys, layout_axes=(-3, -2)
             )

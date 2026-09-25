@@ -16,7 +16,7 @@ BOND_SINGLE = 1
 BOND_COVALENT = 5
 
 
-def token_bond_types(batch: feat_batch.Batch, *, symmetric: bool) -> torch.Tensor:
+def token_bond_types(batch: feat_batch.Batch) -> torch.Tensor:
     """(tokens, tokens) bond-order classes for the token bond type embedding.
 
     Polymer-ligand links are covalent by construction. Ligand-ligand rows mix a
@@ -34,8 +34,6 @@ def token_bond_types(batch: feat_batch.Batch, *, symmetric: bool) -> torch.Tenso
         index = gather.gather_idxs.to(torch.int64) * valid[:, None]
         value = (code + 1) * valid
         matrix[index[:, 0], index[:, 1]] = value
-        if symmetric:
-            matrix[index[:, 1], index[:, 0]] = value
     # Every padded bond row points at [0, 0].
     matrix[0, 0] = 0
     return matrix

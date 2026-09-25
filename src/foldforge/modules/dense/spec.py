@@ -23,11 +23,6 @@ class DenseSpec:
     diffusion_pair_channel: int = 128
     #: Heads of every pair-axis attention: trunk, MSA stack, templates, confidence.
     pair_heads: int = 4
-    #: OpenFold3 lineage: a bond sets both [i, j] and [j, i] of the token bond matrix.
-    symmetric_bonds: bool = False
-    #: OpenFold3 lineage: a padded key atom never counts as the query's own residue.
-    #: Its zero-filled ref_space_uid would otherwise collide with token 0.
-    key_masked_offsets: bool = False
     #: The vendor's single conditioning spans 833 channels: its restype and profile
     #: blocks carry one class AF3 lacks, re-inserted as zero columns before the norm.
     padded_single_cond: bool = False
@@ -49,8 +44,6 @@ class DenseSpec:
     empty_template_gap: str | None = None
     #: A chain with no alignments gets a depth-one MSA instead of AF3's two query rows.
     dedupe_self_msa: bool = False
-    #: End policy of the atom-attention key window: "slide", "pad" or "slide_qblock".
-    atom_key_window: str = "slide"
     #: Column-wise pair attention takes its pair bias transposed, Linear(z[k, q]).
     #:
     #: The AF3 SI and AF3's own code DISAGREE here. SI Algorithm 15 writes the
@@ -110,9 +103,6 @@ class DenseSpec:
     opm_groups: int = 1
     #: Width of each outer-product projection.
     opm_channel: int = 32
-    #: chai-1's grouped outer product SUMS the depth axis without dividing, and
-    #: its product LayerNorm carries eps 0.1 to absorb the missing scale.
-    opm_sum_without_norm: bool = False
     confidence_layers: int = 4
     #: Per-head value width of the MSA pair-weighted averaging; None is msa / heads.
     msa_value_dim: int | None = None
@@ -172,10 +162,6 @@ class DenseSpec:
     #: homolog fed as an exact condition is obeyed, not weighed (5I28 with four
     #: homologs: CA RMSD 1.9 A and strained peptide bonds, against 0.7 A without).
     use_input_templates: bool = True
-    #: Fused templates: a template's visibility follows what it covers, not chains.
-    template_visibility_by_coverage: bool = False
-    #: Fused templates: the stack input is added once more around the whole stack.
-    template_stack_outer_residual: bool = False
     #: Which NAMES the confidence head's weights were written under. The head
     #: itself is chosen by `confidence`; this is a rename of its records.
     confidence_records: str = "af3"
@@ -220,10 +206,6 @@ class DenseSpec:
     #: at 0.58x the released scale. Undocumented; ``sigmoid(g + CONSTANTS.c0)``
     #: with c0 = 1 in the traced trunk.
     single_attention_gate_bias: float = 0.0
-    #: Whether a parallel block masks the single-attention residual, so padded
-    #: rows stay exactly zero rather than carrying whatever the attention put
-    #: there.
-    mask_single_attention_residual: bool = False
     #: Separate intra- and inter-chain heads for the distance error and the PAE.
     #: Boltz-2 established the re-embedded pair; a family can take that path
     #: without splitting its heads, so the two are stated apart.
@@ -260,13 +242,6 @@ class DenseSpec:
     #: ablation published). Boltz-2 keeps it; OpenDDE copies it ("Boltz-style
     #: MSA block" in its pairformer.py). Off: Boltz-2 -46, OpenDDE -18 pLDDT.
     msa_update_before_opm: bool = False
-    #: The outer product divides BEFORE its output projection's bias, so that
-    #: bias is not scaled by the pair count. Worth bias * (1 - 1/n).
-    opm_bias_after_norm: bool = False
-    #: The outer product divides by the pair count clamped at one rather than
-    #: by AF3's 1e-3 + count. A scale, not an offset, and independent of where
-    #: the bias lands: one family takes this without the other.
-    opm_clamped_norm: bool = False
     #: The distogram projection carries a trained bias.
     distogram_bias: bool = False
     #: Conditioned transitions multiply the SwiGLU output by a linear up-gate.
@@ -367,8 +342,6 @@ class DenseSpec:
     #: Atoms per key subset. AF3 takes 128; a family with a wider window needs
     #: a subset that covers it.
     atom_keys_subset: int = 128
-    #: Epsilon of the activation LayerNorm inside the diffusion blocks.
-    adaptive_norm_eps: float = 1e-5
     #: The diffusion token transformer's attention carries an output gate.
     token_attention_gating_query: bool = True
     #: The atom transformers' attention carries an output gate, and projects its
@@ -389,8 +362,6 @@ class DenseSpec:
     parallel_attention_transition: bool = False
     #: Triangle attention's gate and output projections carry trained biases.
     triangle_attention_bias: bool = False
-    #: Triangle multiplication divides by the sequence length before its centre norm.
-    triangle_mul_divide_by_length: bool = False
     #: The outer product's left and right projections carry trained biases.
     opm_projection_bias: bool = False
     distogram_bins: int = 64
@@ -432,18 +403,11 @@ class DenseSpec:
     #: The confidence head's pair attention carries a per-direction output
     #: projection pair combined as `kept + transpose(other)`.
     confidence_dual_output: bool = False
-    #: MSA pair-weighted averaging masks its logits with the TOKEN PAIR mask at
-    #: -10000 and zeroes the value where the MSA mask is false, instead of
-    #: deriving a per-token mask from the MSA rows.
-    msa_pair_mask_logits: bool = False
     #: The MSA feature embedding carries a trained bias.
     msa_activations_bias: bool = False
     #: The MSA stack's single term is the single after its recycle add -- the
     #: one the pairformer starts from -- not the target feat.
     msa_single_from_recycle: bool = False
-    #: With no alignment the MSA is EMPTY -- every row masked, profile and
-    #: deletion mean zero -- rather than the query alone.
-    empty_msa_without_alignment: bool = False
     #: The token-pair stream carries no bond feature, so no bond embedder runs.
     no_bond_embedding: bool = False
     #: The recycle carry starts at the INITIAL representations rather than zeros,
@@ -451,20 +415,12 @@ class DenseSpec:
     recycle_from_initial: bool = False
     #: The template feature embedding carries a trained bias.
     template_feature_bias: bool = False
-    #: The template distogram's top class is a MASK class for pairs the template
-    #: does not cover, instead of AF3's all-zero row there.
-    template_mask_class: bool = False
-    #: A template residue the template does not COVER is the gap restype, not
-    #: the query's own residue.
-    template_gap_uncovered: bool = False
     #: Each template's normalised embedding is multiplied by its own coverage
     #: before the sum. Not a no-op: the norm has a bias, so an uncovered pair
     #: is nonzero after it.
     template_coverage_mask: bool = False
     #: Templates are averaged over the PRESENT slots, not over every slot.
     template_present_denominator: bool = False
-    #: Atom activations are re-masked in every atom-transformer block.
-    mask_atom_act_per_block: bool = False
     #: Whether the confidence head predicts experimentally-resolved atoms.
     resolved_head: bool = True
     #: EDM's own churn: one constant over a sigma window, rather than AF3's
@@ -517,7 +473,6 @@ INTELLIFOLD2 = replace(
     key_masked_atom_attention=True,
     drop_atoms=("OXT", "OP3", "O3P"),
     dedupe_self_msa=True,
-    atom_key_window="slide_qblock",
 )
 
 #: OpenFold3 v0.5.0 "OpenBind". It adopted AF3's single pair norm in the diffusion
@@ -525,8 +480,6 @@ INTELLIFOLD2 = replace(
 OPENBIND0 = replace(
     ALPHAFOLD3,
     family="openbind0",
-    symmetric_bonds=True,
-    key_masked_offsets=True,
     padded_single_cond=True,
     centre_ref_conformers=True,
     drop_atoms=("OXT", "OP3", "O3P"),
@@ -541,7 +494,9 @@ OPENFOLD3_PREVIEW2 = replace(
 )
 
 #: Boltz-2. OpenFold3 lineage, with its own input embedder, pair init, template
-#: module, confidence re-embedding and sampler constants.
+#: module, confidence re-embedding and sampler schedule exponent. Its other
+#: sampler constants (gamma_0, gamma_min, noise_scale, step_scale) are AF3's:
+#: the released values moved no fold measurably and were unified.
 BOLTZ2 = replace(
     OPENFOLD3_PREVIEW2,
     family="boltz2",
@@ -571,13 +526,9 @@ BOLTZ2 = replace(
     template_heads=4,
     template_qkv_dim=32,
     template_transition_factor=4,
-    template_visibility_by_coverage=True,
-    template_stack_outer_residual=True,
     confidence="boltz2",
     msa_double_add=True,
     msa_update_before_opm=True,
-    opm_bias_after_norm=True,
-    opm_clamped_norm=True,
     distogram_bias=True,
     transition_up_gate=True,
     diffusion_projected_relpos=True,
@@ -588,11 +539,6 @@ BOLTZ2 = replace(
     key_masked_atom_attention=True,
     drop_atoms=("OXT",),
     dedupe_self_msa=True,
-    atom_key_window="pad",
-    gamma_0=0.605,
-    gamma_min=1.107,
-    noise_scale=0.901,
-    step_scale=1.638,
     rho=8.0,
 )
 
@@ -618,8 +564,6 @@ ROSETTAFOLD3 = replace(
     confidence="rf3",
     confidence_global_norm=True,
     confidence_centre_dgram=True,
-    opm_bias_after_norm=True,
-    opm_clamped_norm=True,
     opm_projection_bias=True,
     distogram_bias=True,
     distogram_bins=65,
@@ -631,11 +575,9 @@ ROSETTAFOLD3 = replace(
     attention_kq_norm=True,
     parallel_attention_transition=True,
     triangle_attention_bias=True,
-    triangle_mul_divide_by_length=True,
     conformer_embedding_bias=True,
     atom_chiral_features=True,
     dedupe_self_msa=True,
-    atom_key_window="pad",
 )
 
 #: Chai-1. Not OpenFold3 lineage: its own pairformer schedule (parallel on both
@@ -660,7 +602,6 @@ CHAI1 = replace(
     diffusion_cond_final_norm=True,
     single_cond_embedding_norm=False,
     adaptive_identity_scale=True,
-    adaptive_norm_eps=0.1,
     token_attention_gating_query=False,
     atom_attention_gating_query=False,
     atom_attention_project_output=False,
@@ -676,12 +617,9 @@ CHAI1 = replace(
     msa_value_dim=32,
     opm_groups=8,
     opm_channel=8,
-    opm_sum_without_norm=True,
     diffusion_blocks=16,
     template_qkv_dim=32,
     template_feature_bias=True,
-    template_mask_class=True,
-    template_gap_uncovered=True,
     template_present_denominator=True,
     template_coverage_mask=True,
     confidence="chai1",
@@ -702,30 +640,26 @@ CHAI1 = replace(
     ),
     per_block_pair_layer_norm=True,
     parallel_pairformer_block=True,
-    # Its parallel block opens the single-attention gate by 1.0 and masks that
-    # attention's residual. Neither can be expressed as a weight, and both were
-    # missing: over 48 blocks the single reached the confidence head at 0.58x
-    # the released scale, which cost the released head 16 pLDDT points and ours
-    # 52.
+    # Its parallel block opens the single-attention gate by 1.0, which no weight
+    # can express. The released block also masks that attention's residual; the
+    # mask changes no output (padded rows are masked downstream) and is dropped.
     single_attention_gate_bias=1.0,
-    mask_single_attention_residual=True,
     parallel_msa_block=True,
     untransposed_column_pair_output=True,
-    msa_pair_mask_logits=True,
     msa_activations_bias=True,
     msa_single_from_recycle=True,
-    empty_msa_without_alignment=True,
     no_bond_embedding=True,
     recycle_from_initial=True,
-    mask_atom_act_per_block=True,
     resolved_head=False,
     msa_double_add=True,
     pre_trunk_atom_query=True,
     raw_ref_charge=True,
     drop_atoms=("OXT",),
-    atom_key_window="circular",
     sigma_max=80.0,
     churn_total=80.0,
+    # Kept although a same-seed reset moves one sample by only 0.5 A: the churn
+    # window and variance floor set how widely the samples spread (0.32 A with
+    # them, 0.55 A without, against the release's 0.39 A on 5I28).
     churn_sigma_min=4e-4,
     churn_sigma_max=80.0,
     sampler_variance_floor=1e-6,
@@ -755,7 +689,6 @@ PROTENIX2 = replace(
     per_block_atom_pair_layer_norm=True,
     transposed_column_pair_bias=True,
     key_masked_atom_attention=True,
-    atom_key_window="pad",
     diffusion_projected_relpos=True,
     distogram_bias=True,
     template="protenix2",
@@ -836,7 +769,6 @@ ESMFOLD2 = replace(
     distogram_bias=True,
     diffusion_projected_relpos=True,
     msa_subsample="keep_query",
-    opm_clamped_norm=True,
     chain_bucket_on_same_chain=True,
     pde_symmetrise="none",
     raw_ref_charge=True,

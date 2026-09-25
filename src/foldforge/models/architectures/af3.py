@@ -107,7 +107,6 @@ class Evoformer(nn.Module):
 
         self.seq_channel = spec.seq_channel
         self.pair_channel = spec.pair_channel
-        self.symmetric_bonds = spec.symmetric_bonds
         self.c_target_feat = spec.target_feat_channel
 
         # AF3 initialises the pair from the raw target features; the families
@@ -415,8 +414,6 @@ class Evoformer(nn.Module):
             [gather_idxs_polymer_ligand, gather_idxs_ligand_ligand]
         )
         contact_matrix[gather_idxs[:, 0], gather_idxs[:, 1]] = 1.0
-        if self.symmetric_bonds:
-            contact_matrix[gather_idxs[:, 1], gather_idxs[:, 0]] = 1.0
 
         # Because all the padded index's are 0's.
         contact_matrix[0, 0] = 0.0
@@ -427,7 +424,7 @@ class Evoformer(nn.Module):
         if self.spec.bond_type_and_contact_init:
             # Both terms contribute on EVERY pair: bond order 0 and the unspecified
             # contact class are learned vectors, not zeros.
-            bond_types = token_bond_types(batch, symmetric=self.symmetric_bonds)
+            bond_types = token_bond_types(batch)
             pair_activations = pair_activations + self.token_bonds_type_embed(
                 nn.functional.one_hot(bond_types, 7).to(pair_activations.dtype)
             )
@@ -877,10 +874,6 @@ class AlphaFold3(nn.Module):
     ) -> dict[str, torch.Tensor | dict[str, torch.Tensor]]:
         """Compute the module output."""
         batch_data = feat_batch.Batch.from_data_dict(batch)
-        if self.spec.empty_msa_without_alignment and not batch_data.msa.has_alignment():
-            # Its profile would otherwise be a one-hot of the sequence, which
-            # moves every token of the initial single.
-            batch_data = replace(batch_data, msa=batch_data.msa.without_alignment())
         num_res = batch_data.num_res
 
         target_feat, structure_feat = self.create_target_feat_embedding(batch_data)

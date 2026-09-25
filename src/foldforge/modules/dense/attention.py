@@ -195,13 +195,9 @@ class MSAAttention(nn.Module):
         c_pair: int = 128,
         num_head: int = 8,
         value_dim: int | None = None,
-        pair_mask_logits: bool = False,
     ) -> None:
         super().__init__()
 
-        #: Mask the logits with the TOKEN PAIR mask and zero the value where the
-        #: MSA mask is false, instead of deriving a per-token mask from the rows.
-        self.pair_mask_logits = pair_mask_logits
         self.c_msa = c_msa
         self.c_pair = c_pair
         self.num_head = num_head
@@ -218,25 +214,19 @@ class MSAAttention(nn.Module):
         self.gating_query = nn.Linear(self.c_msa, hidden, bias=False)
         self.output_projection = nn.Linear(hidden, self.c_msa, bias=False)
 
-    def forward(self, msa, msa_mask, pair, pair_mask=None):
+    def forward(self, msa, msa_mask, pair):
         """Compute the module output."""
-        raw_mask = msa_mask
         msa = self.act_norm(msa)
         pair = self.pair_norm(pair)
         logits = self.pair_logits(pair)
         logits = logits.permute(2, 0, 1)
 
-        if self.pair_mask_logits and pair_mask is not None:
-            logits = torch.where(pair_mask[None].to(torch.bool), logits, -10000.0)
-        else:
-            logits += 1e9 * (torch.max(msa_mask, dim=0).values - 1.0)
+        # Masked MSA rows reach the pair only through the outer product mean,
+        # which masks them again, so a per-row value mask here is redundant.
+        logits += 1e9 * (torch.max(msa_mask, dim=0).values - 1.0)
         weights = torch.softmax(logits, dim=-1)
 
         v = self.v_projection(msa)
-        if self.pair_mask_logits:
-            # Zero the value where the MSA mask is false rather than averaging
-            # those positions in.
-            v = v * raw_mask.to(v.dtype)[..., None]
         v = einops.rearrange(v, "b k (h c) -> b k h c", h=self.num_head)
 
         v_avg = torch.einsum("hqk, bkhc -> bqhc", weights.to(v.dtype), v)

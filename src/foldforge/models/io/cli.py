@@ -60,9 +60,6 @@ def parse(model: str, argv: list[str] | None = None) -> Request:
         choices=("bf16", "fp32", "af3_default", "model_default"),
         default="bf16",
     )
-    if model in {"protenix", "opendde"}:
-        parser.add_argument("--templates", action="store_true")
-        parser.add_argument("--no-msa", action="store_true")
     if model == "protenix":
         parser.add_argument(
             "--variant",

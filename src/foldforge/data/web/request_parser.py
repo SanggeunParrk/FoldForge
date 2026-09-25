@@ -586,8 +586,6 @@ class RequestParser:
                         recycles=int(self.request.get("N_cycle", 10)),
                         steps=int(self.request.get("N_step", 200)),
                         samples=int(self.request.get("N_sample", 5)),
-                        templates=bool(self.request.get("use_template", False)),
-                        no_msa=not self.request.get("use_msa", True),
                         guidance=self.request.get("use_tfg"),
                         output=OutputConfig.model_validate(
                             self.request.get("output", {})

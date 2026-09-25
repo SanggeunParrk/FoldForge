@@ -40,7 +40,7 @@ def clear_native_compute_override(model: Any, dtype: Any) -> None:
 
 
 def resolve_family(
-    name: str, variant: str | None = None, configs: object | None = None
+    name: str, variant: str | None = None
 ) -> tuple[str | None, str | None]:
     """Resolve a model name (and release) to its dense family and variant.
 
@@ -54,11 +54,7 @@ def resolve_family(
         raise ValueError(message)
     family = entry(name).family
     if name == "protenix":
-        variant = (
-            variant
-            or (getattr(configs, "model_name", None) if configs is not None else None)
-            or VARIANTS[0]
-        )
+        variant = variant or VARIANTS[0]
         if variant not in VARIANTS:
             message = f"Unsupported Protenix variant {variant!r}; choose {VARIANTS}"
             raise ValueError(message)
@@ -74,7 +70,6 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     dtype: torch.dtype | None = None,
     device: str | torch.device = "cuda",
     variant: str | None = None,
-    configs: Any = None,
     recycles: int = 10,
     samples: int = 5,
     steps: int = 200,
@@ -103,7 +98,7 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     spec = entry(name)
     if spec.architecture is None:
         raise NotImplementedError(name)
-    family, variant = resolve_family(name, variant, configs)
+    family, variant = resolve_family(name, variant)
     if checkpoint is None:
         filename = {
             **DEFAULT_FILES,

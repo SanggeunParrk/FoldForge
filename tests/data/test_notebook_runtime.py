@@ -51,8 +51,6 @@ def test_launch_preserves_request_options(tmp_path, monkeypatch, split):
         assert request.backend == "pytorch"
         assert request.precision == "bf16"
         assert (request.recycles, request.steps, request.samples) == (3, 8, 5)
-        assert request.templates
-        assert request.no_msa
         assert request.guidance
         assert request.ccd_db == ccd.root
         assert request.checkpoint == tmp_path / "weights" / f"{parser.model_name}.pt"

@@ -158,7 +158,6 @@ def run(model: str, argv: list[str]) -> int:
             recycles=config.trunk.recycles or 10,
             steps=config.diffusion.steps or 200,
             msa_depth=config.trunk.msa_depth or PREPARED_ROWS,
-            templates=bool(target.spec.template),
             variant=config.variant or "protenix_base_default_v1.0.0",
             execution=config.execution,
             output=config.output,

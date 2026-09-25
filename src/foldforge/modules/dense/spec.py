@@ -60,9 +60,15 @@ class DenseSpec:
     empty_template_gap: str | None = None
     #: A chain with no alignments gets a depth-one MSA instead of AF3's two query rows.
     dedupe_self_msa: bool = False
-    #: A non-protein chain's all-gap MSA rows (a ligand's are all gap in AF3,
-    #: query included) take its residue types, and so does a gap-only profile.
-    nonprotein_msa_as_query: bool = False
+    #: Where a non-protein chain's MSA takes its residue types instead of AF3's
+    #: gap (a ligand's column is all gap in AF3, query row included): "rows" --
+    #: every row where the chain is entirely gap (the Protenix lineage); "query"
+    #: -- the query row only, the rest left gap (RoseTTAFold3's atomworks). A
+    #: gap-only profile takes the residue type either way.
+    nonprotein_msa_as_query: str | None = None
+    #: A ligand atom's name characters are its element symbol (RoseTTAFold3's
+    #: atomworks, ``use_element_for_atom_names_of_atomized_tokens``).
+    element_ligand_names: bool = False
     #: Column-wise pair attention takes its pair bias transposed, Linear(z[k, q]).
     #:
     #: The AF3 SI and AF3's own code DISAGREE here. SI Algorithm 15 writes the
@@ -596,6 +602,8 @@ ROSETTAFOLD3 = replace(
     conformer_embedding_bias=True,
     atom_chiral_features=True,
     dedupe_self_msa=True,
+    nonprotein_msa_as_query="query",
+    element_ligand_names=True,
 )
 
 #: Chai-1. Not OpenFold3 lineage: its own pairformer schedule (parallel on both
@@ -690,7 +698,7 @@ PROTENIX2 = replace(
     # The release's N_cycle is the number of trunk passes (range(N_cycle)).
     recycles_are_total=True,
     recycle_mc_dropout=(0.4, 0.4),
-    nonprotein_msa_as_query=True,
+    nonprotein_msa_as_query="rows",
     chained_atom_key_norm=True,
     dedupe_self_msa=True,
     # Kept after the release re-fold: without it protenix1 on 5I28 reads 69.93

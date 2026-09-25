@@ -229,6 +229,39 @@ def test_protenix_reads_a_ligand_s_msa_column_as_its_residue_type():
     nonprotein_msa_as_query(example)
     assert example["msa"].tolist() == [[3, 26, 27, unk]] * 2 + [[5, 26, 27, unk]]
     assert example["profile"].argmax(-1).tolist() == [3, 26, 27, unk]
-    assert SPECS["protenix2"].nonprotein_msa_as_query
-    assert SPECS["opendde"].nonprotein_msa_as_query
-    assert not ALPHAFOLD3.nonprotein_msa_as_query
+    assert SPECS["protenix2"].nonprotein_msa_as_query == "rows"
+    assert SPECS["opendde"].nonprotein_msa_as_query == "rows"
+    assert ALPHAFOLD3.nonprotein_msa_as_query is None
+
+    # RoseTTAFold3 fills the query row alone.
+    example["msa"] = np.array([[3, 26, 27, gap], [3, 26, 27, gap], [5, gap, gap, gap]])
+    nonprotein_msa_as_query(example, "query")
+    assert example["msa"].tolist() == [
+        [3, 26, 27, unk],
+        [3, 26, 27, gap],
+        [5, gap, gap, gap],
+    ]
+    assert SPECS["rosettafold3"].nonprotein_msa_as_query == "query"
+
+
+def test_rosettafold3_names_ligand_atoms_by_element():
+    """RF3 trained on element symbols as an atomised token's atom names."""
+    from foldforge.data.features.dense_conventions import element_names_for_ligands
+
+    def chars(name: str) -> list[int]:
+        return [ord(c) - 32 for c in name.ljust(4)[:4].rstrip()] + [0] * (4 - len(name))
+
+    example = {
+        "ref_element": np.array([[6, 7], [6, 0]]),
+        "ref_mask": np.array([[1, 1], [1, 0]]),
+        "is_ligand": np.array([False, True]),
+        "ref_atom_name_chars": np.array(
+            [[chars("CA"), chars("N")], [chars("C1"), chars("")]]
+        ),
+    }
+    element_names_for_ligands(example)
+    names = example["ref_atom_name_chars"]
+    assert names[0].tolist() == [chars("CA"), chars("N")]  # protein untouched
+    assert names[1, 0].tolist() == chars("C")
+    assert SPECS["rosettafold3"].element_ligand_names
+    assert not ALPHAFOLD3.element_ligand_names

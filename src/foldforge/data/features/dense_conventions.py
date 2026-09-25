@@ -240,8 +240,12 @@ def dedupe_self_msa(example: dict[str, Any]) -> None:
 _GAP = 21
 
 
-def nonprotein_msa_as_query(example: dict[str, Any]) -> None:
+def nonprotein_msa_as_query(example: dict[str, Any], rows: str = "rows") -> None:
     """Fill a non-protein chain's all-gap MSA rows with its own residue types.
+
+    ``rows="query"`` fills the query row only, as RoseTTAFold3's atomworks
+    featurisation does: its first row is the encoded sequence for every token,
+    every other row of a chain without an alignment stays padding.
 
     AF3 writes a ligand's MSA column as the gap -- the query row included -- and
     a nucleic chain's column as the gap in every protein alignment row. The
@@ -261,8 +265,10 @@ def nonprotein_msa_as_query(example: dict[str, Any]) -> None:
     asym = np.asarray(example["asym_id"])
     for chain in np.unique(asym[other]):
         cols = np.flatnonzero(other & (asym == chain))
-        rows = np.flatnonzero(live & np.all(msa[:, cols] == _GAP, axis=1))
-        msa[np.ix_(rows, cols)] = aatype[cols]
+        fill = np.flatnonzero(live & np.all(msa[:, cols] == _GAP, axis=1))
+        if rows == "query":
+            fill = fill[:1] if fill.size and fill[0] == np.flatnonzero(live)[0] else []
+        msa[np.ix_(fill, cols)] = aatype[cols]
     example["msa"] = msa.astype(np.asarray(example["msa"]).dtype)
     profile = np.array(example["profile"])
     gap_only = profile[:, _GAP] >= 1.0
@@ -270,6 +276,30 @@ def nonprotein_msa_as_query(example: dict[str, Any]) -> None:
     profile[fix] = 0.0
     profile[fix, aatype[fix]] = 1.0
     example["profile"] = profile.astype(np.asarray(example["profile"]).dtype)
+
+
+def element_names_for_ligands(example: dict[str, Any]) -> None:
+    """Name every ligand atom by its element, as RoseTTAFold3 was trained.
+
+    Its atomworks featurisation sets ``use_element_for_atom_names_of_atomized_
+    tokens``: an atomised token's name characters are its element symbol, so a
+    benzamidine reads as C, C, ..., N, N rather than its CCD names C1..C6, C,
+    N1, N2. Fed the CCD names, the atom-name embedding saw names it never
+    trained on and the ligand's bonds came out 0.11 A RMS off ideal against the
+    release's 0.02 A.
+    """
+    from rdkit import Chem  # noqa: PLC0415 - optional dep
+
+    table = Chem.GetPeriodicTable()
+    elements = np.asarray(example["ref_element"])
+    chars = np.array(example["ref_atom_name_chars"])
+    ligand = np.asarray(example["is_ligand"]).astype(bool)
+    mask = np.asarray(example["ref_mask"]).astype(bool)
+    for t, a in zip(*np.nonzero(ligand[:, None] & mask), strict=True):
+        symbol = table.GetElementSymbol(int(elements[t, a])).upper()
+        chars[t, a] = 0
+        chars[t, a, : len(symbol)] = [ord(c) - 32 for c in symbol]
+    example["ref_atom_name_chars"] = chars
 
 
 def empty_template_gap(example: dict[str, Any], slots: str) -> None:
@@ -309,14 +339,18 @@ def apply(example: dict[str, Any], spec: DenseSpec) -> dict[str, Any]:
         )
     if spec.centre_ref_conformers:
         centre_conformers(example)
+    if spec.element_ligand_names:
+        element_names_for_ligands(example)
     if spec.drop_atoms:
         drop_atoms(example, spec.drop_atoms)
     if spec.empty_template_gap is not None:
         empty_template_gap(example, spec.empty_template_gap)
-    if spec.nonprotein_msa_as_query:
-        nonprotein_msa_as_query(example)
+    # Deduplicate first: filling only the query row would make the two AF3
+    # query rows differ, and the duplicate would survive.
     if spec.dedupe_self_msa:
         dedupe_self_msa(example)
+    if spec.nonprotein_msa_as_query is not None:
+        nonprotein_msa_as_query(example, spec.nonprotein_msa_as_query)
     return example
 
 

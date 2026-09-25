@@ -489,7 +489,7 @@ After the fixes, against each release (no MSA, no template, 4 trunk passes,
 | OpenFold3 p2 | 29.83 / 29.42 | 16.5 (16.5) | 0.01 / 0.01 | 86.21 / 85.83 | 0.84 (0.88) |
 | OpenFold3 v0.5 | 34.21 / 33.97 | 15.5 (14.9) | 0.02 / 0.02 | 77.61 / 77.55 | 0.72 (0.60) |
 | IntelliFold2 | 31.11 / 30.73 | 12.3 (12.6) | 0.03 / 0.02 | 85.03 / 84.80 | 1.31 (1.00) |
-| RoseTTAFold3 | 69.95 / 68.72 | 14.7 (14.8) | 0.02 / **0.11** | 84.63 / 84.54 | 0.72 (0.31) |
+| RoseTTAFold3 | 69.95 / 69.85 | 14.8 (14.8) | 0.02 / 0.02 | 84.63 / 84.54 | 0.72 (0.31) |
 | Protenix v1 | 32.59 / 33.27 | 11.4 (12.3) | 0.03 / 0.04 | seed-dependent, see below | 12.6 (11.0) |
 | Protenix v2 | 37.71 / 37.42 | 10.6 (8.6) | 0.14 / 0.07 | seed-dependent, see below | 6.75 (5.85) |
 
@@ -499,10 +499,17 @@ are equally lost.
 
 Still open:
 
-- **RoseTTAFold3's benzamidine** sits 0.11 A RMS off ideal against the
-  release's 0.02. Not precision (fp32 is bit-identical), not `token_bonds`
-  (the release's matrix is ours), not chirality (the release gives the ligand
-  no chiral rows). Protein bonds match.
+- ~~RoseTTAFold3's benzamidine~~ -- **resolved**: 0.11 -> 0.02 A (release
+  0.02), 3PTB pLDDT 69.85 against 69.95. Its atomworks featurisation names an
+  atomised token's atoms by ELEMENT (`use_element_for_atom_names_of_atomized_
+  tokens: true`), so a ligand reads as C, C, ..., N, N; fed the CCD names
+  C1..C6, C, N1, N2, the atom-name embedding saw names it never trained on.
+  Now `DenseSpec.element_ligand_names`. Located by feeding our diffusion the
+  release's own trunk (still 0.11, so the diffusion), then one denoiser call on
+  the release's exact input, where the release's atom names would not match
+  ours. It also writes a ligand's MSA column as UNK in the query row only
+  (`nonprotein_msa_as_query="query"`, vs the Protenix lineage's "rows");
+  that one moved pLDDT 0.3 and not the bonds.
 - **RoseTTAFold3's chiral-centre input is dead here.** The release feeds 669
   protein chiral rows on 3PTB; FoldForge featurises none, so
   `atom_chiral_features` embeds zeros.

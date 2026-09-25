@@ -490,8 +490,8 @@ After the fixes, against each release (no MSA, no template, 4 trunk passes,
 | OpenFold3 v0.5 | 34.21 / 33.97 | 15.5 (14.9) | 0.02 / 0.02 | 77.61 / 77.55 | 0.72 (0.60) |
 | IntelliFold2 | 31.11 / 30.73 | 12.3 (12.6) | 0.03 / 0.02 | 85.03 / 84.80 | 1.31 (1.00) |
 | RoseTTAFold3 | 69.95 / 68.72 | 14.7 (14.8) | 0.02 / **0.11** | 84.63 / 84.54 | 0.72 (0.31) |
-| Protenix v1 | 32.59 / 35.79 | 11.0 (12.3) | 0.03 / 0.03 | 72.89 / **81.18** | 12.8 (11.0) |
-| Protenix v2 | 37.71 / 37.52 | 11.8 (8.6) | 0.14 / 0.02 | 85.61 / **78.41** | 7.97 (5.85) |
+| Protenix v1 | 32.59 / 33.27 | 11.4 (12.3) | 0.03 / 0.04 | seed-dependent, see below | 12.6 (11.0) |
+| Protenix v2 | 37.71 / 37.42 | 10.6 (8.6) | 0.14 / 0.07 | seed-dependent, see below | 6.75 (5.85) |
 
 Without an MSA 3PTB is low-confidence for every family but Boltz-2 and Chai-1,
 in the release as in ours, so the protein columns there only say the two arms
@@ -506,16 +506,51 @@ Still open:
 - **RoseTTAFold3's chiral-centre input is dead here.** The release feeds 669
   protein chiral rows on 3PTB; FoldForge featurises none, so
   `atom_chiral_features` embeds zeros.
-- **Protenix on 1A1K** is off in pLDDT by a uniform ~7 on every chain, DNA
-  included, in OPPOSITE directions for v1 (+8) and v2 (-7), while the DNA
-  structure matches (0.3-0.5 A). The zinc finger has no MSA and the release
-  itself spreads 5-11 A on it. Every parameter-free Protenix convention was
-  flipped on 1A1K and none closes it. Deciding between a confidence-head
-  difference and different sampled modes needs the release's structures scored
-  by our head.
+- ~~Protenix on 1A1K~~ -- **resolved**, see "Protenix on 1A1K: two inference
+  conventions" below.
 - The Protenix control must write identical ions as ONE entry with a count.
   Three `count: 1` entries are three entities to Protenix, one to AF3's
   featurisation; that alone moved the v1 release by 8 pLDDT on 1A1K.
+
+### Protenix on 1A1K: two inference conventions (2026-09-25)
+
+The Protenix pLDDT gap on 1A1K (78 against the release's 86 for v2, 81 against
+73 for v1, uniform over every chain) was settled in three steps:
+
+1. **Same structures, our head** (`tools/score_release.py` swaps the diffusion
+   samples for the release's coordinates before the confidence head): our
+   head still gave OUR numbers. Boltz-2, the control, gave the release's to the
+   decimal. So the gap was not the structures.
+2. **The release's trunk too**: fed the release's final single and pair, our
+   head reproduced the release's per-chain pLDDT exactly. So the head is right
+   and the TRUNK differed -- by rel 0.20 at the template's input.
+3. **Clean z_init decomposition**, with a pre-hook copy (the release updates
+   its pair in place): two causes.
+
+- **MC dropout at inference.** Protenix (v1 and v2; not OpenDDE) flips one coin
+  per seed, `random.random() < mc_dropout_apply_rate` (0.4), and when it lands
+  every pass adds the pair recycle under `F.dropout(p=mc_dropout_rate=0.4)` --
+  the dropped fraction was exactly 0.40 and the kept elements exactly 1/0.6.
+  Seed 101, the one compared, had it on. Now `DenseSpec.recycle_mc_dropout`;
+  the fold report records `recycle_dropout_applied`.
+- **Non-protein MSA columns.** AF3 writes a ligand's MSA column as the gap,
+  query row included; the Protenix lineage fills a non-protein chain's all-gap
+  rows with its query, UNK for a ligand, and its profile follows. The zinc
+  ions' profile was the gap where the release's is UNK, which moved every
+  token's initial single through the outer sum (s_init rel 0.29 on the ions,
+  0.002 elsewhere). Now `DenseSpec.nonprotein_msa_as_query` (Protenix v1, v2,
+  OpenDDE).
+
+After both, fp32, a seed with the dropout off: s_init rel 0.003, template input
+0.001, trunk pair after four passes 0.0013. Across eight seeds each:
+
+| 1A1K, v2 | dropout off (5 seeds) | dropout on (3 seeds) |
+|---|---|---|
+| release (101-108) | 80.2-81.0, mean 80.7 | 85.6, 87.6, 79.6 |
+| FoldForge (0-7) | 80.64-80.68 | 79.8, 85.6, 79.0 |
+
+A single-seed Protenix comparison is therefore a coin toss: compare seeds
+with the dropout in the same state, or distributions.
 
 **Score every entity by its own geometry, not by the protein around it.**
 `runs/release-compare-20260924/tools/complex_compare.py` reports it per family.

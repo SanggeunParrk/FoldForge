@@ -203,9 +203,11 @@ def test_af3_recycles_are_additional_trunk_passes(
 
     class Trunk(nn.Module):
         def forward(
-            self, *, batch, prev, target_feat, first_pass, last_pass
+            self, *, batch, prev, target_feat, first_pass, last_pass, recycle_dropout
         ) -> dict[str, torch.Tensor]:
             assert batch.num_res == 2
+            # AF3 families recycle without the MC dropout Protenix samples with.
+            assert recycle_dropout == 0.0
             # The first pass is the one the trunk is told about; a family whose
             # recycle carry starts at its own initial representations needs it.
             assert first_pass == (len(calls) == 0)

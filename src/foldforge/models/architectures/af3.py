@@ -579,6 +579,13 @@ class Evoformer(nn.Module):
             "structure_target_feat": prev["structure_target_feat"],
         }
 
+    def _recycle_pair(self, recycled: torch.Tensor, dropout: float) -> torch.Tensor:
+        """Project the recycled pair, under the fold's MC dropout if it has one."""
+        term = self.prev_embedding(self.prev_embedding_layer_norm(recycled))
+        if dropout:
+            term = nn.functional.dropout(term, p=dropout, training=True)
+        return term
+
     def forward(
         self,
         batch: feat_batch.Batch,
@@ -587,6 +594,7 @@ class Evoformer(nn.Module):
         *,
         first_pass: bool = False,
         last_pass: bool = True,
+        recycle_dropout: float = 0.0,
     ) -> dict[str, Any]:
         """Compute the module output."""
         # The single projection is needed first where the pair is built from it.
@@ -643,8 +651,8 @@ class Evoformer(nn.Module):
             # The carry starts at the INITIAL representations rather than zeros,
             # so pass one already adds recycle_proj(norm(z_init)).
             recycled = pair_init if pair_init is not None else pair_activations
-        pair_activations = pair_activations + self.prev_embedding(
-            self.prev_embedding_layer_norm(recycled.to(pair_activations.dtype))
+        pair_activations = pair_activations + self._recycle_pair(
+            recycled.to(pair_activations.dtype), recycle_dropout
         )
 
         if pair_init is None:
@@ -904,6 +912,14 @@ class AlphaFold3(nn.Module):
             if self.spec.recycles_are_total
             else self.num_recycles + 1
         )
+        # One coin per fold decides whether this fold's recycles run under MC
+        # dropout (see DenseSpec.recycle_mc_dropout); the trunk seed owns it.
+        recycle_dropout = 0.0
+        if self.spec.recycle_mc_dropout is not None:
+            apply_rate, rate = self.spec.recycle_mc_dropout
+            if float(torch.rand((), device=target_feat.device)) < apply_rate:
+                recycle_dropout = rate
+        self.recycle_dropout_applied = bool(recycle_dropout)
         for pass_index in range(passes):
             embeddings = self.evoformer(
                 batch=batch_data,
@@ -911,6 +927,7 @@ class AlphaFold3(nn.Module):
                 target_feat=target_feat,
                 first_pass=pass_index == 0,
                 last_pass=pass_index == passes - 1,
+                recycle_dropout=recycle_dropout,
             )
             if self.reference_precision:
                 embeddings["pair"] = embeddings["pair"].float()

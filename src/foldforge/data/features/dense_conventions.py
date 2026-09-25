@@ -236,6 +236,42 @@ def dedupe_self_msa(example: dict[str, Any]) -> None:
         example["num_alignments"] = np.asarray(count - 1, dtype=count.dtype)
 
 
+#: AF3's gap class in the MSA and profile.
+_GAP = 21
+
+
+def nonprotein_msa_as_query(example: dict[str, Any]) -> None:
+    """Fill a non-protein chain's all-gap MSA rows with its own residue types.
+
+    AF3 writes a ligand's MSA column as the gap -- the query row included -- and
+    a nucleic chain's column as the gap in every protein alignment row. The
+    Protenix lineage fills any row where a non-protein chain is entirely gap
+    with that chain's query ("forward compatibility patch for non-protein
+    entities"), and its query row for a ligand is the ligand's residue type,
+    UNK, so no non-protein token ever reads as gap. The profile follows: a
+    non-protein token whose profile is pure gap takes its residue type. Missed,
+    a zinc ion's profile was the gap where the release's is UNK, and it moved
+    every token's initial single through the outer sum.
+    """
+    msa = np.array(example["msa"])
+    live = np.asarray(example["msa_mask"]).any(-1)
+    aatype = np.asarray(example["aatype"])
+    real = np.asarray(example["seq_mask"]).astype(bool)
+    other = real & ~np.asarray(example["is_protein"]).astype(bool)
+    asym = np.asarray(example["asym_id"])
+    for chain in np.unique(asym[other]):
+        cols = np.flatnonzero(other & (asym == chain))
+        rows = np.flatnonzero(live & np.all(msa[:, cols] == _GAP, axis=1))
+        msa[np.ix_(rows, cols)] = aatype[cols]
+    example["msa"] = msa.astype(np.asarray(example["msa"]).dtype)
+    profile = np.array(example["profile"])
+    gap_only = profile[:, _GAP] >= 1.0
+    fix = np.flatnonzero(other & gap_only)
+    profile[fix] = 0.0
+    profile[fix, aatype[fix]] = 1.0
+    example["profile"] = profile.astype(np.asarray(example["profile"]).dtype)
+
+
 def empty_template_gap(example: dict[str, Any], slots: str) -> None:
     """Fill an ABSENT template's restype with the gap class rather than zero.
 
@@ -277,6 +313,8 @@ def apply(example: dict[str, Any], spec: DenseSpec) -> dict[str, Any]:
         drop_atoms(example, spec.drop_atoms)
     if spec.empty_template_gap is not None:
         empty_template_gap(example, spec.empty_template_gap)
+    if spec.nonprotein_msa_as_query:
+        nonprotein_msa_as_query(example)
     if spec.dedupe_self_msa:
         dedupe_self_msa(example)
     return example

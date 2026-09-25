@@ -195,3 +195,40 @@ def test_openfold3_lineage_writes_each_bond_both_ways():
     lineage = ("protenix1", "protenix2", "boltz2", "rosettafold3", "opendde")
     assert all(SPECS[family].symmetric_bonds for family in lineage)
     assert not ALPHAFOLD3.symmetric_bonds
+
+
+def test_protenix_recycles_under_the_release_s_mc_dropout():
+    """Protenix drops its pair recycle at inference on 40% of seeds; OpenDDE never.
+
+    Missed, seed 101 of 1A1K read 78 pLDDT against the release's 86 with the
+    confidence head exactly the release's (fed the release's trunk, it gave
+    the release's numbers to the decimal).
+    """
+    assert SPECS["protenix1"].recycle_mc_dropout == (0.4, 0.4)
+    assert SPECS["protenix2"].recycle_mc_dropout == (0.4, 0.4)
+    assert SPECS["opendde"].recycle_mc_dropout is None
+    assert ALPHAFOLD3.recycle_mc_dropout is None
+
+
+def test_protenix_reads_a_ligand_s_msa_column_as_its_residue_type():
+    """AF3 writes a ligand's MSA column as the gap; the Protenix lineage, UNK."""
+    from foldforge.data.features.dense_conventions import nonprotein_msa_as_query
+
+    gap, unk = 21, 20
+    # A protein token, two DNA tokens, a zinc; two identical query rows and an
+    # alignment row that covers only the protein.
+    example = {
+        "aatype": np.array([3, 26, 27, unk]),
+        "seq_mask": np.ones(4),
+        "is_protein": np.array([1, 0, 0, 0]),
+        "asym_id": np.array([1, 2, 2, 3]),
+        "msa": np.array([[3, 26, 27, gap], [3, 26, 27, gap], [5, gap, gap, gap]]),
+        "msa_mask": np.ones((3, 4), dtype=bool),
+        "profile": np.eye(31)[[3, 26, 27, gap]],
+    }
+    nonprotein_msa_as_query(example)
+    assert example["msa"].tolist() == [[3, 26, 27, unk]] * 2 + [[5, 26, 27, unk]]
+    assert example["profile"].argmax(-1).tolist() == [3, 26, 27, unk]
+    assert SPECS["protenix2"].nonprotein_msa_as_query
+    assert SPECS["opendde"].nonprotein_msa_as_query
+    assert not ALPHAFOLD3.nonprotein_msa_as_query

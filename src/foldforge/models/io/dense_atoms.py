@@ -251,6 +251,10 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
                 "checkpoint": model.foldforge_load_report,
                 "elapsed_seconds": time.monotonic() - start,
                 "mean_plddt": float(plddt.mean()),
+                # Whether this fold's coin put its recycles under MC dropout.
+                "recycle_dropout_applied": getattr(
+                    model, "recycle_dropout_applied", False
+                ),
                 "confidence_fields": [
                     k for k, v in cpu.items() if isinstance(v, np.ndarray)
                 ],

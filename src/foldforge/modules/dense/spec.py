@@ -31,6 +31,14 @@ class DenseSpec:
     #: 0.8 A RMS off ideal on protenix2 (release 0.01 A). Score ligands by their
     #: bond geometry, not by the protein around them.
     symmetric_bonds: bool = False
+    #: (apply_rate, rate): the release's inference-time MC dropout on the pair
+    #: recycle. One coin per fold (per trunk seed) with probability apply_rate
+    #: decides; if it lands, every pass drops the recycled pair term at `rate`.
+    #: Protenix does this for sample diversity (`mc_dropout_apply_rate`,
+    #: `mc_dropout_rate`, both 0.4 in its configs_base). Without it 40% of the
+    #: release's seeds fold differently from ours: on 1A1K seed 101 it moved
+    #: v2's pLDDT from 78 to 86 with the confidence head unchanged.
+    recycle_mc_dropout: tuple[float, float] | None = None
     #: The vendor's single conditioning spans 833 channels: its restype and profile
     #: blocks carry one class AF3 lacks, re-inserted as zero columns before the norm.
     padded_single_cond: bool = False
@@ -52,6 +60,9 @@ class DenseSpec:
     empty_template_gap: str | None = None
     #: A chain with no alignments gets a depth-one MSA instead of AF3's two query rows.
     dedupe_self_msa: bool = False
+    #: A non-protein chain's all-gap MSA rows (a ligand's are all gap in AF3,
+    #: query included) take its residue types, and so does a gap-only profile.
+    nonprotein_msa_as_query: bool = False
     #: Column-wise pair attention takes its pair bias transposed, Linear(z[k, q]).
     #:
     #: The AF3 SI and AF3's own code DISAGREE here. SI Algorithm 15 writes the
@@ -678,6 +689,8 @@ PROTENIX2 = replace(
     family="protenix2",
     # The release's N_cycle is the number of trunk passes (range(N_cycle)).
     recycles_are_total=True,
+    recycle_mc_dropout=(0.4, 0.4),
+    nonprotein_msa_as_query=True,
     chained_atom_key_norm=True,
     dedupe_self_msa=True,
     # Kept after the release re-fold: without it protenix1 on 5I28 reads 69.93
@@ -724,6 +737,8 @@ PROTENIX1 = replace(
 OPENDDE = replace(
     PROTENIX2,
     family="opendde",
+    # Its trunk recycles plainly; the MC dropout is Protenix's alone.
+    recycle_mc_dropout=None,
     structural_tokens=True,
     confidence_records="opendde",
     dedupe_self_msa=False,

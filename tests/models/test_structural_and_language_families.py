@@ -135,9 +135,7 @@ def test_rigid_align_gives_every_sample_its_own_rotation():
         if torch.linalg.det(rotation) < 0:
             rotation[:, 0] *= -1
         rotations.append(rotation)
-    samples = torch.stack(
-        [reference @ r + float(i) for i, r in enumerate(rotations)]
-    )
+    samples = torch.stack([reference @ r + float(i) for i, r in enumerate(rotations)])
 
     batched = weighted_rigid_align(samples, reference.expand(3, 4, 5, 3), weight)
     looped = torch.stack(
@@ -150,8 +148,9 @@ def test_rigid_align_gives_every_sample_its_own_rotation():
     torch.testing.assert_close(batched, looped, atol=1e-5, rtol=1e-5)
     # Each sample came back to the reference, which one shared rotation across
     # three different rotations could not do.
-    assert torch.allclose(batched * weight[..., None],
-                          reference * weight[..., None], atol=1e-4)
+    assert torch.allclose(
+        batched * weight[..., None], reference * weight[..., None], atol=1e-4
+    )
 
 
 def test_structural_diffusion_output_returns_to_the_residue_layout():

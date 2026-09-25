@@ -51,9 +51,7 @@ def ca_positions(path: Path) -> dict[int, list[float]]:
             number = int(field[8])
         except ValueError:
             continue
-        rows.setdefault(
-            number, [float(field[10]), float(field[11]), float(field[12])]
-        )
+        rows.setdefault(number, [float(field[10]), float(field[11]), float(field[12])])
     return rows
 
 

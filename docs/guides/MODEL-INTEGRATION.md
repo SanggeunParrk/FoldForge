@@ -353,7 +353,7 @@ convention's):
 | `transposed_column_pair_bias` | Protenix v1/v2, OpenDDE, OF3 preview-2, Boltz-2 | **SI vs AF3 code.** SI Alg. 15 (and AF2/OpenFold) use bias b_ki; AF3's code projects before transposing, b_ik. | -2 to -28 |
 | `pre_trunk_atom_query` | Boltz-2, Chai-1, RF3 | **SI vs AF3 code.** SI Alg. 5 copies q = c (line 7) before adding the trunk single (line 9); AF3's code copies after. | Boltz-2 -43 / 19 A |
 | `parallel_attention_transition` | Chai-1, RF3 | **SI as written.** Alg. 23 `a <- b + Transition(a)`, which the Boltz-1, Protenix and RF3 reports all call a problem. RF3's report says it switched to sequential residuals; its released config (`rf3_net.yaml`) keeps the parallel form. | Chai-1 5.5 A |
-| `untransposed_column_pair_output`, `parallel_pairformer_block`, `atom_cond_norm`, `same_token_atom_attention`, `single_attention_gate_bias` | Chai-1 | **Undocumented**, read from the traced release. | up to -47 |
+| `untransposed_column_pair_output`, `parallel_pairformer_block`, `atom_cond_norm`, `same_conformer_atom_attention`, `single_attention_gate_bias` | Chai-1 | **Undocumented**, read from the traced release. | up to -47 |
 | reference-conformer pose | OpenFold3 (random), Chai-1, IntelliFold (fixed) | **SI vs AF3 code.** SI Table 5: ref_pos has "a random rotation and translation applied"; AF3's inference code poses nothing. | see below |
 
 Three consequences, and they are the case for one graph:
@@ -388,13 +388,13 @@ the outer product mean, which masks them itself.
 
 **Unified to AF3 -- effect below the noise on all three inputs** (at most 0.2
 pLDDT / 0.3 A on the stable inputs): `atom_key_window` (7 families; the pad,
-q-block and circular windows are gone), `symmetric_bonds` (7),
-`opm_clamped_norm` and `opm_bias_after_norm` (OPM is AF3's everywhere),
+q-block and circular windows are gone), `opm_clamped_norm` and `opm_bias_after_norm` (OPM is AF3's everywhere),
 `triangle_mul_divide_by_length` (RF3), `template_stack_outer_residual` and
 `template_visibility_by_coverage` (Boltz-2), `template_gap_uncovered` and
 `template_mask_class` (Chai-1), `empty_msa_without_alignment` and
 `adaptive_norm_eps` (Chai-1), and Boltz-2's sampler constants (gamma_0,
-gamma_min, noise_scale, step_scale).
+gamma_min, noise_scale, step_scale). `symmetric_bonds` was on this list too and
+was wrong to be: see "Ligand geometry" below.
 
 A same-seed reset measures how far ONE sample moves, not how widely the samples
 spread, so every family was re-folded against its release after the change
@@ -449,6 +449,38 @@ atoms at the raw origin -- 12 to 38 A from their residue (e.g. `DRP` O3P,
 `Y7G` O1-O3; `4TJ` loses 45 of 72). About 4% of CCD components are partly
 missing, 0.2% wholly; all sampled cases have ideal coordinates to fall back on.
 Worth reporting to MiniWorld.
+
+### Ligand geometry -- what the protein metrics missed (2026-09-25)
+
+Every convention above was judged by pLDDT and CA RMSD. Both are PROTEIN
+metrics: a ligand's own geometry can be wrong while neither moves. Scored by
+3PTB's benzamidine bond lengths against each release (no MSA, no template,
+5 samples; releases 0.01-0.03 A RMS off ideal), four faults came out, each
+invisible on protein and each a different family's:
+
+| Fault | Family | Benzamidine before -> after | Cause |
+|---|---|---|---|
+| `symmetric_bonds` unified to AF3 | Protenix, Boltz-2, RF3, OF3, OpenDDE | 0.80 -> 0.02 A (protenix2) | The OpenFold3 lineage trained on a token bond matrix with both [i, j] and [j, i]; AF3 has one direction. Bisected to 7b245fc; restored. |
+| Every ligand bond written as single | Boltz-2 | 0.11 -> 0.01 A | Boltz-2 embeds bond ORDER; AF3's featurisation drops it, so benzene read as cyclohexane (1.52 A ring bonds). `bond_orders` now records it from the CCD component's sanitised RDKit molecule, as the release does. |
+| Atom attention "within a token" | Chai-1 | 0.3 -> 0.04 A | The traced mask is within one reference CONFORMER. On a protein the two are the same; on a ligand each atom attended to itself alone. Now `same_conformer_atom_attention`. |
+| Chain and entity relations folded into a bias | Chai-1 | (complexes) | The converter folded RelativeChain and RelativeEntity at single-chain values, so every cross-chain pair read as intra-chain. The Chai-1 blob now carries both as input columns (`scripts/convert_dense_checkpoint.py` unfolds them; the old blob is kept as `chai1.bin.zst.pre-chain-relations`). |
+
+A fifth fault came from the same audit: ESM2 ran on every chain, so Chai-1's
+ligand and nucleic tokens got a "protein of unknown residues" embedding where
+the release gives zero rows. Only protein chains reach the tower now.
+
+The Chai-1 RELEASE had silently dropped both of 3PTB's ligands (RDKit 2026 no
+longer accepts `useChirality` on ETKDG parameters; the entity fails to tokenise
+and the fold goes ahead without it). Pin `rdkit==2024.9.5`
+(`runs/release-compare-20260924/chai-rdkit-deps`) or the control is protein-only.
+
+RoseTTAFold3 stays 0.15-0.19 A against a release that itself spreads
+0.01-0.16 A; its extra atom channels (`ref_pos_ground_truth`,
+`has_atom_level_embedding`, the 384-d atom-level embedding) are all zero at
+release inference, so they are not the cause.
+
+**Score every entity by its own geometry, not by the protein around it.**
+`runs/release-compare-20260924/tools/complex_compare.py` reports it per family.
 
 ### The one real defect this found
 

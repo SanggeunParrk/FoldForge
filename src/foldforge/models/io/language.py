@@ -59,9 +59,10 @@ def token_embeddings(
     aatype: torch.Tensor,
     asym_id: torch.Tensor,
     mask: torch.Tensor,
+    is_protein: torch.Tensor,
     dtype: torch.dtype,
 ) -> torch.Tensor:
-    """Run the tower once and return one embedding per structure token."""
+    """Run the tower once and return one embedding per protein token, zero elsewhere."""
     if checkpoint is None:
         message = f"{name} lives beside the model's weights; none were given"
         raise ValueError(message)
@@ -69,7 +70,7 @@ def token_embeddings(
     path = tower_path(name, Path(checkpoint))
     model = lm.load_traced(path, device=aatype.device)
     with torch.no_grad():
-        out = lm.embed_chains(model, aatype, asym_id, mask, vocab)
+        out = lm.embed_chains(model, aatype, asym_id, mask, is_protein, vocab)
     del model
     torch.cuda.empty_cache()
     return out.to(dtype)

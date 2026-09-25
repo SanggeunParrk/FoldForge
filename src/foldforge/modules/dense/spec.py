@@ -301,11 +301,15 @@ class DenseSpec:
     #: separate offset, distance and validity embeddings; its MLP is two
     #: layers rather than three.
     atom_pair_distogram_feature: bool = False
-    #: Atom attention opens only within a token. AF3 lets every atom attend
-    #: across the whole window, spreading the softmax over some eighty keys
-    #: where this opens nine; the damage is intra-residue geometry.
-    #: Undocumented Chai-1 behaviour, read from its traced graphs.
-    same_token_atom_attention: bool = False
+    #: Atom attention opens only within one reference conformer (one
+    #: ref_space_uid). AF3 lets every atom attend across the whole window,
+    #: spreading the softmax over some eighty keys where this opens nine; the
+    #: damage is intra-residue geometry. Undocumented Chai-1 behaviour, read from
+    #: its traced graphs. It was first read as "within a token", which is the
+    #: same thing on a protein and leaves each ligand atom attending to itself
+    #: alone: 3PTB's benzamidine then folded 0.3 A RMS off the release, whose
+    #: mask opens all nine of its atoms to each other.
+    same_conformer_atom_attention: bool = False
     #: The atom conditioning SUM is normalised, without parameters. No blob
     #: names it, and every adaptive norm downstream scales by (s + 1) off it.
     #: Undocumented Chai-1 behaviour, read from its traced token embedder.
@@ -597,7 +601,7 @@ CHAI1 = replace(
     msa_feat_columns=41,
     msa_subsample="ordered",
     relpos="chai1",
-    relpos_channel=134,
+    relpos_channel=143,
     distogram_bias=True,
     distogram_hidden=True,
     distogram_mean_symmetrised=True,
@@ -609,7 +613,7 @@ CHAI1 = replace(
     atom_attention_gating_query=False,
     atom_attention_project_output=False,
     atom_pair_distogram_feature=True,
-    same_token_atom_attention=True,
+    same_conformer_atom_attention=True,
     atom_cond_norm=True,
     post_atom_cond_norm=True,
     parallel_attention_transition=True,

@@ -324,8 +324,15 @@ def chai_relative_encoding(
     class wherever the pair is not in one residue of one chain, so on a plain
     protein everything off the diagonal lands there.
 
-    The rest of the vendor's token-pair stream is constant for a fold and the
-    converter folds it into this projection's bias.
+    Then the chain and entity relations, which only a complex exercises:
+    AF-Multimer's relative chain (six classes: the copy offset within one entity,
+    clipped to +-2, and one class for a pair across entities) and the sign of
+    the entity offset (three). They were once folded into the bias at their
+    single-chain values, so every pair across chains read as one inside a
+    chain -- exact on one protein chain, wrong on every complex.
+
+    The rest of the vendor's token-pair stream (restraints, docking) is constant
+    for a fold and the converter folds it into this projection's bias.
     """
     classes = 67
     outside = classes - 1
@@ -340,10 +347,19 @@ def chai_relative_encoding(
     token_separation = torch.clamp(token[:, None] - token[None, :] + 32, 0, 65)
     token_separation = torch.where(same_residue, token_separation, outside)
 
+    entity = token_features.entity_id.to(torch.int64)
+    same_entity = entity[:, None] == entity[None, :]
+    sym = token_features.sym_id.to(torch.int64)
+    chain_offset = torch.clamp(sym[:, None] - sym[None, :] + 2, 0, 4)
+    chain_offset = torch.where(same_entity, chain_offset, 5)
+    entity_order = torch.clamp(entity[:, None] - entity[None, :] + 1, 0, 2)
+
     return torch.cat(
         [
             F.one_hot(separation, classes),
             F.one_hot(token_separation, classes),
+            F.one_hot(chain_offset, 6),
+            F.one_hot(entity_order, 3),
         ],
         dim=-1,
     ).to(dtype)

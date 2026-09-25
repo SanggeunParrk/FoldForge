@@ -41,7 +41,11 @@ def _language_features(
                 **common,
             )
         }
-    return {"lm_embeddings": language.token_embeddings(name, checkpoint, **common)}
+    return {
+        "lm_embeddings": language.token_embeddings(
+            name, checkpoint, is_protein=tensors["is_protein"].bool(), **common
+        )
+    }
 
 
 def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[Case]:

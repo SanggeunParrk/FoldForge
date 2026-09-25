@@ -78,19 +78,27 @@ def embed_chains(
     aatype: torch.Tensor,
     asym_id: torch.Tensor,
     mask: torch.Tensor,
+    is_protein: torch.Tensor,
     vocab: tuple[str, ...] = ESM2_VOCAB,
 ) -> torch.Tensor:
-    """Return one embedding per token, each chain wrapped and run on its own.
+    """Return one embedding per token, each protein chain wrapped and run on its own.
 
     Every tower wraps a chain as ``[BOS, ids..., EOS]``. Running the chains
     separately rather than packed keeps attention inside a chain without needing
     the tower to honour a sequence id, and the rows come back in token order.
+
+    Only protein chains are embedded; every other token keeps a zero row, as the
+    release gives it. Run on everything, a ligand's atoms went in as a string of
+    unknown residues and came back as a protein's embedding.
     """
     tokens = residue_tokens(aatype, vocab)
     real = mask.to(torch.bool)
+    protein = is_protein.to(torch.bool)
     out: torch.Tensor | None = None
     for chain in torch.unique(asym_id[real]):
         where = real & (asym_id == chain)
+        if not protein[where].any():
+            continue
         ids = tokens[where]
         wrapped = torch.cat(
             [
@@ -105,8 +113,13 @@ def embed_chains(
             out = hidden.new_zeros((aatype.shape[0], hidden.shape[-1]))
         out[where] = hidden.to(out.dtype)
     if out is None:
-        message = "No real token to embed; the mask is empty"
-        raise ValueError(message)
+        if not real.any():
+            message = "No real token to embed; the mask is empty"
+            raise ValueError(message)
+        # No protein chain at all: nothing for the tower to read, and only
+        # its width to learn, from an empty wrapped sequence.
+        width = model(tokens.new_tensor([[BOS, EOS]])).shape[-1]
+        out = torch.zeros((aatype.shape[0], width), device=aatype.device)
     return out
 
 

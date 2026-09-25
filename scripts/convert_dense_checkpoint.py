@@ -72,6 +72,38 @@ def _seed_reference_params(reference: Path) -> None:
     params.read_records = haiku.read_records  # type: ignore[attr-defined]
 
 
+def _unfold_chai1_chain_features(chai1: types.ModuleType) -> None:
+    """Give Chai-1's relative encoding its chain and entity columns back.
+
+    The reference converter folds RelativeChain and RelativeEntity into the
+    projection's bias at their single-chain values (same chain, same entity),
+    which is exact for one protein chain and wrong for every pair across
+    chains in a complex. This wraps its pair-init mapping: the folded constant
+    comes back out of the bias and both features become input columns, in the
+    order ``featurization.chai_relative_encoding`` emits them.
+    """
+    import numpy as np
+
+    original = chai1.map_pair_init
+
+    def map_pair_init(sds: dict, params: dict) -> None:
+        original(sds, params)
+        fe, te = sds["feature_embedding"], sds["token_embedder"]
+        wp = np.asarray(te["token_pair_proj_in_trunk.weight"])
+        half = np.asarray(te["token_single_to_token_pair_outer_sum_proj.weight"])
+        half = half.shape[0] // 2
+        p = np.asarray(fe["input_projs.TOKEN_PAIR.0.weight"])[:half]
+        chain = slice(*chai1.PAIR_COLS["RelativeChain"])
+        entity = slice(*chai1.PAIR_COLS["RelativeEntity"])
+        folded = p[:, chain.start + 2] + p[:, entity.start + 1]
+        scope = params["diffuser/evoformer/~_relative_encoding/position_activations"]
+        extra = wp @ np.concatenate([p[:, chain], p[:, entity]], axis=1)
+        scope["weights"] = np.concatenate([scope["weights"], extra.T], axis=0)
+        scope["bias"] = scope["bias"] - wp @ folded
+
+    chai1.map_pair_init = map_pair_init
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", required=True, choices=MODELS)
@@ -84,6 +116,8 @@ def main() -> int:
     _seed_reference_params(args.reference)
     sys.path.insert(0, str(args.reference))
     converters = importlib.import_module("converters")
+    if args.model == "chai1":
+        _unfold_chai1_chain_features(importlib.import_module("converters.chai1"))
     result = converters.CONVERTERS[args.model](args.checkpoint, args.out)
     print(f"{args.model}: {result}")  # noqa: T201 - CLI output contract
     return 0

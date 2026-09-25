@@ -556,9 +556,13 @@ class AtomCrossAttEncoder(nn.Module):
             pair_act += self.pair_mlp_3(torch.relu(pair_act2))
 
         pair_mask = None
-        if self.spec.same_token_atom_attention:
-            pair_mask = self._same_token_mask(
-                batch, token_atoms_mask, queries_mask, keys_mask
+        if self.spec.same_conformer_atom_attention:
+            # Query/key pairs of one reference conformer, both atoms real. On a
+            # protein that is one token; on a ligand it is every atom of it.
+            pair_mask = (
+                offsets_valid
+                & queries_mask[..., :, None].to(torch.bool)
+                & keys_mask[..., None, :].to(torch.bool)
             )
 
         rope_q = rope_k = None
@@ -624,34 +628,6 @@ class AtomCrossAttEncoder(nn.Module):
             pair_mask=pair_mask,
             rope_q=rope_q,
             rope_k=rope_k,
-        )
-
-    def _same_token_mask(
-        self,
-        batch: feat_batch.Batch,
-        token_atoms_mask: torch.Tensor,
-        queries_mask: torch.Tensor,
-        keys_mask: torch.Tensor,
-    ) -> torch.Tensor:
-        """Query/key atom pairs of one token, both atoms real.
-
-        Built from the gathers the layouts already use: a dense per-atom token
-        index into the queries layout, then into the keys layout.
-        """
-        tokens = torch.arange(
-            token_atoms_mask.shape[-2], device=token_atoms_mask.device
-        )
-        dense = tokens[:, None].expand(token_atoms_mask.shape[-2:])
-        queries_token = atom_layout.convert(
-            batch.atom_cross_att.token_atoms_to_queries, dense, layout_axes=(-2, -1)
-        )
-        keys_token = atom_layout.convert(
-            batch.atom_cross_att.queries_to_keys, queries_token, layout_axes=(-2, -1)
-        )
-        return (
-            (queries_token[..., :, None] == keys_token[..., None, :])
-            & queries_mask[..., :, None].to(torch.bool)
-            & keys_mask[..., None, :].to(torch.bool)
         )
 
 

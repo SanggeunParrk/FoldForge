@@ -494,9 +494,7 @@ OPENFOLD3_PREVIEW2 = replace(
 )
 
 #: Boltz-2. OpenFold3 lineage, with its own input embedder, pair init, template
-#: module, confidence re-embedding and sampler schedule exponent. Its other
-#: sampler constants (gamma_0, gamma_min, noise_scale, step_scale) are AF3's:
-#: the released values moved no fold measurably and were unified.
+#: module and confidence re-embedding. Its sampler is AF3's except sigma_min.
 BOLTZ2 = replace(
     OPENFOLD3_PREVIEW2,
     family="boltz2",
@@ -539,7 +537,11 @@ BOLTZ2 = replace(
     key_masked_atom_attention=True,
     drop_atoms=("OXT",),
     dedupe_self_msa=True,
-    rho=8.0,
+    # Boltz-2's released sampler is Boltz2DiffusionParams (boltz main.py): AF3's
+    # gamma_0/gamma_min/noise_scale/step_scale and rho, with sigma_min 1e-4.
+    # The 0.605/1.107/0.901/rho 8/1.638 set once here is BoltzDiffusionParams --
+    # Boltz-1's -- and made our samples 2.7x tighter than the release's.
+    sigma_min=1e-4,
 )
 
 #: RoseTTAFold3 (RosettaCommons foundry). OpenFold3 lineage by its forward

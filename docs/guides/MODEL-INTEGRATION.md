@@ -403,12 +403,13 @@ two sampler findings:
 
 - **Chai-1's churn window and variance floor are kept.** Without them its
   samples spread 0.55 A against the release's 0.39 A.
-- **Boltz-2 matches its release BETTER on AF3's constants.** With its own
-  gamma_0/gamma_min/noise_scale/step_scale our samples were too tight -- 0.245 A
-  apart with its MSA against the release's 0.665 A; on AF3's they are 0.629 A,
-  and 0.585 A from the release instead of 0.634. Our use of Boltz-2's released
-  sampler constants was therefore not Boltz-2's sampler; worth a look at how
-  its release applies them.
+- **Boltz-2 had Boltz-1's sampler.** The constants on its row (gamma_0 0.605,
+  gamma_min 1.107, noise_scale 0.901, rho 8, step_scale 1.638) are boltz's
+  `BoltzDiffusionParams`; Boltz-2 inference uses `Boltz2DiffusionParams`
+  (boltz `main.py`): AF3's four constants and rho 7, with sigma_min 1e-4. With
+  its MSA our samples were 0.245 A apart against the release's 0.665 A; on the
+  Boltz-2 values they are 0.595 A apart and 0.560 A from the release (0.634
+  before).
 
 Chai-1 after the change: pLDDT 95.44 against the release's 95.11 (95.07
 before), CA 0.43 A from the release against its 0.39 A spread -- the 0.4 pLDDT

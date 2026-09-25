@@ -268,7 +268,7 @@ class ConfidenceHead(nn.Module):
         #: from the trunk. Whether the heads then split by chain and whether
         #: they norm their input are stated separately: ESMFold2 takes this
         #: embedding and does neither.
-        self.reembed_pair = spec.confidence == "boltz2"
+        self.reembed_pair = spec.confidence_reembed_pair
         self.split_heads = spec.confidence_split_heads
         self.pde_symmetrise = spec.pde_symmetrise
 

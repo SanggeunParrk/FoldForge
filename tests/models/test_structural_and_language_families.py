@@ -584,12 +584,12 @@ def test_the_confidence_head_branches_on_facts_not_on_family_names():
     assert named("confidence_global_norm") == {"rosettafold3"}
     assert named("confidence_centre_dgram") == {"rosettafold3"}
 
-    # ...and the head no longer decides anything by a family's name, except the
-    # one comparison that genuinely selects which embedding was trained.
+    # ...and the head decides nothing by a family's name: the one structural
+    # choice (re-embedding the pair) is a boolean of its own.
     head = (
         _pathlib.Path(__file__).resolve().parents[2]
         / "src/foldforge/modules/dense/head.py"
     )
     source = head.read_text()
     names = [n for n in SPECS if f'== "{n}"' in source]
-    assert names == ["boltz2"]
+    assert names == []

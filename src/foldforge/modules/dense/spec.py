@@ -165,11 +165,12 @@ class DenseSpec:
     #: Which NAMES the confidence head's weights were written under. The head
     #: itself is chosen by `confidence`; this is a rename of its records.
     confidence_records: str = "af3"
-    #: Which confidence embedding the weights were trained with. This selects
-    #: a STRUCTURE -- whether the pair is re-embedded from the inputs or read
-    #: from the trunk. Everything a family does on top of that is a field of
-    #: its own below, so the head never branches on a family's name.
-    confidence: str = "af3"
+    #: The confidence head re-embeds the pair from the inputs (Boltz lineage)
+    #: rather than reading the trunk's. Everything a family does on top of that
+    #: is a field of its own below. This was once a string naming each family's
+    #: head; only "boltz2" was ever read -- resetting "chai1", "rf3" or
+    #: "protenix2" left PAE, PDE and pLDDT bit-identical.
+    confidence_reembed_pair: bool = False
     #: The trunk inputs are normalised over the WHOLE tensor of real tokens
     #: before the head reads them, rather than per position.
     confidence_global_norm: bool = False
@@ -524,7 +525,7 @@ BOLTZ2 = replace(
     template_heads=4,
     template_qkv_dim=32,
     template_transition_factor=4,
-    confidence="boltz2",
+    confidence_reembed_pair=True,
     msa_double_add=True,
     msa_update_before_opm=True,
     distogram_bias=True,
@@ -563,7 +564,6 @@ ROSETTAFOLD3 = replace(
     use_input_templates=False,
     template_qkv_dim=64,
     template_transition_factor=4,
-    confidence="rf3",
     confidence_global_norm=True,
     confidence_centre_dgram=True,
     opm_projection_bias=True,
@@ -624,7 +624,6 @@ CHAI1 = replace(
     template_feature_bias=True,
     template_present_denominator=True,
     template_coverage_mask=True,
-    confidence="chai1",
     confidence_dual_output=True,
     confidence_dgram=(3.375, 21.375, 16),
     plddt_atom_slots=37,
@@ -695,7 +694,6 @@ PROTENIX2 = replace(
     distogram_bias=True,
     template="protenix2",
     template_heads=2,
-    confidence="protenix2",
     pde_symmetrise="pair",
     confidence_single_clamp=True,
     confidence_raw_distance=True,
@@ -785,7 +783,7 @@ ESMFOLD2 = replace(
     dedupe_self_msa=True,
     ref_conformers="esmfold2",
     language_model="esmc",
-    confidence="boltz2",
+    confidence_reembed_pair=True,
     confidence_learned_bins=39,
     single_cond_layout="esm",
     atom_adaptive_identity_scale=True,

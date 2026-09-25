@@ -160,9 +160,11 @@ class ConfidenceReembedding(nn.Module):
         learned_bins: int | None = None,
         esm_classes: bool = False,
         chain_bucket_on_same_chain: bool = False,
+        symmetric_bonds: bool = False,
     ) -> None:
         super().__init__()
         self.esm_classes = esm_classes
+        self.symmetric_bonds = symmetric_bonds
         self.chain_bucket_on_same_chain = chain_bucket_on_same_chain
         if esm_classes:
             c_target_feat += 4
@@ -203,7 +205,7 @@ class ConfidenceReembedding(nn.Module):
         inputs = self.s_inputs_norm(target_feat)
         single = self.s_norm(single) + self.s_input_to_s(inputs)
 
-        bonds = token_bond_types(batch)
+        bonds = token_bond_types(batch, symmetric=self.symmetric_bonds)
         pair = self.z_norm(pair)
         pair = pair + self.rel_pos_project(
             featurization.create_relative_encoding(
@@ -387,6 +389,7 @@ class ConfidenceHead(nn.Module):
                 learned_bins=self.spec.confidence_learned_bins,
                 esm_classes=self.spec.single_cond_layout == "esm",
                 chain_bucket_on_same_chain=self.spec.chain_bucket_on_same_chain,
+                symmetric_bonds=self.spec.symmetric_bonds,
             )
         else:
             self.left_target_feat_project = nn.Linear(

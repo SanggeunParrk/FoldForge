@@ -414,6 +414,8 @@ class Evoformer(nn.Module):
             [gather_idxs_polymer_ligand, gather_idxs_ligand_ligand]
         )
         contact_matrix[gather_idxs[:, 0], gather_idxs[:, 1]] = 1.0
+        if self.spec.symmetric_bonds:
+            contact_matrix[gather_idxs[:, 1], gather_idxs[:, 0]] = 1.0
 
         # Because all the padded index's are 0's.
         contact_matrix[0, 0] = 0.0
@@ -424,7 +426,7 @@ class Evoformer(nn.Module):
         if self.spec.bond_type_and_contact_init:
             # Both terms contribute on EVERY pair: bond order 0 and the unspecified
             # contact class are learned vectors, not zeros.
-            bond_types = token_bond_types(batch)
+            bond_types = token_bond_types(batch, symmetric=self.spec.symmetric_bonds)
             pair_activations = pair_activations + self.token_bonds_type_embed(
                 nn.functional.one_hot(bond_types, 7).to(pair_activations.dtype)
             )

@@ -23,6 +23,14 @@ class DenseSpec:
     diffusion_pair_channel: int = 128
     #: Heads of every pair-axis attention: trunk, MSA stack, templates, confidence.
     pair_heads: int = 4
+    #: A bond sets both [i, j] and [j, i] of the token bond matrix. AF3 sets only
+    #: the one direction its featurisation lists, and trained on that; the
+    #: OpenFold3 lineage (Protenix, Boltz-2, RoseTTAFold3, OpenDDE) trained on the
+    #: symmetric matrix. Unifying it once cost nothing on protein pLDDT or CA RMSD
+    #: and broke every ligand: 3PTB's benzamidine bonds went from 0.01 A to
+    #: 0.8 A RMS off ideal on protenix2 (release 0.01 A). Score ligands by their
+    #: bond geometry, not by the protein around them.
+    symmetric_bonds: bool = False
     #: The vendor's single conditioning spans 833 channels: its restype and profile
     #: blocks carry one class AF3 lacks, re-inserted as zero columns before the norm.
     padded_single_cond: bool = False
@@ -477,6 +485,7 @@ INTELLIFOLD2 = replace(
 OPENBIND0 = replace(
     ALPHAFOLD3,
     family="openbind0",
+    symmetric_bonds=True,
     padded_single_cond=True,
     centre_ref_conformers=True,
 )

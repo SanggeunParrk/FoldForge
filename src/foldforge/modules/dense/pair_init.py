@@ -16,24 +16,32 @@ BOND_SINGLE = 1
 BOND_COVALENT = 5
 
 
-def token_bond_types(batch: feat_batch.Batch) -> torch.Tensor:
+def token_bond_types(batch: feat_batch.Batch, *, symmetric: bool) -> torch.Tensor:
     """(tokens, tokens) bond-order classes for the token bond type embedding.
 
     Polymer-ligand links are covalent by construction. Ligand-ligand rows mix a
-    residue's own bond graph with inter-residue links; the featurised batch carries
-    no bond order, so they are written as single bonds.
+    residue's own bond graph with inter-residue links, and take the orders
+    ``bond_orders`` recorded at featurisation; without them they are written as
+    single bonds, which reads every aromatic ring as saturated. ``symmetric`` writes
+    each bond in both directions, as DenseSpec.symmetric_bonds describes.
     """
     tokens = batch.token_features.token_index.shape[0]
     device = batch.token_features.token_index.device
     matrix = torch.zeros((tokens, tokens), dtype=torch.int64, device=device)
+    ligand = batch.ligand_ligand_bond_info
     for gather, code in (
         (batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds, BOND_COVALENT),
-        (batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds, BOND_SINGLE),
+        (
+            ligand.tokens_to_ligand_ligand_bonds,
+            BOND_SINGLE if ligand.bond_order is None else ligand.bond_order,
+        ),
     ):
         valid = gather.gather_mask.prod(dim=1).to(torch.int64)
         index = gather.gather_idxs.to(torch.int64) * valid[:, None]
-        value = (code + 1) * valid
+        value = (torch.as_tensor(code, device=device).to(torch.int64) + 1) * valid
         matrix[index[:, 0], index[:, 1]] = value
+        if symmetric:
+            matrix[index[:, 1], index[:, 0]] = value
     # Every padded bond row points at [0, 0].
     matrix[0, 0] = 0
     return matrix

@@ -81,7 +81,7 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         json.dumps(payload), json_path=args.input
     )
     ccd = database.af3_ccd(user_ccd=fold_input.user_ccd)
-    from foldforge.data.features import structural_tokens
+    from foldforge.data.features import bond_orders, structural_tokens
     from foldforge.models.bucketing import TOKEN_SHAPES, bucket_af3
     from foldforge.models.loading import resolve_family
     from foldforge.modules.dense.spec import SPECS
@@ -94,10 +94,13 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         args.model, args.variant if args.model == "protenix" else None
     )
     with (
-        structural_tokens.capture_layouts()
-        if SPECS[family or "alphafold3"].structural_tokens
-        else contextlib.nullcontext([])
-    ) as captures:
+        (
+            structural_tokens.capture_layouts()
+            if SPECS[family or "alphafold3"].structural_tokens
+            else contextlib.nullcontext([])
+        ) as captures,
+        bond_orders.capture(ccd) as orders,
+    ):
         examples = list(
             featurisation.featurise_input(
                 fold_input,
@@ -130,6 +133,7 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         zip(fold_input.rng_seeds, examples, strict=True)
     ):
         example = dense_conventions.apply(raw_example, model.spec)
+        example[bond_orders.KEY] = orders[example_index]
         bucket_shape = None
         if args.execution.bucketing:
             example, bucket_shape = bucket_af3(example)

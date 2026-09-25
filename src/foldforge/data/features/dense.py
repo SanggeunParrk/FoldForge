@@ -17,6 +17,7 @@ from typing import Any, Self
 
 import torch
 
+from foldforge.data.features import bond_orders
 from foldforge.modules.dense import atom_layout
 
 type BatchDict = dict[str, torch.Tensor]
@@ -296,6 +297,10 @@ class LigandLigandBondInfo:
     """Contains information about the location of ligand-ligand bonds."""
 
     tokens_to_ligand_ligand_bonds: atom_layout.GatherInfo
+    #: One bond-order code per gather row (see ``bond_orders``), for the family
+    #: that embeds bond orders. AF3's featurisation publishes none; absent, every
+    #: ligand bond reads as single.
+    bond_order: torch.Tensor | None = None
 
     @classmethod
     def from_data_dict(cls, batch: BatchDict) -> Self:
@@ -303,15 +308,18 @@ class LigandLigandBondInfo:
         return cls(
             tokens_to_ligand_ligand_bonds=atom_layout.GatherInfo.from_dict(
                 batch, key_prefix="tokens_to_ligand_ligand_bonds"
-            )
+            ),
+            bond_order=batch.get(bond_orders.KEY),
         )
 
     def as_data_dict(self) -> BatchDict:
         """Convert to data dict."""
+        orders = {} if self.bond_order is None else {bond_orders.KEY: self.bond_order}
         return {
             **self.tokens_to_ligand_ligand_bonds.as_dict(
                 key_prefix="tokens_to_ligand_ligand_bonds"
-            )
+            ),
+            **orders,
         }
 
 

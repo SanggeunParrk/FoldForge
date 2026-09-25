@@ -146,3 +146,52 @@ def test_masked_global_norm_ignores_padding_and_counts_missing_columns():
     full = torch.cat([real, torch.zeros(5, 2)], dim=-1)
     reference = (real - full.mean()) / (full.var(unbiased=False) + 1e-5).sqrt()
     torch.testing.assert_close(wider, reference)
+
+
+def test_openfold3_lineage_writes_each_bond_both_ways():
+    """AF3 trained on one direction, the OpenFold3 lineage on both.
+
+    Unifying this moved no protein metric and broke every ligand's bond
+    geometry (3PTB's benzamidine: 0.01 A to 0.8 A RMS off ideal on protenix2).
+    """
+    from types import SimpleNamespace
+
+    from foldforge.modules.dense.pair_init import BOND_SINGLE, token_bond_types
+
+    def gather(pairs: list[list[int]]) -> SimpleNamespace:
+        return SimpleNamespace(
+            gather_idxs=torch.tensor(pairs), gather_mask=torch.ones(len(pairs), 2)
+        )
+
+    batch = SimpleNamespace(
+        token_features=SimpleNamespace(token_index=torch.arange(4)),
+        polymer_ligand_bond_info=SimpleNamespace(
+            tokens_to_polymer_ligand_bonds=gather([[0, 0]])
+        ),
+        ligand_ligand_bond_info=SimpleNamespace(
+            tokens_to_ligand_ligand_bonds=gather([[2, 3]]), bond_order=None
+        ),
+    )
+    one_way = token_bond_types(batch, symmetric=False)
+    both = token_bond_types(batch, symmetric=True)
+    assert one_way[2, 3] == both[2, 3] == both[3, 2] == BOND_SINGLE + 1
+    assert one_way[3, 2] == 0
+
+    from foldforge.data.features.bond_orders import AROMATIC
+
+    ordered = SimpleNamespace(
+        **{
+            **vars(batch),
+            "ligand_ligand_bond_info": SimpleNamespace(
+                tokens_to_ligand_ligand_bonds=gather([[2, 3]]),
+                bond_order=torch.tensor([AROMATIC]),
+            ),
+        }
+    )
+    # A ring bond written as single reads benzene as cyclohexane (Boltz-2 then
+    # builds 1.52 A ring bonds); the recorded order must reach the matrix.
+    assert token_bond_types(ordered, symmetric=True)[3, 2] == AROMATIC + 1
+
+    lineage = ("protenix1", "protenix2", "boltz2", "rosettafold3", "opendde")
+    assert all(SPECS[family].symmetric_bonds for family in lineage)
+    assert not ALPHAFOLD3.symmetric_bonds

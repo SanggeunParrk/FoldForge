@@ -94,7 +94,8 @@ def read_cif(path: Path, plddt: float | None = None) -> Structure:
         atom = row[ix["label_atom_id"]].strip('"')
         element = row[ix["type_symbol"]].upper() if "type_symbol" in ix else atom[0]
         xyz = [float(row[ix[k]]) for k in ("Cartn_x", "Cartn_y", "Cartn_z")]
-        bfactors.append(float(row[ix["B_iso_or_equiv"]]))
+        if len(row) > ix["B_iso_or_equiv"]:  # Chai-lab writes short ion rows
+            bfactors.append(float(row[ix["B_iso_or_equiv"]]))
         if element == "H":
             continue
         is_polymer = row[0] == "ATOM" and not (atom == "CA" and element == "CA")

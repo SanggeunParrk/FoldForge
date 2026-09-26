@@ -46,7 +46,9 @@ def bfactor_plddt(path: Path) -> float:
             cols.append(line.strip().split(".", 1)[1])
         elif cols and line.startswith(("ATOM", "HETATM")):
             row = shlex.split(line)
-            values.append(float(row[cols.index("B_iso_or_equiv")]))
+            index = cols.index("B_iso_or_equiv")
+            if len(row) > index:  # Chai-lab writes short rows for ions
+                values.append(float(row[index]))
     b = np.asarray(values)
     return float(b.mean() * (100 if b.max() <= 1 else 1))
 

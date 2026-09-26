@@ -518,10 +518,13 @@ Still open:
   live at the release's magnitude, yet moved nothing measurable: 5I28 pLDDT
   72.43 against the release's 72.93 (CA 2.17 A from it, spread 2.23), 3PTB
   and 1A1K as before. It is kept because it is the release's input.
-- **RoseTTAFold3 on 1A1K** spreads 1.07 A between samples against the
-  release's 0.31, at matching pLDDT (84.5 / 84.6). Chirality is not it; one
-  denoiser step at t = 4 on the release's exact input differs by 0.19 A on
-  protein atoms against a 44 A step, which the release's bf16 may account for.
+- ~~RoseTTAFold3 on 1A1K spreads 1.07 A against 0.31~~ -- **sampling noise**.
+  Two of our five samples took another zinc-finger conformation. Over fifteen
+  samples each (three seeds), the release does the same: 2 of 15 samples sit
+  1.46 and 1.59 A from its medoid, ours 2 of 15 at 1.32 and 1.58, the rest
+  0.2-0.3 A in both; pLDDT 84.64 against 84.52. Precision was not it either
+  (bf16, AF3's mixed policy and fp32 give 1.07 alike). Five samples cannot
+  tell a 13% mode apart from none.
 - ~~Protenix on 1A1K~~ -- **resolved**, see "Protenix on 1A1K: two inference
   conventions" below.
 - The Protenix control must write identical ions as ONE entry with a count.

@@ -212,6 +212,12 @@ placement, each relative to the release's own seed-to-seed spread -- and the
 current verdicts are in [docs/validation/](docs/validation/). See
 [outputs/README.md](outputs/README.md) to regenerate or extend them.
 
+Today 27 of 28 family x target rows pass in both modes. The one exception,
+OpenDDE's pLDDT on 5I28 (68.4 against 71.1, structure passing), is the
+reference conformer source, not the model: with the release's conformer it
+reads 70.9. The [validation notes](docs/validation/README.md) list the rule for
+each check and the defects the comparison found.
+
 ### Checkpoints
 
 Converted blobs are pinned by SHA-256 in

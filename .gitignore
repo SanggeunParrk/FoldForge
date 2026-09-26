@@ -9,6 +9,9 @@ model_checkpoints
 # the code does not.
 benchmark/
 validation
+# ...except the verdicts against the released implementations, which the README
+# links: they describe the code, and change only when the code does.
+!docs/validation
 # outputs/ is NOT ignored: it holds the released implementations' reference
 # structures FoldForge is validated against (see outputs/README.md).
 logs/

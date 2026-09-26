@@ -75,6 +75,7 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     steps: int = 200,
     implementation: str | None = None,
     precision_policy: str | None = None,
+    mode: str = "fast",
 ) -> torch.nn.Module:
     """Strictly load weights, then apply the same declared inference contract."""
     if implementation is not None:
@@ -106,6 +107,9 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         }[name]
         checkpoint = resolve(name, filename)
     checkpoint = Path(checkpoint)
+    from foldforge.models.checkpoints.lock import check_size
+
+    check_size(checkpoint)
     package, _, symbol = spec.architecture.rpartition(".")
     architecture = getattr(import_module(package), symbol)
     report = {"checkpoint": str(checkpoint), "strict": True}
@@ -114,9 +118,9 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         message = f"{name} has no loader: every family is a row of the dense graph"
         raise NotImplementedError(message)
     from foldforge.models.checkpoints.haiku import import_jax_weights_
-    from foldforge.modules.dense.spec import SPECS
+    from foldforge.modules.dense.spec import spec_for
 
-    dense_spec = SPECS[family or "alphafold3"]
+    dense_spec = spec_for(family or "alphafold3", mode)
     override = os.environ.get("FOLDFORGE_DENSE_SPEC_OVERRIDE")
     if override:
         # Porting aid: flip forward conventions of a family to price each one.
@@ -130,6 +134,7 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         spec=dense_spec,
     )
     report["family"] = dense_spec.family
+    report["mode"] = mode
     report.update(
         import_jax_weights_(model, checkpoint, preserve_dtype=True)
         if precision_policy == "af3_default"

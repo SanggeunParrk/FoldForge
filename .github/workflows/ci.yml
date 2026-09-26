@@ -1,0 +1,56 @@
+# Lint and CPU tests on every push and pull request.
+#
+# GPU tests (about 180 of them skip here) and the release-reference validation
+# need an A100 and run on the cluster:
+#   sbatch runs/.../tests.sbatch             (full GPU suite)
+#   scripts/references/validate.sh fast      (fold vs outputs/, then
+#   foldforge validate runs/validate-fast)
+# The test job needs read access to the private team-gm and miniworld-engine
+# repositories: add a deploy key that can read both as the repository secret
+# FOLDFORGE_CI_SSH_KEY. Without it the job is skipped, not failed.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: ruff check
+        run: uvx ruff@0.15.22 check src tests scripts
+      - name: ruff format
+        run: uvx ruff@0.15.22 format --check src tests scripts
+
+  test-cpu:
+    runs-on: ubuntu-latest
+    env:
+      HAS_KEY: ${{ secrets.FOLDFORGE_CI_SSH_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.HAS_KEY == 'true'
+      - uses: webfactory/ssh-agent@v0.9.0
+        if: env.HAS_KEY == 'true'
+        with:
+          ssh-private-key: ${{ secrets.FOLDFORGE_CI_SSH_KEY }}
+      - name: submodules
+        if: env.HAS_KEY == 'true'
+        run: git submodule update --init --recursive
+      - uses: astral-sh/setup-uv@v6
+        if: env.HAS_KEY == 'true'
+        with:
+          python-version: "3.12"
+      - name: install
+        if: env.HAS_KEY == 'true'
+        run: uv sync --extra cu12 --group dev --frozen
+      - name: pytest (CPU; GPU tests skip)
+        if: env.HAS_KEY == 'true'
+        run: uv run pytest tests -q -rs

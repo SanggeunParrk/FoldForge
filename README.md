@@ -186,6 +186,39 @@ foldforge fold esmfold2 --spec configs/inference/1ubq.yaml --out runs/esmfold2
 actual precision, sampling, compile and CUDA-graph settings. Every family
 reads the MiniWorld BioMol LMDB at `data/ccd/preprocessed_CCD.lmdb`.
 
+### Exact and fast modes
+
+Every family folds in one of two modes, chosen with `mode:` in the config:
+
+- **`fast`** (default) runs AF3's computation wherever a release's own
+  computation folds the same -- every such convention was reset one at a time
+  against its release and moved no fold beyond the release's own spread.
+- **`exact`** keeps every one of those release conventions as well
+  (`EXACT_CONVENTIONS` in `modules/dense/spec.py`): key-window end policies,
+  the OR-form atom mask, outer-product-mean normalisations, template details,
+  the empty MSA context, the atoms a release drops. Use it to compare a fold
+  with its release computation for computation.
+
+Conventions a release NEEDS -- its bond matrix, its bond orders, its MC
+dropout, its ligand atom names and so on -- are in both modes.
+
+### Accuracy against the released implementations
+
+`outputs/` holds, for three reference targets (protein; protein + ligand +
+ion; DNA + protein + ions), every family's structures from its **own released
+code**, three seeds of five samples. `foldforge validate` judges a FoldForge
+run against them -- structure, pLDDT, ligand bond geometry and ligand/ion
+placement, each relative to the release's own seed-to-seed spread -- and the
+current verdicts are in [docs/validation/](docs/validation/). See
+[outputs/README.md](outputs/README.md) to regenerate or extend them.
+
+### Checkpoints
+
+Converted blobs are pinned by SHA-256 in
+`src/foldforge/models/checkpoints/checkpoints.lock`. Loading refuses a blob
+whose size does not match (a blob from another converter version);
+`foldforge checkpoints verify` checks the hashes.
+
 See [MiniWorld formats](docs/guides/MINIWORLD-FORMAT.md) for database migration,
 nested model settings, data conventions and checkpoint-specific capabilities.
 

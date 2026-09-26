@@ -1,9 +1,9 @@
 """Run the released ESMFold2 (transformers + esm) on a reference input.
 
 Usage: esmfold2_run.py BOLTZ_YAML OUT_DIR SEED. Reads the Boltz-style YAML the
-other references use, folds it with three loops (the checkpoint's own
-default), 200 steps and five samples, and writes sample_<i>.cif with pLDDT
-in the B-factors.
+other references use, folds it with three loops and LM dropout 0.25 (the
+checkpoint's own defaults), 200 steps and five samples, and writes
+sample_<i>.cif with pLDDT in the B-factors.
 """
 
 import sys
@@ -32,11 +32,15 @@ for entry in yaml.safe_load(spec_path.read_text())["sequences"]:
         sequences.append(LigandInput(id=body["id"], ccd=[body["ccd"]]))
     else:
         sequences.append(kinds[kind](id=body["id"], sequence=body["sequence"]))
-model = (
-    ESMFold2Model.from_pretrained(str(ROOT / "model_checkpoints/esmfold2"))
-    .cuda()
-    .eval()
+# The Hugging Face cache copy of biohub/ESMC-6B does not match ESMCModel's keys:
+# from_pretrained silently leaves every language-model weight randomly
+# initialised, and the fold still runs (pLDDT ~29 instead of ~90). Load the
+# local ESM-C explicitly.
+model = ESMFold2Model.from_pretrained(
+    str(ROOT / "model_checkpoints/esmfold2"), load_esmc=False
 )
+model.load_esmc(str(ROOT / "model_checkpoints/esmc-6b"))
+model = model.cuda().eval()
 builder = ESMFold2InputBuilder()
 with torch.no_grad():
     results = builder.fold(
@@ -46,6 +50,9 @@ with torch.no_grad():
         num_sampling_steps=200,
         num_diffusion_samples=5,
         seed=seed,
+        # The checkpoint's own inference setting (config lm_encoder.lm_dropout,
+        # per loop). fold() otherwise imposes 0.3, its paper-evaluation value.
+        lm_dropout=0.25,
     )
 for i, result in enumerate(results):
     (out / f"sample_{i}.cif").write_text(result.complex.to_mmcif())

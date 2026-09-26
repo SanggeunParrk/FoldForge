@@ -39,6 +39,47 @@ def clear_native_compute_override(model: Any, dtype: Any) -> None:
             layer.compute_dtype = None
 
 
+def reorder_esm_nucleic_columns(model: Any) -> int:
+    """Give each AF3 nucleic class the ESMFold2 weights of ITS base.
+
+    The converted trunk projections read ESMFold2's classes 23..31 onto AF3's
+    nucleic columns 22..30 in order. The two orders differ -- ESMFold2 puts the
+    unknown ribonucleotide between RNA and DNA -- so every DNA column held the
+    weights of the base before it. Corrected here rather than in the locked blob.
+    """
+    import torch
+
+    from foldforge.modules.dense.featurization import (
+        AF3_NUCLEIC_IN_ESM_ORDER,
+    )
+
+    source = list(range(31))
+    for rank, af3_class in enumerate(AF3_NUCLEIC_IN_ESM_ORDER):
+        source[af3_class] = 22 + rank  # the column the converter gave ESM class 23+rank
+    fixed = 0
+    evoformer = model.evoformer
+    # Restype and profile blocks of the 447-wide target feature; the one-hot of
+    # the MSA rows.
+    targets = {
+        "left_single": (0, 31),
+        "right_single": (0, 31),
+        "single_activations": (0, 31),
+        "extra_msa_target_feat": (0, 31),
+        "msa_activations": (0,),
+    }
+    with torch.no_grad():
+        for name, offsets in targets.items():
+            layer = getattr(evoformer, name, None)
+            if layer is None:
+                continue
+            weight = layer.weight
+            for offset in offsets:
+                block = weight[:, offset : offset + 31].clone()
+                weight[:, offset : offset + 31] = block[:, source]
+                fixed += 1
+    return fixed
+
+
 def resolve_family(
     name: str, variant: str | None = None
 ) -> tuple[str | None, str | None]:
@@ -140,6 +181,8 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         if precision_policy == "af3_default"
         else import_jax_weights_(model, checkpoint)
     )
+    if dense_spec.single_cond_layout == "esm":
+        report["esm_nucleic_columns"] = reorder_esm_nucleic_columns(model)
 
     setattr(model, "foldforge_load_report", report)  # noqa: B010 - runtime metadata
     from team_gm.modules.checkpoints.af_family import configure_model

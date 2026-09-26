@@ -61,6 +61,15 @@ def json_plddt(path: Path) -> float | None:
     return float(np.mean(json.loads(found[0].read_text())["atom_plddts"]) * 100)
 
 
+def summary_plddt(path: Path) -> float | None:
+    """OpenDDE writes zero B-factors; its summary JSON holds the mean pLDDT."""
+    index = sample_index(path)
+    found = sorted(path.parent.glob(f"*_summary_confidence_sample_{index}.json"))
+    if not found:
+        return None
+    return float(json.loads(found[0].read_text())["plddt"])
+
+
 def main() -> None:
     family, target = sys.argv[1], sys.argv[2]
     seed, raw = int(sys.argv[3]), Path(sys.argv[4])
@@ -76,7 +85,9 @@ def main() -> None:
     for i, cif in enumerate(cifs):
         with gzip.open(dest / f"sample{i}.cif.gz", "wb", compresslevel=9) as fh:
             fh.write(cif.read_bytes())
-        plddt = json_plddt(cif) if family == "intellifold2" else None
+        plddt = {"intellifold2": json_plddt, "opendde": summary_plddt}.get(
+            family, lambda _: None
+        )(cif)
         if plddt is None:
             plddt = bfactor_plddt(cif)
         samples.append(

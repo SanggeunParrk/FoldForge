@@ -550,6 +550,17 @@ class Evoformer(nn.Module):
         )
         if self.spec.recycle_from_initial and first_pass:
             recycled = pair_activations
+        if self.spec.ssm_random_init and first_pass:
+            # The release starts its recurrent state from truncated-normal
+            # noise (std sqrt(2 / 5c), cut at 3 std), not zeros; the decay
+            # carries it through every pass. Drawn from the trunk seed.
+            std = (2.0 / (5.0 * pair_activations.shape[-1])) ** 0.5
+            recycled = torch.nn.init.trunc_normal_(
+                torch.empty_like(pair_activations, dtype=torch.float32),
+                std=std,
+                a=-3 * std,
+                b=3 * std,
+            ).to(pair_activations.dtype)
         projected = self.prev_embedding(
             self.prev_embedding_layer_norm(pair_activations)
         )

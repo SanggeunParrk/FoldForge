@@ -8,7 +8,7 @@
 #SBATCH --mem=96G
 #SBATCH --time=01:30:00
 #SBATCH --job-name=ff-refs-x
-#SBATCH --array=0-11%1
+#SBATCH --array=3-11%1
 #SBATCH --output=runs/references-raw/logs/x_%A_%a.log
 #SBATCH --error=runs/references-raw/logs/x_%A_%a.err
 set -euo pipefail

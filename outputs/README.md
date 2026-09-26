@@ -64,8 +64,14 @@ isolated `pip install --target` of that release's pinned dependencies) and
 - OpenDDE's release cannot featurise any input with a ligand or ion (its
   template featuriser raises `map_to_standard` even with templates off), so it
   has `5i28` alone.
-- ESMFold2's release fails 1A1K seed 0 inside its own rigid align (the SVD does
-  not converge); that seed is absent.
+- ESMFold2 loads its ESM-C tower from `model_checkpoints/esmc-6b`:
+  `ESMFold2Model.from_pretrained` otherwise pulls `biohub/ESMC-6B` from the
+  Hugging Face cache, whose keys do not match, and leaves every ESM-C weight
+  randomly initialised with only a warning. The release still folds, at pLDDT
+  ~29 on 5I28 instead of ~92, and its rigid align's SVD fails on some seeds.
+  Grep a release log for "newly initialized" before trusting it.
+- ESMFold2 runs with the checkpoint's own LM dropout (0.25 per loop);
+  `ESMFold2InputBuilder.fold` would impose 0.3, its paper-evaluation value.
 - Chai-lab with RDKit >= 2025 fails to tokenise every ligand and folds the
   protein alone without an error; pin `rdkit==2024.9.5`.
 - Protenix reads identical ions as separate entities unless they are one entry

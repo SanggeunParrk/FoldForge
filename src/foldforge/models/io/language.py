@@ -121,11 +121,17 @@ def pair_representation(
     def batched(x: torch.Tensor) -> torch.Tensor:
         return x[None] if x.ndim == 1 else x
 
+    # The tower reads its OWN alphabet. Handing it the structure-side residue
+    # types verbatim folded every ESMFold2 input on a scrambled sequence
+    # (alanine read as <cls>, cysteine as leucine): layer-0 correlation 0.13
+    # against the release, and a fold that still ran.
+    vocab, _ = _TOWERS[name]
+    tokens = lm.residue_tokens(aatype, vocab)
     try:
         with torch.no_grad():
             hidden = tower.compute_lm_hidden_states(
                 model,
-                batched(aatype),
+                batched(tokens),
                 batched(asym_id),
                 batched(residue_index),
                 batched(is_protein),

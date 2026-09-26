@@ -367,9 +367,16 @@ def chai_relative_encoding(
 
 #: AF3's polymer classes: 20 residues, UNK, the gap, then the nucleic acids.
 _AF3_POLYMER_CLASSES = 31
-#: ESMFold2's: slot 0 unused, 1 the gap, 2..22 the residues and UNK, 23..31 the
-#: nucleic acids, 32 the unknown deoxyribonucleotide AF3's block does not carry.
+#: ESMFold2's: slot 0 unused, 1 the gap, 2..22 the residues and UNK, 23..26 the
+#: ribonucleotides, 27 the unknown one, 28..31 the deoxyribonucleotides, 32 the
+#: unknown deoxyribonucleotide AF3's block does not carry.
 _ESM_POLYMER_CLASSES = 33
+#: AF3's nucleic block reads A G C U DA DG DC DT N (classes 22..30); ESMFold2's
+#: reads A G C U N DA DG DC DT. This is AF3's order re-laid in ESMFold2's, as
+#: indices into AF3's classes. Taken in AF3's order instead, every DNA base
+#: reads as the class below it (DA as N, DG as DA, ...) and 1A1K's duplex
+#: folded 9.9 A from the release's while no protein fold moved.
+AF3_NUCLEIC_IN_ESM_ORDER = (22, 23, 24, 25, 30, 26, 27, 28, 29)
 
 
 def widen_to_esm_classes(features: torch.Tensor) -> torch.Tensor:
@@ -377,18 +384,18 @@ def widen_to_esm_classes(features: torch.Tensor) -> torch.Tensor:
 
     The widening is a PERMUTATION, not a shift: ESMFold2 puts the gap at class
     one, BELOW the residues, where AF3 puts it at 21 between UNK and the nucleic
-    acids. Padding with two leading zeros instead puts AF3's gap column on the
-    first NUCLEIC class and shifts every nucleic class down one -- which no
-    single-sequence protein fold can see, since both the gap column and the
-    nucleic columns are then identically zero.
+    acids, and it puts the unknown ribonucleotide BETWEEN the RNA and DNA bases,
+    where AF3 puts it last. A shift misreads every nucleic class, which no
+    single-sequence protein fold can see.
 
     ``features`` is (..., 447): restype, profile, deletion mean, token act.
     """
     n = _AF3_POLYMER_CLASSES
     zero = torch.zeros_like(features[..., :1])
+    nucleic = list(AF3_NUCLEIC_IN_ESM_ORDER)
 
     def widen(block: torch.Tensor) -> list[torch.Tensor]:
-        return [zero, block[..., 21:22], block[..., :21], block[..., 22:n], zero]
+        return [zero, block[..., 21:22], block[..., :21], block[..., nucleic], zero]
 
     return torch.concatenate(
         [

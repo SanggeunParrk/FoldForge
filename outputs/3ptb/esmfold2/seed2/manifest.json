@@ -6,27 +6,27 @@
   {
    "file": "sample0.cif.gz",
    "source": "sample_0.cif",
-   "mean_plddt": 27.068
+   "mean_plddt": 98.157
   },
   {
    "file": "sample1.cif.gz",
    "source": "sample_1.cif",
-   "mean_plddt": 28.1
+   "mean_plddt": 98.165
   },
   {
    "file": "sample2.cif.gz",
    "source": "sample_2.cif",
-   "mean_plddt": 28.232
+   "mean_plddt": 98.153
   },
   {
    "file": "sample3.cif.gz",
    "source": "sample_3.cif",
-   "mean_plddt": 27.669
+   "mean_plddt": 98.146
   },
   {
    "file": "sample4.cif.gz",
    "source": "sample_4.cif",
-   "mean_plddt": 27.769
+   "mean_plddt": 98.159
   }
  ]
 }

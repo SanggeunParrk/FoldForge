@@ -39,6 +39,14 @@ class DenseSpec:
     #: release's seeds fold differently from ours: on 1A1K seed 101 it moved
     #: v2's pLDDT from 78 to 86 with the confidence head unchanged.
     recycle_mc_dropout: tuple[float, float] | None = None
+    #: Each centred reference conformer gets a random rotation and a <= 1 A
+    #: shift at inference, as the Protenix-lineage featuriser applies it
+    #: (``ref_pos_augment``); drawn from the trunk seed.
+    random_ref_pose: bool = False
+    #: The SSM recycle's state starts from truncated-normal noise rather than
+    #: zeros (ESMFold2's _init_pair_state). Missed, our ESMFold2 was 8 pLDDT
+    #: more confident on 5I28 than its release, with the head exactly its own.
+    ssm_random_init: bool = False
     #: The vendor's single conditioning spans 833 channels: its restype and profile
     #: blocks carry one class AF3 lacks, re-inserted as zero columns before the norm.
     padded_single_cond: bool = False
@@ -783,9 +791,18 @@ OPENDDE = replace(
     family="opendde",
     # Its trunk recycles plainly; the MC dropout is Protenix's alone.
     recycle_mc_dropout=None,
+    # Its featuriser poses every reference conformer at random at inference,
+    # and its atom encoder reads ref_pos through a Linear: without the pose
+    # 5I28 read 73.0 pLDDT against the release's 71.1 (70.4 with it).
+    random_ref_pose=True,
     structural_tokens=True,
     confidence_records="opendde",
-    dedupe_self_msa=False,
+    # Its MSA module sees the query ONCE with no alignments, like the rest of the
+    # Protenix lineage. AF3's duplicated self-row moved the module's output by
+    # 2%, recycling grew that to a 0.89-correlated trunk pair, and 5I28 folded
+    # 2.4 A from the release (rel-rel 1.5); deduplicated, the trunk matches to
+    # 4e-3 through all four passes.
+    dedupe_self_msa=True,
     pair_channel=384,
     #: The trunk is 384 wide but the denoiser conditions on a 128-wide pair,
     #: which is what makes it compress the trunk pair before concatenating.
@@ -806,6 +823,11 @@ OPENDDE = replace(
 ESMFOLD2 = replace(
     ALPHAFOLD3,
     family="esmfold2",
+    ssm_random_init=True,
+    # Its prepare_input writes every bond both ways (bonds[i, j] = bonds[j, i]),
+    # as the OpenFold3 lineage does. Missed, 3PTB's benzamidine folded 0.54 A
+    # RMS off its distance geometry against the release's 0.05 A.
+    symmetric_bonds=True,
     pair_channel=256,
     msa_channel=128,
     diffusion_pair_channel=256,
@@ -832,8 +854,11 @@ ESMFOLD2 = replace(
     # carries none, so AF3's extra oxygen is an atom it has never seen. Worse
     # here than elsewhere, because the atom window is +/-64 by RANK -- one
     # spurious atom at the END of the list corrupts the last ~64 atoms'
-    # attention, and nothing before them.
-    drop_atoms=("OXT",),
+    # attention, and nothing before them. The same table has no 5' OP3 either:
+    # kept, it put two spurious atoms at the head of 1A1K's DNA strands, the
+    # duplex folded 9.9 A from the release's (rel-rel 0.9) and every DNA pair of
+    # the trunk's input read 50-77% off.
+    drop_atoms=("OXT", "OP3", "O3P"),
     # Its self-MSA is the query ONCE, where AF3 hands a chain with no
     # alignments two identical rows. Worth 4.3% of the trunk's MSA injection.
     dedupe_self_msa=True,
@@ -930,8 +955,16 @@ EXACT_CONVENTIONS: dict[str, dict] = {
         "template_mask_class": True,
         "drop_atoms": ("OXT",),
     },
-    "protenix1": {"atom_key_window": "pad", "key_masked_atom_attention": True},
-    "protenix2": {"atom_key_window": "pad", "key_masked_atom_attention": True},
+    "protenix1": {
+        "atom_key_window": "pad",
+        "key_masked_atom_attention": True,
+        "random_ref_pose": True,
+    },
+    "protenix2": {
+        "atom_key_window": "pad",
+        "key_masked_atom_attention": True,
+        "random_ref_pose": True,
+    },
     "opendde": {"atom_key_window": "pad", "key_masked_atom_attention": True},
     "esmfold2": {"opm_clamped_norm": True},
     "esmfold2-fast": {"opm_clamped_norm": True},

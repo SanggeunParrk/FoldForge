@@ -53,6 +53,34 @@ def centre_conformers(example: dict[str, Any]) -> None:
     )
 
 
+def random_ref_pose(example: dict[str, Any], max_translation: float = 1.0) -> None:
+    """Rotate each (centred) reference conformer at random and shift it <= 1 A.
+
+    The Protenix-lineage featuriser does this at inference too
+    (``ref_pos_augment=True``, ``random_transform``), and a family that reads
+    ``ref_pos`` through a Linear was trained on posed conformers. Drawn from the
+    request's trunk seed, so a fold stays reproducible.
+    """
+    positions = np.asarray(example["ref_pos"], dtype=np.float32)
+    flat = positions.reshape(-1, 3).copy()
+    mask = np.asarray(example["ref_mask"]).reshape(-1) > 0
+    group = np.asarray(example["ref_space_uid"]).reshape(-1).astype(np.int64)
+    for uid in np.unique(group[mask]):
+        rows = mask & (group == uid)
+        quaternion = np.random.normal(size=4)
+        w, x, y, z = quaternion / np.linalg.norm(quaternion)
+        rotation = np.array(
+            [
+                [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+            ]
+        )
+        shift = np.random.uniform(-max_translation, max_translation, size=3)
+        flat[rows] = flat[rows] @ rotation.T + shift
+    example["ref_pos"] = flat.reshape(positions.shape).astype(positions.dtype)
+
+
 def drop_atoms(example: dict[str, Any], names: tuple[str, ...]) -> int:
     """Remove atoms the vendor's tokenizer never creates, from STANDARD residues only.
 
@@ -169,6 +197,27 @@ def widen_key_subset(example: dict[str, Any], keys: int) -> None:
             ),
         ).as_data_dict()
     )
+
+
+def single_atoms_at_origin(example: dict[str, Any]) -> int:
+    """Put every one-atom component (an ion) at the origin, as a CCD conformer has it.
+
+    A family that reads its own conformer frame takes each component's computed
+    CCD conformer, and a lone atom's is (0, 0, 0). AF3's ideal-else-model rule can
+    leave it wherever the model coordinates were -- ZN at (2.1, 2.1, 0.3) -- and
+    ``ref_pos`` reaches a Linear, so the ion reads as a different atom.
+    """
+    positions = np.array(example["ref_pos"])
+    flat = positions.reshape(-1, 3)
+    mask = np.asarray(example["ref_mask"]).reshape(-1) > 0
+    group = np.asarray(example["ref_space_uid"]).reshape(-1)
+    uids, counts = np.unique(group[mask], return_counts=True)
+    lone = np.isin(group, uids[counts == 1]) & mask
+    flat[lone] = 0.0
+    example["ref_pos"] = flat.reshape(positions.shape).astype(
+        np.asarray(example["ref_pos"]).dtype
+    )
+    return int(lone.sum())
 
 
 def override_ref_conformers(example: dict[str, Any], conformers: dict) -> int:
@@ -384,8 +433,11 @@ def apply(example: dict[str, Any], spec: DenseSpec) -> dict[str, Any]:
         override_ref_conformers(
             example, residue_geometry.as_conformers(spec.ref_conformers)
         )
+        single_atoms_at_origin(example)
     if spec.centre_ref_conformers:
         centre_conformers(example)
+    if spec.random_ref_pose:
+        random_ref_pose(example)
     if spec.element_ligand_names:
         element_names_for_ligands(example)
     if spec.drop_atoms:

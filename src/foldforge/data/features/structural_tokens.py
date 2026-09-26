@@ -545,6 +545,11 @@ def attach(
     out = dict(example)
     for key, value in structural.as_data_dict().items():
         out["struct/" + key] = value
+    out["struct/ref_pos"] = _residue_ref_pos_onto_structural(
+        np.asarray(example["ref_pos"]),
+        np.asarray(out["struct/ref_pos"]),
+        built["residue_atom_gather"],
+    )
     for key in BOOKKEEPING:
         out["structbook/" + key] = built[key]
 
@@ -564,6 +569,26 @@ def attach(
     out["structbook/residue_rep_token"] = np.pad(built["residue_rep_token"], (0, rows))
     out["structbook/n_struct"] = np.asarray(built["n_struct"])
     return out
+
+
+def _residue_ref_pos_onto_structural(
+    residue: np.ndarray, structural: np.ndarray, residue_atom_gather: np.ndarray
+) -> np.ndarray:
+    """Give the structural batch the residue batch's reference conformer, atom for atom.
+
+    The release keeps ONE atom array: the denoiser reads the same ``ref_pos`` as
+    the trunk, posed once per residue at random. Rebuilt here from the CCD, the
+    structural copy missed the pose: our 5I28 folds sat 2.4 A from the release's
+    (rel-rel 1.5) -- exactly the distance between the release with its pose and
+    without it.
+    """
+    gather = np.asarray(residue_atom_gather)
+    rows = residue[: gather.shape[0]].reshape(-1, 3)
+    index = gather.reshape(-1)
+    keep = index >= 0
+    out = structural.reshape(-1, 3).copy()
+    out[index[keep]] = rows[keep]
+    return out.reshape(structural.shape).astype(structural.dtype)
 
 
 def structural_to_residue_positions(

@@ -39,7 +39,11 @@ def test_esm_class_widening_is_a_permutation_not_a_shift():
         assert torch.equal(out[:, 0], torch.zeros(2))  # ESM slot 0 is unused
         assert torch.equal(out[:, 1], block[:, 21])  # the gap, below the residues
         assert torch.equal(out[:, 2:23], block[:, :21])  # residues and UNK
-        assert torch.equal(out[:, 23:32], block[:, 22:31])  # the nucleic acids
+        # A G C U, then ESMFold2's unknown ribonucleotide (AF3's N, its LAST
+        # nucleic class), then DA DG DC DT.
+        assert torch.equal(out[:, 23:27], block[:, 22:26])
+        assert torch.equal(out[:, 27], block[:, 30])
+        assert torch.equal(out[:, 28:32], block[:, 26:30])
         assert torch.equal(out[:, 32], torch.zeros(2))  # DN, which AF3 lacks
 
     # Deletion mean and the atom encoder's token output ride through untouched.
@@ -533,9 +537,9 @@ def test_the_reference_geometry_override_replaces_by_atom_name():
 def test_the_language_model_family_takes_every_featurisation_knob_it_needs():
     """Getting one wrong is silent, and shows as a fold that is merely mediocre."""
     spec = SPECS["esmfold2"]
-    # No terminal OXT: worse here than elsewhere, because the atom window is
-    # +/-64 by RANK, so one spurious atom at the END corrupts the last ~64.
-    assert spec.drop_atoms == ("OXT",)
+    # No terminal OXT and no 5' OP3: worse here than elsewhere, because the atom
+    # window is +/-64 by RANK, so one spurious atom corrupts its ~64 neighbours.
+    assert spec.drop_atoms == ("OXT", "OP3", "O3P")
     # Its self-MSA is the query ONCE; AF3 hands it two identical rows.
     assert spec.dedupe_self_msa
     assert spec.ref_conformers == "esmfold2"
@@ -593,3 +597,89 @@ def test_the_confidence_head_branches_on_facts_not_on_family_names():
     source = head.read_text()
     names = [n for n in SPECS if f'== "{n}"' in source]
     assert names == []
+
+
+def test_the_structural_batch_reads_the_residue_batchs_posed_conformer():
+    """The release keeps one atom array: its denoiser sees the trunk's posed ref_pos."""
+    import numpy as np
+
+    from foldforge.data.features.structural_tokens import (
+        _residue_ref_pos_onto_structural,
+    )
+
+    residue = np.arange(2 * 3 * 3, dtype=np.float32).reshape(2, 3, 3) + 1
+    structural = np.zeros((3, 2, 3), dtype=np.float32)
+    # Residue 0's atoms land in structural token 0; residue 1's split over 1 and 2.
+    gather = np.array([[0, 1, -1], [2, 4, 5]])
+    out = _residue_ref_pos_onto_structural(residue, structural, gather)
+    flat = out.reshape(-1, 3)
+    assert np.array_equal(flat[0], residue[0, 0])
+    assert np.array_equal(flat[1], residue[0, 1])
+    assert np.array_equal(flat[4], residue[1, 1])
+    assert np.array_equal(flat[3], np.zeros(3))  # a slot no residue atom fills
+
+
+def test_a_lone_atom_component_sits_at_the_origin():
+    """An ion's CCD conformer is (0, 0, 0); a frame-reading family must see that."""
+    import numpy as np
+
+    from foldforge.data.features.dense_conventions import single_atoms_at_origin
+
+    example = {
+        "ref_pos": np.array(
+            [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], [[2.1, 2.1, 0.3], [0, 0, 0]]]
+        ),
+        "ref_mask": np.array([[1, 1], [1, 0]]),
+        "ref_space_uid": np.array([[0, 0], [1, 0]]),
+    }
+    assert single_atoms_at_origin(example) == 1
+    assert np.array_equal(example["ref_pos"][1, 0], np.zeros(3))
+    assert np.array_equal(example["ref_pos"][0, 1], np.array([4.0, 5.0, 6.0]))
+
+
+#: ESMFold2's class for each AF3 polymer class: residues and UNK at 2..22, the
+#: gap at 1, A G C U at 23..26, DA DG DC DT at 28..31, and AF3's N at 27.
+_ESM_CLASS_OF_AF3 = [*range(2, 23), 1, 23, 24, 25, 26, 28, 29, 30, 31, 27]
+
+
+def test_widening_puts_each_af3_class_on_its_esmfold2_class():
+    import torch
+
+    from foldforge.modules.dense.featurization import widen_to_esm_classes
+
+    x = torch.zeros(31, 447)
+    x[torch.arange(31), torch.arange(31)] = 1
+    x[torch.arange(31), 31 + torch.arange(31)] = 1
+    wide = widen_to_esm_classes(x)
+    assert wide[:, :33].argmax(-1).tolist() == _ESM_CLASS_OF_AF3
+    assert wide[:, 33:66].argmax(-1).tolist() == _ESM_CLASS_OF_AF3
+
+
+def test_converted_esmfold2_columns_are_reordered_onto_their_bases():
+    """The converter laid ESM 23..31 on AF3 22..30 in order: DNA read the base below."""
+    import torch
+
+    from foldforge.models.loading import reorder_esm_nucleic_columns
+
+    class Trunk(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.left_single = torch.nn.Linear(447, 1, bias=False)
+            self.msa_activations = torch.nn.Linear(34, 1, bias=False)
+
+    class Model(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.evoformer = Trunk()
+
+    model = Model()
+    # What the converter wrote: AF3 column c holds ESM class 23 + (c - 22) for
+    # the nucleic block, and each weight names the ESM class it came from.
+    as_converted = torch.tensor([float(c + 1 if c >= 22 else -1) for c in range(31)])
+    with torch.no_grad():
+        model.evoformer.left_single.weight[0, :31] = as_converted
+        model.evoformer.msa_activations.weight[0, :31] = as_converted
+    reorder_esm_nucleic_columns(model)
+    nucleic = _ESM_CLASS_OF_AF3[22:]
+    assert model.evoformer.left_single.weight[0, 22:31].tolist() == nucleic
+    assert model.evoformer.msa_activations.weight[0, 22:31].tolist() == nucleic

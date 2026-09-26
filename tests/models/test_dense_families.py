@@ -192,7 +192,15 @@ def test_openfold3_lineage_writes_each_bond_both_ways():
     # builds 1.52 A ring bonds); the recorded order must reach the matrix.
     assert token_bond_types(ordered, symmetric=True)[3, 2] == AROMATIC + 1
 
-    lineage = ("protenix1", "protenix2", "boltz2", "rosettafold3", "opendde")
+    lineage = (
+        "protenix1",
+        "protenix2",
+        "boltz2",
+        "rosettafold3",
+        "opendde",
+        "esmfold2",
+        "esmfold2-fast",
+    )
     assert all(SPECS[family].symmetric_bonds for family in lineage)
     assert not ALPHAFOLD3.symmetric_bonds
 

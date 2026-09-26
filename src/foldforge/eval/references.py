@@ -286,11 +286,14 @@ def judge(
             "missing": {"release": len(rel), "ours": len(mine)},
         }
     rel_seed_means = [np.mean([s.plddt for s in v]) for v in reference.values()]
-    rel_plddt, our_plddt = (
-        float(np.mean([s.plddt for s in rel])),
-        float(np.mean([s.plddt for s in mine])),
+    our_seed_means = [np.mean([s.plddt for s in v]) for v in ours.values()]
+    rel_plddt = float(np.mean([s.plddt for s in rel]))
+    our_plddt = float(np.mean([s.plddt for s in mine]))
+    # Both arms' seed-to-seed variation, with a floor of two points: three
+    # seeds of a low-confidence fold with no MSA cannot resolve less.
+    plddt_tolerance = max(
+        2.0, 2 * float(np.hypot(np.std(rel_seed_means), np.std(our_seed_means)))
     )
-    plddt_tolerance = max(1.5, 2 * float(np.std(rel_seed_means)))
     structure = {
         "rel_rel": _pairwise(rel, None, polymer_rmsd),
         "ours_rel": _pairwise(mine, rel, polymer_rmsd),

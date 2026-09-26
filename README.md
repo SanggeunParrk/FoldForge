@@ -223,7 +223,9 @@ each check and the defects the comparison found.
 Converted blobs are pinned by SHA-256 in
 `src/foldforge/models/checkpoints/checkpoints.lock`. Loading refuses a blob
 whose size does not match (a blob from another converter version);
-`foldforge checkpoints verify` checks the hashes.
+`foldforge checkpoints verify` checks the hashes. How to produce each blob from
+its release file, and which conversions reproduce the lock bit for bit, is in
+[the checkpoint guide](docs/guides/CHECKPOINTS.md).
 
 See [MiniWorld formats](docs/guides/MINIWORLD-FORMAT.md) for database migration,
 nested model settings, data conventions and checkpoint-specific capabilities.

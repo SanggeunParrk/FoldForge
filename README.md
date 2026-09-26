@@ -61,7 +61,7 @@ uv sync --extra cu12    # CUDA 12.8   (or --extra cu13 for CUDA 13)
 
 For an existing checkout: `git submodule update --init --recursive`.
 The checked-in submodule revision is the validated dependency: team-gm
-`0c3baa1` on branch `foldforge/dense-families`. Keep that revision when
+`52292ac` on branch `foldforge/dense-families`. Keep that revision when
 reproducing the recorded results; newer `exp/miniworld` commits use a
 different engine/patch set.
 

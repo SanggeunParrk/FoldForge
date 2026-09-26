@@ -1,0 +1,50 @@
+{
+ "queries": {
+  "1a1k": {
+   "chains": [
+    {
+     "molecule_type": "dna",
+     "chain_ids": [
+      "A"
+     ],
+     "sequence": "AGCGTGGGACC"
+    },
+    {
+     "molecule_type": "dna",
+     "chain_ids": [
+      "B"
+     ],
+     "sequence": "TGGTCCCACGC"
+    },
+    {
+     "molecule_type": "protein",
+     "chain_ids": [
+      "C"
+     ],
+     "sequence": "MERPYACPVESCDRRFSRSADLTRHIRIHTGQKPFQCRICMRNFSRSDHLTTHIRTHTGEKPFACDICGRKFARSDERKRHTKIHLRQKD"
+    },
+    {
+     "molecule_type": "ligand",
+     "chain_ids": [
+      "D"
+     ],
+     "ccd_codes": "ZN"
+    },
+    {
+     "molecule_type": "ligand",
+     "chain_ids": [
+      "E"
+     ],
+     "ccd_codes": "ZN"
+    },
+    {
+     "molecule_type": "ligand",
+     "chain_ids": [
+      "F"
+     ],
+     "ccd_codes": "ZN"
+    }
+   ]
+  }
+ }
+}

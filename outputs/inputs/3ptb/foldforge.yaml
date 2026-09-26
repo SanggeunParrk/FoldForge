@@ -1,0 +1,19 @@
+name: 3ptb
+ccd_db: ../../../data/ccd/preprocessed_CCD.lmdb
+chain_letters:
+  '0': A
+  '1': B
+  '2': C
+fasta:
+  A: A.fasta
+  B: B.fasta
+  C: C.fasta
+a3m: {}
+msa: {}
+msa_db: {}
+template: {}
+template_db: null
+n_diffusion_samples: 5
+diffusion_batch_size: 5
+n_trunk_samples: 1
+save_trajectory: false

@@ -1,0 +1,32 @@
+{
+ "family": "esmfold2",
+ "target": "3ptb",
+ "seed": 0,
+ "samples": [
+  {
+   "file": "sample0.cif.gz",
+   "source": "sample_0.cif",
+   "mean_plddt": 25.352
+  },
+  {
+   "file": "sample1.cif.gz",
+   "source": "sample_1.cif",
+   "mean_plddt": 26.571
+  },
+  {
+   "file": "sample2.cif.gz",
+   "source": "sample_2.cif",
+   "mean_plddt": 26.079
+  },
+  {
+   "file": "sample3.cif.gz",
+   "source": "sample_3.cif",
+   "mean_plddt": 26.503
+  },
+  {
+   "file": "sample4.cif.gz",
+   "source": "sample_4.cif",
+   "mean_plddt": 26.487
+  }
+ ]
+}

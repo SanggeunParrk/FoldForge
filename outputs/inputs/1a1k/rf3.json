@@ -1,0 +1,31 @@
+[
+ {
+  "name": "1a1k",
+  "components": [
+   {
+    "seq": "AGCGTGGGACC",
+    "chain_id": "A"
+   },
+   {
+    "seq": "TGGTCCCACGC",
+    "chain_id": "B"
+   },
+   {
+    "seq": "MERPYACPVESCDRRFSRSADLTRHIRIHTGQKPFQCRICMRNFSRSDHLTTHIRTHTGEKPFACDICGRKFARSDERKRHTKIHLRQKD",
+    "chain_id": "C"
+   },
+   {
+    "ccd_code": "ZN",
+    "chain_id": "D"
+   },
+   {
+    "ccd_code": "ZN",
+    "chain_id": "E"
+   },
+   {
+    "ccd_code": "ZN",
+    "chain_id": "F"
+   }
+  ]
+ }
+]

@@ -1,0 +1,32 @@
+{
+ "family": "opendde",
+ "target": "5i28",
+ "seed": 2,
+ "samples": [
+  {
+   "file": "sample0.cif.gz",
+   "source": "5i28_sample_0.cif",
+   "mean_plddt": 0.0
+  },
+  {
+   "file": "sample1.cif.gz",
+   "source": "5i28_sample_1.cif",
+   "mean_plddt": 0.0
+  },
+  {
+   "file": "sample2.cif.gz",
+   "source": "5i28_sample_2.cif",
+   "mean_plddt": 0.0
+  },
+  {
+   "file": "sample3.cif.gz",
+   "source": "5i28_sample_3.cif",
+   "mean_plddt": 0.0
+  },
+  {
+   "file": "sample4.cif.gz",
+   "source": "5i28_sample_4.cif",
+   "mean_plddt": 0.0
+  }
+ ]
+}

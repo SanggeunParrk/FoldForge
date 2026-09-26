@@ -1,0 +1,32 @@
+{
+ "family": "intellifold2",
+ "target": "5i28",
+ "seed": 2,
+ "samples": [
+  {
+   "file": "sample0.cif.gz",
+   "source": "intellifold_seed-2_sample-0.cif",
+   "mean_plddt": 60.761
+  },
+  {
+   "file": "sample1.cif.gz",
+   "source": "intellifold_seed-2_sample-1.cif",
+   "mean_plddt": 60.761
+  },
+  {
+   "file": "sample2.cif.gz",
+   "source": "intellifold_seed-2_sample-2.cif",
+   "mean_plddt": 60.761
+  },
+  {
+   "file": "sample3.cif.gz",
+   "source": "intellifold_seed-2_sample-3.cif",
+   "mean_plddt": 60.761
+  },
+  {
+   "file": "sample4.cif.gz",
+   "source": "intellifold_seed-2_sample-4.cif",
+   "mean_plddt": 60.761
+  }
+ ]
+}

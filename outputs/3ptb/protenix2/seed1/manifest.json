@@ -1,0 +1,32 @@
+{
+ "family": "protenix2",
+ "target": "3ptb",
+ "seed": 1,
+ "samples": [
+  {
+   "file": "sample0.cif.gz",
+   "source": "3ptb_sample_0.cif",
+   "mean_plddt": 37.906
+  },
+  {
+   "file": "sample1.cif.gz",
+   "source": "3ptb_sample_1.cif",
+   "mean_plddt": 37.704
+  },
+  {
+   "file": "sample2.cif.gz",
+   "source": "3ptb_sample_2.cif",
+   "mean_plddt": 37.834
+  },
+  {
+   "file": "sample3.cif.gz",
+   "source": "3ptb_sample_3.cif",
+   "mean_plddt": 37.729
+  },
+  {
+   "file": "sample4.cif.gz",
+   "source": "3ptb_sample_4.cif",
+   "mean_plddt": 37.926
+  }
+ ]
+}

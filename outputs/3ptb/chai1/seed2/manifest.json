@@ -1,0 +1,32 @@
+{
+ "family": "chai1",
+ "target": "3ptb",
+ "seed": 2,
+ "samples": [
+  {
+   "file": "sample0.cif.gz",
+   "source": "pred.model_idx_0.cif",
+   "mean_plddt": 98.059
+  },
+  {
+   "file": "sample1.cif.gz",
+   "source": "pred.model_idx_1.cif",
+   "mean_plddt": 98.053
+  },
+  {
+   "file": "sample2.cif.gz",
+   "source": "pred.model_idx_2.cif",
+   "mean_plddt": 98.061
+  },
+  {
+   "file": "sample3.cif.gz",
+   "source": "pred.model_idx_3.cif",
+   "mean_plddt": 98.056
+  },
+  {
+   "file": "sample4.cif.gz",
+   "source": "pred.model_idx_4.cif",
+   "mean_plddt": 98.057
+  }
+ ]
+}

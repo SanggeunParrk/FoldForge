@@ -1,0 +1,32 @@
+{
+ "family": "openfold3",
+ "target": "3ptb",
+ "seed": 0,
+ "samples": [
+  {
+   "file": "sample0.cif.gz",
+   "source": "3ptb_seed_42_sample_1_model.cif",
+   "mean_plddt": 32.122
+  },
+  {
+   "file": "sample1.cif.gz",
+   "source": "3ptb_seed_42_sample_2_model.cif",
+   "mean_plddt": 36.026
+  },
+  {
+   "file": "sample2.cif.gz",
+   "source": "3ptb_seed_42_sample_3_model.cif",
+   "mean_plddt": 36.965
+  },
+  {
+   "file": "sample3.cif.gz",
+   "source": "3ptb_seed_42_sample_4_model.cif",
+   "mean_plddt": 34.185
+  },
+  {
+   "file": "sample4.cif.gz",
+   "source": "3ptb_seed_42_sample_5_model.cif",
+   "mean_plddt": 34.38
+  }
+ ]
+}

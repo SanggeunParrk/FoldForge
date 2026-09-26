@@ -1,0 +1,32 @@
+{
+ "family": "rosettafold3",
+ "target": "3ptb",
+ "seed": 2,
+ "samples": [
+  {
+   "file": "sample0.cif.gz",
+   "source": "3ptb_seed-2_sample-0_model.cif",
+   "mean_plddt": 70.068
+  },
+  {
+   "file": "sample1.cif.gz",
+   "source": "3ptb_seed-2_sample-1_model.cif",
+   "mean_plddt": 70.068
+  },
+  {
+   "file": "sample2.cif.gz",
+   "source": "3ptb_seed-2_sample-2_model.cif",
+   "mean_plddt": 70.07
+  },
+  {
+   "file": "sample3.cif.gz",
+   "source": "3ptb_seed-2_sample-3_model.cif",
+   "mean_plddt": 70.076
+  },
+  {
+   "file": "sample4.cif.gz",
+   "source": "3ptb_seed-2_sample-4_model.cif",
+   "mean_plddt": 70.069
+  }
+ ]
+}

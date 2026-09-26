@@ -1,0 +1,15 @@
+name: 5i28
+ccd_db: ../../../data/ccd/preprocessed_CCD.lmdb
+chain_letters:
+  '0': A
+fasta:
+  A: A.fasta
+a3m: {}
+msa: {}
+msa_db: {}
+template: {}
+template_db: null
+n_diffusion_samples: 5
+diffusion_batch_size: 5
+n_trunk_samples: 1
+save_trajectory: false

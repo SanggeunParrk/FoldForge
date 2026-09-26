@@ -1,0 +1,32 @@
+{
+ "family": "rosettafold3",
+ "target": "5i28",
+ "seed": 1,
+ "samples": [
+  {
+   "file": "sample0.cif.gz",
+   "source": "5i28_seed-1_sample-0_model.cif",
+   "mean_plddt": 75.364
+  },
+  {
+   "file": "sample1.cif.gz",
+   "source": "5i28_seed-1_sample-1_model.cif",
+   "mean_plddt": 75.361
+  },
+  {
+   "file": "sample2.cif.gz",
+   "source": "5i28_seed-1_sample-2_model.cif",
+   "mean_plddt": 75.365
+  },
+  {
+   "file": "sample3.cif.gz",
+   "source": "5i28_seed-1_sample-3_model.cif",
+   "mean_plddt": 75.354
+  },
+  {
+   "file": "sample4.cif.gz",
+   "source": "5i28_seed-1_sample-4_model.cif",
+   "mean_plddt": 75.369
+  }
+ ]
+}

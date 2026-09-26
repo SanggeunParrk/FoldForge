@@ -1,0 +1,32 @@
+{
+ "family": "openfold3-preview2",
+ "target": "1a1k",
+ "seed": 0,
+ "samples": [
+  {
+   "file": "sample0.cif.gz",
+   "source": "1a1k_seed_42_sample_1_model.cif",
+   "mean_plddt": 85.958
+  },
+  {
+   "file": "sample1.cif.gz",
+   "source": "1a1k_seed_42_sample_2_model.cif",
+   "mean_plddt": 86.359
+  },
+  {
+   "file": "sample2.cif.gz",
+   "source": "1a1k_seed_42_sample_3_model.cif",
+   "mean_plddt": 85.622
+  },
+  {
+   "file": "sample3.cif.gz",
+   "source": "1a1k_seed_42_sample_4_model.cif",
+   "mean_plddt": 86.234
+  },
+  {
+   "file": "sample4.cif.gz",
+   "source": "1a1k_seed_42_sample_5_model.cif",
+   "mean_plddt": 86.607
+  }
+ ]
+}

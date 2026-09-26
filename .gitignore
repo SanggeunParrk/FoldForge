@@ -9,7 +9,8 @@ model_checkpoints
 # the code does not.
 benchmark/
 validation
-outputs/
+# outputs/ is NOT ignored: it holds the released implementations' reference
+# structures FoldForge is validated against (see outputs/README.md).
 logs/
 
 # Python

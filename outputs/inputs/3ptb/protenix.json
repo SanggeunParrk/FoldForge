@@ -1,0 +1,25 @@
+[
+ {
+  "name": "3ptb",
+  "sequences": [
+   {
+    "proteinChain": {
+     "sequence": "IVGGYTCGANTVPYQVSLNSGYHFCGGSLINSQWVVSAAHCYKSGIQVRLGEDNINVVEGNEQFISASKSIVHPSYNSNTLNNDIMLIKLKSAASLNSRVASISLPTSCASAGTQCLISGWGNTKSSGTSYPDVLKCLKAPILSDSSCKSAYPGQITSNMFCAGYLEGGKDSCQGDSGGPVVCSGKLQGIVSWGSGCAQKNKPGVYTKVCNYVSWIKQTIASN",
+     "count": 1
+    }
+   },
+   {
+    "ion": {
+     "ion": "CA",
+     "count": 1
+    }
+   },
+   {
+    "ligand": {
+     "ligand": "CCD_BEN",
+     "count": 1
+    }
+   }
+  ]
+ }
+]

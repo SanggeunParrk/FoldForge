@@ -1,0 +1,21 @@
+version: 1
+sequences:
+- dna:
+    id: A
+    sequence: AGCGTGGGACC
+- dna:
+    id: B
+    sequence: TGGTCCCACGC
+- protein:
+    id: C
+    sequence: MERPYACPVESCDRRFSRSADLTRHIRIHTGQKPFQCRICMRNFSRSDHLTTHIRTHTGEKPFACDICGRKFARSDERKRHTKIHLRQKD
+    msa: empty
+- ligand:
+    id: D
+    ccd: ZN
+- ligand:
+    id: E
+    ccd: ZN
+- ligand:
+    id: F
+    ccd: ZN

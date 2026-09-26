@@ -1,0 +1,29 @@
+{
+ "queries": {
+  "3ptb": {
+   "chains": [
+    {
+     "molecule_type": "protein",
+     "chain_ids": [
+      "A"
+     ],
+     "sequence": "IVGGYTCGANTVPYQVSLNSGYHFCGGSLINSQWVVSAAHCYKSGIQVRLGEDNINVVEGNEQFISASKSIVHPSYNSNTLNNDIMLIKLKSAASLNSRVASISLPTSCASAGTQCLISGWGNTKSSGTSYPDVLKCLKAPILSDSSCKSAYPGQITSNMFCAGYLEGGKDSCQGDSGGPVVCSGKLQGIVSWGSGCAQKNKPGVYTKVCNYVSWIKQTIASN"
+    },
+    {
+     "molecule_type": "ligand",
+     "chain_ids": [
+      "B"
+     ],
+     "ccd_codes": "CA"
+    },
+    {
+     "molecule_type": "ligand",
+     "chain_ids": [
+      "C"
+     ],
+     "ccd_codes": "BEN"
+    }
+   ]
+  }
+ }
+}

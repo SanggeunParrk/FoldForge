@@ -13,12 +13,24 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("models", help="List implemented and planned predictors")
     ccd = commands.add_parser("ccd", help="Prepare or verify the shared CCD database")
     ccd.add_argument("arguments", nargs=argparse.REMAINDER)
+    checkpoints = commands.add_parser(
+        "checkpoints", help="Verify converted checkpoints against checkpoints.lock"
+    )
+    checkpoints.add_argument("arguments", nargs=argparse.REMAINDER)
+    validate = commands.add_parser(
+        "validate", help="Judge FoldForge folds against the releases' outputs/"
+    )
+    validate.add_argument("arguments", nargs=argparse.REMAINDER)
     fold = commands.add_parser("fold", help="Run a predictor")
     fold.add_argument("model", choices=known_models())
     fold.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     if args.command == "ccd":
         return import_module("foldforge.data.ccd.prepare").main(args.arguments)
+    if args.command == "checkpoints":
+        return import_module("foldforge.models.checkpoints.lock").main(args.arguments)
+    if args.command == "validate":
+        return import_module("foldforge.eval.references").main(args.arguments)
     if args.command == "models":
         available = set(registered_models())
         for name in known_models():

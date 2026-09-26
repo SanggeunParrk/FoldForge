@@ -241,6 +241,14 @@ class FusedTemplateEmbedding(nn.Module):
             template = templates[index]
             mask = template.atom_mask
             visible = multichain_mask_2d
+            if self.spec.template_visibility_by_coverage:
+                # Exact mode (Boltz-2): visibility follows the SOURCE TEMPLATE,
+                # not the chain -- a template that covers two chains exposes
+                # their cross-chain block, and an uncovered chain sees itself.
+                covered = mask.sum(-1) > 0
+                visible = (covered[:, None] & covered[None]) | (
+                    ~covered[:, None] & ~covered[None] & multichain_mask_2d.bool()
+                )
             value = query + self.a_proj(
                 self.build(
                     template.aatype,
@@ -252,6 +260,8 @@ class FusedTemplateEmbedding(nn.Module):
             stacked = value
             for block in self.tmpl_pairformer:
                 stacked = block(stacked, padding_mask_2d)
+            if self.spec.template_stack_outer_residual and len(self.tmpl_pairformer):
+                stacked = value + stacked
             return self.v_norm(stacked)
 
         return template_embedding_mean(

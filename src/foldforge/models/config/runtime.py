@@ -78,6 +78,9 @@ class Config(BaseModel):
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
     variant: str | None = None
+    #: "fast" folds with AF3's computation wherever a release's own folds the
+    #: same; "exact" keeps every release convention (DenseSpec.EXACT_CONVENTIONS).
+    mode: Literal["fast", "exact"] = "fast"
 
     @model_validator(mode="before")
     @classmethod

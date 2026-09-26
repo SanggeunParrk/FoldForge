@@ -135,6 +135,7 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         # One model here publishes several releases, and the release is the
         # dense family; the rest ignore it.
         variant=args.variant if args.model == "protenix" else None,
+        mode=args.mode,
     )
 
     runtime.bind(model)

@@ -70,11 +70,13 @@ class PairformerBlock(nn.Module):
             c_pair=c_pair,
             _outgoing=True,
             hidden_dim=tri_hidden_dim,
+            divide_by_length=spec.triangle_mul_divide_by_length,
         )
         self.triangle_multiplication_incoming = TriangleMultiplication(
             c_pair=c_pair,
             _outgoing=False,
             hidden_dim=tri_hidden_dim,
+            divide_by_length=spec.triangle_mul_divide_by_length,
         )
         # A family that folds from a language model keeps only the triangle
         # multiplications: building the attentions anyway would leave them at
@@ -225,6 +227,8 @@ class EvoformerBlock(nn.Module):
             num_outer_channel=spec.opm_channel,
             projection_bias=spec.opm_projection_bias,
             groups=spec.opm_groups,
+            bias_after_norm=spec.opm_bias_after_norm,
+            clamped_norm=spec.opm_clamped_norm,
         )
         self.msa_attention1 = MSAAttention(
             c_msa=c_msa,
@@ -236,10 +240,12 @@ class EvoformerBlock(nn.Module):
         self.triangle_multiplication_outgoing = TriangleMultiplication(
             c_pair=c_pair,
             _outgoing=True,
+            divide_by_length=spec.triangle_mul_divide_by_length,
         )
         self.triangle_multiplication_incoming = TriangleMultiplication(
             c_pair=c_pair,
             _outgoing=False,
+            divide_by_length=spec.triangle_mul_divide_by_length,
         )
         self.with_pair_attention = spec.pair_attention
         if self.with_pair_attention:

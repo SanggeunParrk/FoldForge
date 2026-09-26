@@ -69,6 +69,42 @@ class DenseSpec:
     #: A ligand atom's name characters are its element symbol (RoseTTAFold3's
     #: atomworks, ``use_element_for_atom_names_of_atomized_tokens``).
     element_ligand_names: bool = False
+
+    # ---- Conventions only the exact mode keeps -------------------------------
+    # Each is a release's own computation that folds like AF3's within the
+    # release's spread (measured on 5I28, 3PTB and 1A1K; see MODEL-INTEGRATION
+    # "Unified conventions"). The fast mode runs AF3's; the exact mode runs the
+    # release's, so a fold can be compared with its release computation for
+    # computation. EXACT_CONVENTIONS below says which family keeps which.
+    #: Epsilon of the adaptive LayerNorms in the diffusion transformer.
+    adaptive_norm_eps: float = 1e-5
+    #: End policy of the atom-attention key window: AF3 "slide"s an out-of-range
+    #: window back inside the real atoms; "pad" clips and masks; "slide_qblock"
+    #: slides against the atom count rounded up to a query block; "circular"
+    #: wraps modulo the real atom count.
+    atom_key_window: str = "slide"
+    #: A padded KEY atom is masked from every query (OR form); AF3 masks a pair
+    #: only when both atoms are padded, which is safe only for a sliding window.
+    key_masked_atom_attention: bool = False
+    #: With no alignment, the MSA context is EMPTY (no query row, no profile),
+    #: not the query alone.
+    empty_msa_without_alignment: bool = False
+    #: The outer product mean divides by the row count clamped at one, instead
+    #: of AF3's count + 1e-3.
+    opm_clamped_norm: bool = False
+    #: ...and adds its output bias after the divide rather than before.
+    opm_bias_after_norm: bool = False
+    #: The triangle multiplication's contraction is divided by the length.
+    triangle_mul_divide_by_length: bool = False
+    #: Template restypes where the template has no structure read as the gap.
+    template_gap_uncovered: bool = False
+    #: The template distogram reserves its top class for an uncovered pair,
+    #: where AF3 zeroes the row.
+    template_mask_class: bool = False
+    #: Template cross-chain visibility follows the source template's coverage.
+    template_visibility_by_coverage: bool = False
+    #: The template stack's output adds back its input.
+    template_stack_outer_residual: bool = False
     #: Column-wise pair attention takes its pair bias transposed, Linear(z[k, q]).
     #:
     #: The AF3 SI and AF3's own code DISAGREE here. SI Algorithm 15 writes the
@@ -856,3 +892,62 @@ SPECS = {
         ESMFOLD2_FAST,
     )
 }
+
+#: Everything the exact mode adds to a family's fast spec: its release's
+#: conventions that fold like AF3's (see the fields above), and the atoms it
+#: drops from its polymer residues. Measured, not guessed: each was reset one
+#: at a time against its release and moved no fold beyond the release's spread.
+EXACT_CONVENTIONS: dict[str, dict] = {
+    "intellifold2": {
+        "atom_key_window": "slide_qblock",
+        "key_masked_atom_attention": True,
+        "drop_atoms": ("OXT", "OP3", "O3P"),
+    },
+    "openbind0": {"drop_atoms": ("OXT", "OP3", "O3P")},
+    "openfold3": {"drop_atoms": ("OXT", "OP3", "O3P")},
+    "boltz2": {
+        "atom_key_window": "pad",
+        "key_masked_atom_attention": True,
+        "opm_bias_after_norm": True,
+        "opm_clamped_norm": True,
+        "template_stack_outer_residual": True,
+        "template_visibility_by_coverage": True,
+        "drop_atoms": ("OXT",),
+    },
+    "rosettafold3": {
+        "atom_key_window": "pad",
+        "key_masked_atom_attention": True,
+        "opm_bias_after_norm": True,
+        "opm_clamped_norm": True,
+        "triangle_mul_divide_by_length": True,
+        "drop_atoms": ("OXT", "OP3", "O3P"),
+    },
+    "chai1": {
+        "adaptive_norm_eps": 0.1,
+        "atom_key_window": "circular",
+        "empty_msa_without_alignment": True,
+        "template_gap_uncovered": True,
+        "template_mask_class": True,
+        "drop_atoms": ("OXT",),
+    },
+    "protenix1": {"atom_key_window": "pad", "key_masked_atom_attention": True},
+    "protenix2": {"atom_key_window": "pad", "key_masked_atom_attention": True},
+    "opendde": {"atom_key_window": "pad", "key_masked_atom_attention": True},
+    "esmfold2": {"opm_clamped_norm": True},
+    "esmfold2-fast": {"opm_clamped_norm": True},
+}
+
+#: "fast" folds with AF3's computation wherever a release's own folds the
+#: same; "exact" keeps every release convention.
+MODES = ("fast", "exact")
+
+
+def spec_for(family: str, mode: str = "fast") -> DenseSpec:
+    """The dense spec of ``family`` in ``mode``."""
+    if mode not in MODES:
+        message = f"unknown mode {mode!r}; expected one of {MODES}"
+        raise ValueError(message)
+    spec = SPECS[family]
+    if mode == "exact":
+        spec = replace(spec, **EXACT_CONVENTIONS.get(family, {}))
+    return spec

@@ -27,10 +27,14 @@ class TriangleMultiplication(nn.Module):
         c_pair: int = 128,
         _outgoing: bool = True,
         hidden_dim: int | None = None,
+        divide_by_length: bool = False,
     ) -> None:
         super().__init__()
 
         self.c_pair = c_pair
+        #: Read by the shared triangle update (team-gm): the contraction is
+        #: divided by the sequence length before the centre norm. Exact mode only.
+        self.divide_by_length = divide_by_length
         #: AF3 ties the projection width to the channel count; one family's
         #: template stack widens it without widening the pair.
         hidden = hidden_dim or c_pair

@@ -44,6 +44,35 @@ class MSA:
     # Number of MSA alignments.
     num_alignments: torch.Tensor
 
+    def has_alignment(self) -> bool:
+        """Whether any row other than the query carries information.
+
+        A fold with no alignment still arrives with the query as its MSA,
+        sometimes more than once; what matters is whether a valid row differs
+        from the query or records a deletion.
+        """
+        valid = self.mask.bool().any(dim=-1)
+        if not bool(valid.any()):
+            return False
+        rows = self.rows[valid]
+        return bool((rows != self.rows[0]).any()) or bool(
+            (self.deletion_matrix[valid] != 0).any()
+        )
+
+    def without_alignment(self) -> Self:
+        """Return the same MSA with every row masked and the statistics zeroed.
+
+        A family trained on an EMPTY MSA context when no alignment exists sees
+        no query row, no profile and no deletion mean -- not a profile computed
+        from the query alone, which is a one-hot of the sequence.
+        """
+        return dataclasses.replace(
+            self,
+            mask=torch.zeros_like(self.mask),
+            profile=torch.zeros_like(self.profile),
+            deletion_mean=torch.zeros_like(self.deletion_mean),
+        )
+
     def index_msa_rows(self, indices: torch.Tensor) -> Self:
         """Compute index msa rows."""
         if indices.ndim != 1:

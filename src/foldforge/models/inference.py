@@ -159,6 +159,7 @@ def run(model: str, argv: list[str]) -> int:
             steps=config.diffusion.steps or 200,
             msa_depth=config.trunk.msa_depth or PREPARED_ROWS,
             variant=config.variant or "protenix_base_default_v1.0.0",
+            mode=config.mode,
             execution=config.execution,
             output=config.output,
         )

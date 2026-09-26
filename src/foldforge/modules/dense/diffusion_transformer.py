@@ -457,6 +457,7 @@ class DiffusionTransformer(nn.Module):
                     kq_norm=spec.attention_kq_norm,
                     identity_scale=spec.adaptive_identity_scale,
                     gating_query=spec.token_attention_gating_query,
+                    norm_eps=spec.adaptive_norm_eps,
                 )
                 for _ in range(self.num_blocks)
             ]
@@ -468,6 +469,7 @@ class DiffusionTransformer(nn.Module):
                     self.c_single_cond,
                     use_single_cond=True,
                     identity_scale=spec.adaptive_identity_scale,
+                    norm_eps=spec.adaptive_norm_eps,
                 )
                 for _ in range(self.num_blocks)
             ]
@@ -557,10 +559,12 @@ class CrossAttention(nn.Module):
         project_output: bool = True,
         zero_bias: bool = True,
         rms_conditioning: bool = False,
+        key_masked: bool = False,
     ) -> None:
         super().__init__()
 
         self.kq_norm = kq_norm
+        self.key_masked = key_masked
         self.use_gating_query = gating_query
         if kq_norm:
             self.query_layer_norm = fastnn.LayerNorm(key_dim)
@@ -635,14 +639,20 @@ class CrossAttention(nn.Module):
             message = f"{mask_k.shape}, {x_k.shape}"
             raise ValueError(message)
 
-        # AF3's AND form. Every family now slides AF3's key window inside the
-        # real atoms, so the OR form some releases use (a padded key masked from
-        # every query) changed no fold and was unified away.
-        bias = (
-            1e9
-            * mask_q.logical_not()[..., None, :, None]
-            * mask_k.logical_not()[..., None, None, :]
-        )
+        if self.key_masked:
+            # The exact mode's OR form: a padded key is masked from every query.
+            # AF3's AND form is only safe because it slides its key window
+            # inside the real atoms; the two fold alike (a fast-mode unification).
+            bias = -1e9 * (
+                mask_q.logical_not()[..., None, :, None].float()
+                + mask_k.logical_not()[..., None, None, :].float()
+            )
+        else:
+            bias = (
+                1e9
+                * mask_q.logical_not()[..., None, :, None]
+                * mask_k.logical_not()[..., None, None, :]
+            )
 
         if pair_mask is not None:
             # A family may open its atom attention only within a token. AF3 lets
@@ -757,6 +767,8 @@ class DiffusionCrossAttTransformer(nn.Module):
                     project_output=spec.atom_attention_project_output,
                     zero_bias=spec.atom_adaptive_zero_bias,
                     rms_conditioning=spec.atom_rms_conditioning,
+                    key_masked=spec.key_masked_atom_attention,
+                    norm_eps=spec.adaptive_norm_eps,
                 )
                 for _ in range(self.num_blocks)
             ]
@@ -771,6 +783,7 @@ class DiffusionCrossAttTransformer(nn.Module):
                     identity_scale=atom_identity,
                     zero_bias=spec.atom_adaptive_zero_bias,
                     rms_conditioning=spec.atom_rms_conditioning,
+                    norm_eps=spec.adaptive_norm_eps,
                 )
                 for _ in range(self.num_blocks)
             ]

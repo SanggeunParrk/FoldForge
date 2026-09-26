@@ -207,10 +207,37 @@ class SingleTemplateEmbedding(nn.Module):
 
         self.output_layer_norm = fastnn.LayerNorm(self.num_channels)
 
-    def _restype_one_hot(
-        self, aatype: torch.Tensor, dtype: torch.dtype
+    def _masked_class_distogram(
+        self, positions: torch.Tensor, covered: torch.Tensor
     ) -> torch.Tensor:
-        """One-hot the template restypes."""
+        """Distance classes whose last is reserved for an uncovered pair (exact mode).
+
+        AF3 instead multiplies its distogram by the coverage mask, feeding an
+        all-zero row there, so its top class is never once activated.
+        """
+        config = self.dgram_features_config
+        classes = config.num_bins - 1
+        edges = torch.linspace(
+            config.min_bin, config.max_bin, classes - 1, device=positions.device
+        )
+        distance = (
+            (positions[:, None] - positions[None]).square().sum(-1) + 1e-10
+        ).sqrt()
+        index = (distance[..., None] > edges).sum(-1)
+        index = torch.where(covered.bool(), index, classes)
+        return torch.nn.functional.one_hot(index, classes + 1)
+
+    def _restype_one_hot(
+        self, aatype: torch.Tensor, coverage: torch.Tensor, dtype: torch.dtype
+    ) -> torch.Tensor:
+        """One-hot the template restypes, gapping uncovered ones in exact mode.
+
+        Telling the embedder a residue identity for a position with no
+        structure is a different input from saying there is none.
+        """
+        if self.spec.template_gap_uncovered:
+            gap = residue_names.POLYMER_TYPES_WITH_UNKNOWN_AND_GAP.index("-")
+            aatype = torch.where(coverage.sum(-1) > 0, aatype, aatype.new_full((), gap))
         return torch.nn.functional.one_hot(
             aatype.to(dtype=torch.int64),
             residue_names.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP,
@@ -235,13 +262,20 @@ class SingleTemplateEmbedding(nn.Module):
         )
         pseudo_beta_mask_2d = pseudo_beta_mask[:, None] * pseudo_beta_mask[None, :]
         pseudo_beta_mask_2d *= multichain_mask_2d
-        dgram = dgram_from_positions(pseudo_beta_positions, self.dgram_features_config)
-        dgram *= pseudo_beta_mask_2d[..., None]
-        dgram = dgram.to(dtype=dtype)
+        if self.spec.template_mask_class:
+            dgram = self._masked_class_distogram(
+                pseudo_beta_positions, pseudo_beta_mask_2d
+            ).to(dtype=dtype)
+        else:
+            dgram = dgram_from_positions(
+                pseudo_beta_positions, self.dgram_features_config
+            )
+            dgram *= pseudo_beta_mask_2d[..., None]
+            dgram = dgram.to(dtype=dtype)
         pseudo_beta_mask_2d = pseudo_beta_mask_2d.to(dtype=dtype)
         to_concat = [(dgram, 1), (pseudo_beta_mask_2d, 0)]
 
-        aatype = self._restype_one_hot(aatype, dtype)
+        aatype = self._restype_one_hot(aatype, dense_atom_mask, dtype)
         to_concat.append((aatype[None, :, :], 1))
         to_concat.append((aatype[:, None, :], 1))
 

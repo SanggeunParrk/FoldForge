@@ -27,7 +27,9 @@ UV_BIN=${UV_BIN:-$HOME/.local/bin/uv}
 FA2_WHEEL_DIR="$HOME/.cache/miniworld-wheels/cp312-torch2.10-cu128"
 FA2_WHEEL="$FA2_WHEEL_DIR/flash_attn-2.8.3.post1-cp312-cp312-linux_x86_64.whl"
 if [[ -f "$FA2_WHEEL" ]]; then
-    EXPECTED_SHA=591add7fec7ba3b95777413d1a879a6682920ba89ee82e8928035175a66a2c72
+    # Repacked 2026-09-26 from the verified install (the original wheel cache was
+    # lost); same files as the 591add7f... build.
+    EXPECTED_SHA=91589af8602de67177e29860314c9dc4a759de72e41065735a27f07530f6cfa3
     ACTUAL_SHA=$(sha256sum "$FA2_WHEEL")
     [[ ${ACTUAL_SHA%% *} == "$EXPECTED_SHA" ]] || { echo 'FA2 wheel checksum mismatch' >&2; exit 1; }
     MINIWORLD_CXX_RUNTIME=${MINIWORLD_CXX_RUNTIME:-$HOME/.cache/miniworld-runtime/gcc14}

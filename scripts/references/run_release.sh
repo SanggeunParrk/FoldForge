@@ -71,6 +71,9 @@ opendde)
     --trimul_kernel torch --triatt_kernel torch \
     --load_checkpoint_path "$ROOT/model_checkpoints/opendde/opendde.pt" ;;
 esmfold2)
-  python "$HERE/esmfold2_run.py" "$IN/boltz.yaml" "$OUT" "$SEED" ;;
+  # The Biohub Transformers fork that carried ESMFold2/ESM-C was taken down;
+  # the references use a copy of it kept beside the other release trees.
+  PYTHONPATH=$REL/esmfold2-transformers-fork \
+    python "$HERE/esmfold2_run.py" "$IN/boltz.yaml" "$OUT" "$SEED" ;;
 *) echo "unknown family $FAMILY" >&2; exit 2 ;;
 esac

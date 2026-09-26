@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import importlib.util
 import importlib.machinery
 import os
 import sys
@@ -67,6 +68,23 @@ def _seed_reference_params(reference: Path) -> None:
         module.__spec__ = importlib.machinery.ModuleSpec(name, None)
         module.__path__ = path  # type: ignore[attr-defined]
         sys.modules[name] = module
+    if importlib.util.find_spec("tokamax") is None:
+        # The reference's model config names tokamax only as a type annotation
+        # (the flash-attention implementation, a string); the converters never
+        # run JAX. A stand-in keeps conversion runnable in FoldForge's own env.
+        tokamax = types.ModuleType("tokamax")
+        tokamax.DotProductAttentionImplementation = str  # type: ignore[attr-defined]
+        sys.modules["tokamax"] = tokamax
+    if importlib.util.find_spec("etils") is None:
+        # The reference's folding_input imports etils.epath for path handling
+        # only; pathlib stands in, as the converters read local files.
+        etils = types.ModuleType("etils")
+        epath = types.ModuleType("etils.epath")
+        epath.Path = Path  # type: ignore[attr-defined]
+        epath.PathLike = Path  # type: ignore[attr-defined]
+        etils.epath = epath  # type: ignore[attr-defined]
+        sys.modules["etils"] = etils
+        sys.modules["etils.epath"] = epath
     params = sys.modules["alphafold3.model.params"]
     params.encode_record = haiku.encode_record  # type: ignore[attr-defined]
     params.read_records = haiku.read_records  # type: ignore[attr-defined]

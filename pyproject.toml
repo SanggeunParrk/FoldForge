@@ -52,7 +52,7 @@ build-backend = "hatchling.build"
 packages = ["src/foldforge"]
 
 [tool.uv]
-# Replace esm's mutable Transformers @main requirement with the source pin below.
+# Replace esm's git Transformers requirement with the PyPI release it was built on.
 override-dependencies = ["transformers==4.57.6"]
 # Keep the engine-tested CuTe/Quack pair across every optional environment.
 constraint-dependencies = ["quack-kernels==0.5.0", "nvidia-cutlass-dsl==4.5.2"]
@@ -68,8 +68,8 @@ members = ["libs/team-gm"]
 foldforge-af3-data = { path = "libs/af3-data" }
 # Match the reference ESMFold2 input processor.
 esm = { git = "https://github.com/Biohub/esm.git", rev = "fba1e42a8a0f8df2b7e08611c88807aa32a25d9c" }
-# ESMFold2/ESMC checkpoint APIs come from the Biohub fork, not PyPI.
-transformers = { git = "https://github.com/Biohub/transformers.git", rev = "b435f1f92dd5b4a653be57157d4f4f5ddba4f145" }
+# transformers comes from PyPI: the Biohub fork that carried ESM-C was taken
+# down, and team_gm.models.esmc now vendors its ESM-C verbatim.
 team-gm = { workspace = true }
 # The workspace uses this root engine source. Keep the same revision in
 # libs/team-gm/pyproject.toml for its standalone installs.

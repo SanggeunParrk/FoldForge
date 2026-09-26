@@ -21,7 +21,7 @@ constraints = [
     { name = "nvidia-cutlass-dsl", specifier = "==4.5.2" },
     { name = "quack-kernels", specifier = "==0.5.0" },
 ]
-overrides = [{ name = "transformers", git = "https://github.com/Biohub/transformers.git?rev=b435f1f92dd5b4a653be57157d4f4f5ddba4f145" }]
+overrides = [{ name = "transformers", specifier = "==4.57.6" }]
 
 [[package]]
 name = "absl-py"
@@ -803,7 +803,6 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "rdkit" },
-    { name = "safetensors" },
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "team-gm" },
@@ -850,14 +849,13 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2,<3" },
     { name = "pyyaml", specifier = ">=6,<7" },
     { name = "rdkit", specifier = ">=2025,<2027" },
-    { name = "safetensors", specifier = ">=0.4,<1" },
     { name = "scikit-learn", specifier = ">=1.7,<2" },
     { name = "scipy", specifier = ">=1.15,<2" },
     { name = "team-gm", editable = "libs/team-gm" },
     { name = "team-gm", extras = ["cu12"], marker = "extra == 'cu12'", editable = "libs/team-gm" },
     { name = "team-gm", extras = ["cu13"], marker = "extra == 'cu13'", editable = "libs/team-gm" },
     { name = "tqdm", specifier = ">=4.67,<5" },
-    { name = "transformers", git = "https://github.com/Biohub/transformers.git?rev=b435f1f92dd5b4a653be57157d4f4f5ddba4f145" },
+    { name = "transformers", specifier = "==4.57.6" },
     { name = "zstandard", specifier = ">=0.23,<1" },
 ]
 provides-extras = ["cu12", "cu13", "flash2"]
@@ -2754,7 +2752,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.15,<2" },
     { name = "torch", marker = "extra == 'cu12'", specifier = "==2.10.0", index = "https://download.pytorch.org/whl/cu128", conflict = { package = "team-gm", extra = "cu12" } },
     { name = "torch", marker = "extra == 'cu13'", specifier = ">=2.10,<3", index = "https://download.pytorch.org/whl/cu130", conflict = { package = "team-gm", extra = "cu13" } },
-    { name = "transformers", git = "https://github.com/Biohub/transformers.git?rev=b435f1f92dd5b4a653be57157d4f4f5ddba4f145" },
+    { name = "transformers", specifier = "==4.57.6" },
     { name = "wandb", specifier = ">=0.21,<1" },
 ]
 provides-extras = ["cu12", "cu13", "flash", "flash2"]
@@ -2969,7 +2967,7 @@ wheels = [
 [[package]]
 name = "transformers"
 version = "4.57.6"
-source = { git = "https://github.com/Biohub/transformers.git?rev=b435f1f92dd5b4a653be57157d4f4f5ddba4f145#b435f1f92dd5b4a653be57157d4f4f5ddba4f145" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
     { name = "huggingface-hub" },
@@ -2981,6 +2979,10 @@ dependencies = [
     { name = "safetensors" },
     { name = "tokenizers" },
     { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c4/35/67252acc1b929dc88b6602e8c4a982e64f31e733b804c14bc24b47da35e6/transformers-4.57.6.tar.gz", hash = "sha256:55e44126ece9dc0a291521b7e5492b572e6ef2766338a610b9ab5afbb70689d3", size = 10134912, upload-time = "2026-01-16T10:38:39.284Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/03/b8/e484ef633af3887baeeb4b6ad12743363af7cce68ae51e938e00aaa0529d/transformers-4.57.6-py3-none-any.whl", hash = "sha256:4c9e9de11333ddfe5114bc872c9f370509198acf0b87a832a0ab9458e2bd0550", size = 11993498, upload-time = "2026-01-16T10:38:31.289Z" },
 ]
 
 [[package]]

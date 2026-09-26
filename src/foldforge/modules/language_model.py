@@ -596,7 +596,7 @@ class _FP32NormMLP(torch.nn.Module):
 
 
 def _prepare_esmc_norms(model: torch.nn.Module) -> None:
-    from transformers.models.esmc.modeling_esmc import (
+    from team_gm.models.esmc.modeling_esmc import (
         _PyTorchLayerNormLinear,
         _PyTorchLayerNormMLP,
     )
@@ -615,8 +615,8 @@ def load_esmc(
 ) -> LanguageModel:
     """Load the released ESMC model through ``transformers``.
 
-    The environment pins the Biohub Transformers fork that implements this
-    checkpoint API. Import it lazily when a language model is requested.
+    team-gm vendors the ESM-C implementation (``team_gm.models.esmc``); import it
+    lazily when a language model is requested.
 
     Parameters
     ----------
@@ -632,7 +632,7 @@ def load_esmc(
     LanguageModel
         The loaded model, frozen and in eval mode.
     """
-    from transformers.models.esmc.modeling_esmc import ESMCModel
+    from team_gm.models.esmc import ESMCModel
 
     from foldforge.models.precision import inference_precision
 

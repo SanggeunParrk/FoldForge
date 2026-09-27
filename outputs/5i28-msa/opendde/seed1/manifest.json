@@ -1,0 +1,32 @@
+{
+ "family": "opendde",
+ "target": "5i28-msa",
+ "seed": 1,
+ "samples": [
+  {
+   "file": "sample0.cif.gz",
+   "source": "5i28-msa_sample_0.cif",
+   "mean_plddt": 96.047
+  },
+  {
+   "file": "sample1.cif.gz",
+   "source": "5i28-msa_sample_1.cif",
+   "mean_plddt": 96.047
+  },
+  {
+   "file": "sample2.cif.gz",
+   "source": "5i28-msa_sample_2.cif",
+   "mean_plddt": 96.045
+  },
+  {
+   "file": "sample3.cif.gz",
+   "source": "5i28-msa_sample_3.cif",
+   "mean_plddt": 96.045
+  },
+  {
+   "file": "sample4.cif.gz",
+   "source": "5i28-msa_sample_4.cif",
+   "mean_plddt": 96.044
+  }
+ ]
+}

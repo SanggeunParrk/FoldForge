@@ -1,0 +1,32 @@
+{
+ "family": "chai1",
+ "target": "5i28-msa",
+ "seed": 1,
+ "samples": [
+  {
+   "file": "sample0.cif.gz",
+   "source": "pred.model_idx_0.cif",
+   "mean_plddt": 95.616
+  },
+  {
+   "file": "sample1.cif.gz",
+   "source": "pred.model_idx_1.cif",
+   "mean_plddt": 95.702
+  },
+  {
+   "file": "sample2.cif.gz",
+   "source": "pred.model_idx_2.cif",
+   "mean_plddt": 95.688
+  },
+  {
+   "file": "sample3.cif.gz",
+   "source": "pred.model_idx_3.cif",
+   "mean_plddt": 95.71
+  },
+  {
+   "file": "sample4.cif.gz",
+   "source": "pred.model_idx_4.cif",
+   "mean_plddt": 95.715
+  }
+ ]
+}

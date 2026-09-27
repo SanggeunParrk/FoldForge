@@ -28,7 +28,7 @@ PATTERNS = {
     "openfold3-preview2": "**/*_model.cif",
     "rosettafold3": "**/seed-*_sample-*/*_model.cif",
     "intellifold2": "**/predictions/*/*_sample-*.cif",
-    "chai1": "pred.model_idx_*.cif",
+    "chai1": "**/pred.model_idx_*.cif",
     "opendde": "**/predictions/*_sample_*.cif",
     "esmfold2": "sample_*.cif",
 }

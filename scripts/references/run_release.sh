@@ -4,7 +4,8 @@
 #   run_release.sh FAMILY TARGET SEED OUT_DIR
 #
 # Conditions shared by every family, so the references compare like with like:
-# no MSA, no template, four trunk passes (Chai-1: its default three), 200
+# no template, no MSA unless the target ships one (<target>/A.a3m, then every
+# family reads that same alignment), four trunk passes (Chai-1: its default three), 200
 # diffusion steps, five samples, one model seed. Protenix and IntelliFold run
 # at fp32, as their defaults do not.
 #
@@ -20,6 +21,11 @@ ENVS=${FOLDFORGE_RELEASE_ENVS:-/public_data/thalkak_envs}
 IN=$ROOT/outputs/inputs/$TARGET
 HERE=$ROOT/scripts/references
 mkdir -p "$OUT"
+# Inputs may name their MSA as {IN}/A.a3m; materialise absolute paths per run.
+MAT=$OUT/_input; mkdir -p "$MAT"
+for f in "$IN"/*; do sed "s#{IN}#$MAT#g" "$f" > "$MAT/$(basename "$f")"; done
+IN=$MAT
+USE_MSA=false; ls "$IN"/*.a3m >/dev/null 2>&1 && USE_MSA=true
 cd "$ROOT"
 source scripts/activate_env.sh
 
@@ -32,7 +38,7 @@ protenix1|protenix2)
   E=protenix; M=protenix_base_default_v1.0.0
   [ "$FAMILY" = protenix2 ] && E=protenix_v2 && M=protenix-v2
   cd "$REL" && PROTENIX_ROOT_DIR=$REL/protenix-root LAYERNORM_TYPE=torch "$ENVS/$E/bin/protenix" pred \
-    -i "$IN/protenix.json" -o "$OUT" -s "$SEED" -c 4 -p 200 -e 5 -n "$M" --use_msa false \
+    -i "$IN/protenix.json" -o "$OUT" -s "$SEED" -c 4 -p 200 -e 5 -n "$M" --use_msa "$USE_MSA" \
     -d fp32 --trimul_kernel torch --triatt_kernel torch ;;
 openfold3|openfold3-preview2)
   S=$ROOT/../refs/uplifting-biomolecular-modeling/openfold3_ob0/stock/src
@@ -40,6 +46,8 @@ openfold3|openfold3-preview2)
   if [ "$FAMILY" = openfold3-preview2 ]; then
     S=${OF3_PREVIEW2_SRC:-/home/hwlee/project/openfold3}; K=${OF3_PREVIEW2_CKPT:-/home/hwlee/.openfold3/of3-p2-155k.pt}
   fi
+  # OpenFold3 parses only MSA files whose names it knows; colabfold_main is one.
+  [ -f "$IN/A.a3m" ] && ln -sf "$IN/A.a3m" "$IN/colabfold_main.a3m"
   python - "$IN/of3.json" "$SEED" "$OUT/query.json" <<'PY'
 import json, sys
 query = json.load(open(sys.argv[1]))
@@ -61,13 +69,13 @@ intellifold2)
     --precision no --num_workers 0 --override ;;
 chai1)
   CHAI_DOWNLOADS_DIR=$ROOT/model_checkpoints/chai1 \
-  PYTHONPATH=$REL/chai-rdkit-deps:$ROOT/runs/chai-native-20260923/deps:$ENVS/chai-lab \
+  PYTHONPATH=$REL/chai-rdkit-deps:$REL/chai-msa-deps:$ROOT/runs/chai-native-20260923/deps:$ENVS/chai-lab \
     python "$HERE/chai_run.py" "$IN/chai.fasta" "$OUT" "$SEED" ;;
 opendde)
   S=${OPENDDE_SRC:-/home/kkh517/OpenDDE}
   cd "$S" && OPENDDE_ROOT_DIR=$REL/protenix-root LAYERNORM_TYPE=torch PYTHONPATH=$S \
     "$ENVS/protenix_v2/bin/python" runner/batch_inference.py pred -i "$IN/protenix.json" -o "$OUT" \
-    -s "$SEED" -c 4 -p 200 -e 5 -n opendde_v1 --use_msa false -d fp32 \
+    -s "$SEED" -c 4 -p 200 -e 5 -n opendde_v1 --use_msa "$USE_MSA" -d fp32 \
     --trimul_kernel torch --triatt_kernel torch \
     --load_checkpoint_path "$ROOT/model_checkpoints/opendde/opendde.pt" ;;
 esmfold2)

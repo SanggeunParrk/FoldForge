@@ -33,7 +33,18 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[3]
 OUTPUTS = ROOT / "outputs"
-TARGETS = ("5i28", "3ptb", "1a1k")
+#: The original conditions first, then any further target outputs/ holds (the
+#: MSA condition, ...), so a new reference directory is judged without a code edit.
+_CORE_TARGETS = ("5i28", "3ptb", "1a1k")
+TARGETS = _CORE_TARGETS + tuple(
+    sorted(
+        p.name
+        for p in OUTPUTS.iterdir()
+        if p.is_dir() and p.name != "inputs" and p.name not in _CORE_TARGETS
+    )
+    if OUTPUTS.is_dir()
+    else ()
+)
 SEEDS = (0, 1, 2)
 
 #: How FoldForge folds each family under the references' conditions: the CLI

@@ -3,7 +3,9 @@
 `fast.md` and `exact.md` are `foldforge validate` verdicts for the two modes
 against `outputs/`: every family's structures from its **own released code**
 on 5I28 (protein), 3PTB (protein + ligand + ion) and 1A1K (DNA + protein +
-ions), three seeds of five samples each, no MSA, no template.
+ions) with no MSA, and on 5I28 again with one shared MSA (`5i28-msa`: the same
+6789-sequence alignment handed to every release in its own input format);
+three seeds of five samples each, no template.
 
 Regenerate with `scripts/references/validate.sh fast` (or `exact`), then
 `foldforge validate runs/validate-<mode> --report docs/validation/<mode>.md`.
@@ -22,9 +24,10 @@ number:
 - **placement**: permutation-matched ligand/ion centroids after polymer
   superposition, under the structure rule.
 
-## Current state (2026-09-26)
+## Current state (2026-09-27)
 
-27 of 28 rows pass in both modes. The exception is known:
+37 of 38 rows pass in both modes, including all ten families on the MSA
+condition. The exception is known:
 
 - **OpenDDE 5I28 pLDDT, 68.4 against 71.1.** Structure passes (1.81 A against
   a 2.21 A bound). The gap is the reference conformer source: OpenDDE takes its
@@ -36,6 +39,11 @@ number:
   exactly, and one denoiser call to 0.02 A at every noise level.
 
 Also worth knowing when reading the tables:
+
+- With the MSA, OpenDDE and ESMFold2 read 1.4 and 1.5 pLDDT below their
+  releases (inside the 2.0 tolerance, structure within spread); RoseTTAFold3's
+  fast mode sits at 0.57 A against the release's 0.20 A spread (passing on
+  the 0.5 A floor; exact mode reads 0.17 A).
 
 - OpenDDE's release fails to featurise any input with a ligand or ion, so it
   has 5I28 alone.

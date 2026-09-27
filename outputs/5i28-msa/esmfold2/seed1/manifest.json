@@ -1,0 +1,32 @@
+{
+ "family": "esmfold2",
+ "target": "5i28-msa",
+ "seed": 1,
+ "samples": [
+  {
+   "file": "sample0.cif.gz",
+   "source": "sample_0.cif",
+   "mean_plddt": 94.061
+  },
+  {
+   "file": "sample1.cif.gz",
+   "source": "sample_1.cif",
+   "mean_plddt": 94.1
+  },
+  {
+   "file": "sample2.cif.gz",
+   "source": "sample_2.cif",
+   "mean_plddt": 94.041
+  },
+  {
+   "file": "sample3.cif.gz",
+   "source": "sample_3.cif",
+   "mean_plddt": 94.118
+  },
+  {
+   "file": "sample4.cif.gz",
+   "source": "sample_4.cif",
+   "mean_plddt": 94.037
+  }
+ ]
+}

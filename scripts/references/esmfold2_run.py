@@ -1,8 +1,9 @@
 """Run the released ESMFold2 (transformers + esm) on a reference input.
 
 Usage: esmfold2_run.py BOLTZ_YAML OUT_DIR SEED. Reads the Boltz-style YAML the
-other references use, folds it with three loops and LM dropout 0.25 (the
-checkpoint's own defaults), 200 steps and five samples, and writes
+other references use (with its protein ``msa:`` a3m, when given), folds it with
+three loops and LM dropout 0.25 (the checkpoint's own defaults), 200 steps and
+five samples, and writes
 sample_<i>.cif with pLDDT in the B-factors.
 """
 
@@ -31,7 +32,12 @@ for entry in yaml.safe_load(spec_path.read_text())["sequences"]:
     if kind == "ligand":
         sequences.append(LigandInput(id=body["id"], ccd=[body["ccd"]]))
     else:
-        sequences.append(kinds[kind](id=body["id"], sequence=body["sequence"]))
+        extra = {}
+        if kind == "protein" and body.get("msa") not in (None, "empty"):
+            from esm.utils.msa import MSA
+
+            extra["msa"] = MSA.from_a3m(body["msa"])
+        sequences.append(kinds[kind](id=body["id"], sequence=body["sequence"], **extra))
 # The Hugging Face cache copy of biohub/ESMC-6B does not match ESMCModel's keys:
 # from_pretrained silently leaves every language-model weight randomly
 # initialised, and the fold still runs (pLDDT ~29 instead of ~90). Load the

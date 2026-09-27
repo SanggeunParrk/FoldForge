@@ -1,0 +1,1 @@
+{"queries": {"5i28-msa": {"chains": [{"molecule_type": "protein", "chain_ids": ["A"], "sequence": "AECSVDIQGNDQMQFNTNAITVDKSCKQFCVNLSHPGNLPKNVMGHNWVLSTAADMQGVVTDGMASGLDKDYLKPDDSRVIAHTKLIGSGEKDSVTFDVSKLKEGEQYMFFCTFPGHSALMKGTLTLK", "main_msa_file_paths": ["{IN}/colabfold_main.a3m"]}]}}}

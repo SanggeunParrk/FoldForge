@@ -922,5 +922,335 @@
    "ligand_geometry": true
   },
   "pass": true
+ },
+ {
+  "target": "5i28-msa",
+  "family": "boltz2",
+  "samples": {
+   "release": 15,
+   "ours": 15
+  },
+  "plddt": {
+   "release": 96.99373333333332,
+   "ours": 96.94105926687224,
+   "tolerance": 2.0
+  },
+  "structure": {
+   "rel_rel": 0.551620690046788,
+   "ours_rel": 0.5446193955520138,
+   "ours_ours": 0.5102497829163376
+  },
+  "placement": {
+   "rel_rel": NaN,
+   "ours_rel": NaN
+  },
+  "ligand_geometry": {
+   "rel": null,
+   "ours": null
+  },
+  "checks": {
+   "structure": true,
+   "plddt": true,
+   "placement": true,
+   "ligand_geometry": true
+  },
+  "pass": true
+ },
+ {
+  "target": "5i28-msa",
+  "family": "chai1",
+  "samples": {
+   "release": 15,
+   "ours": 15
+  },
+  "plddt": {
+   "release": 95.69006666666664,
+   "ours": 95.38874683110656,
+   "tolerance": 2.0
+  },
+  "structure": {
+   "rel_rel": 0.40248031299806736,
+   "ours_rel": 0.40614522460618746,
+   "ours_ours": 0.4068340077384536
+  },
+  "placement": {
+   "rel_rel": NaN,
+   "ours_rel": NaN
+  },
+  "ligand_geometry": {
+   "rel": null,
+   "ours": null
+  },
+  "checks": {
+   "structure": true,
+   "plddt": true,
+   "placement": true,
+   "ligand_geometry": true
+  },
+  "pass": true
+ },
+ {
+  "target": "5i28-msa",
+  "family": "protenix1",
+  "samples": {
+   "release": 15,
+   "ours": 15
+  },
+  "plddt": {
+   "release": 96.2268,
+   "ours": 96.22845837615621,
+   "tolerance": 2.0
+  },
+  "structure": {
+   "rel_rel": 0.37713557639415773,
+   "ours_rel": 0.40410558522524487,
+   "ours_ours": 0.4338168946308343
+  },
+  "placement": {
+   "rel_rel": NaN,
+   "ours_rel": NaN
+  },
+  "ligand_geometry": {
+   "rel": null,
+   "ours": null
+  },
+  "checks": {
+   "structure": true,
+   "plddt": true,
+   "placement": true,
+   "ligand_geometry": true
+  },
+  "pass": true
+ },
+ {
+  "target": "5i28-msa",
+  "family": "protenix2",
+  "samples": {
+   "release": 15,
+   "ours": 15
+  },
+  "plddt": {
+   "release": 95.85119999999999,
+   "ours": 95.82457005823913,
+   "tolerance": 2.0
+  },
+  "structure": {
+   "rel_rel": 0.26082162487362576,
+   "ours_rel": 0.22346916806475955,
+   "ours_ours": 0.17258526073007693
+  },
+  "placement": {
+   "rel_rel": NaN,
+   "ours_rel": NaN
+  },
+  "ligand_geometry": {
+   "rel": null,
+   "ours": null
+  },
+  "checks": {
+   "structure": true,
+   "plddt": true,
+   "placement": true,
+   "ligand_geometry": true
+  },
+  "pass": true
+ },
+ {
+  "target": "5i28-msa",
+  "family": "openfold3",
+  "samples": {
+   "release": 15,
+   "ours": 15
+  },
+  "plddt": {
+   "release": 94.91886666666669,
+   "ours": 95.00357862281604,
+   "tolerance": 2.0
+  },
+  "structure": {
+   "rel_rel": 0.3194731676813338,
+   "ours_rel": 0.27814711279608956,
+   "ours_ours": 0.1915427088650375
+  },
+  "placement": {
+   "rel_rel": NaN,
+   "ours_rel": NaN
+  },
+  "ligand_geometry": {
+   "rel": null,
+   "ours": null
+  },
+  "checks": {
+   "structure": true,
+   "plddt": true,
+   "placement": true,
+   "ligand_geometry": true
+  },
+  "pass": true
+ },
+ {
+  "target": "5i28-msa",
+  "family": "openfold3-preview2",
+  "samples": {
+   "release": 15,
+   "ours": 15
+  },
+  "plddt": {
+   "release": 85.36819999999999,
+   "ours": 85.0602829736211,
+   "tolerance": 2.0
+  },
+  "structure": {
+   "rel_rel": 0.08536342968393258,
+   "ours_rel": 0.10034418661768632,
+   "ours_ours": 0.0982385724958607
+  },
+  "placement": {
+   "rel_rel": NaN,
+   "ours_rel": NaN
+  },
+  "ligand_geometry": {
+   "rel": null,
+   "ours": null
+  },
+  "checks": {
+   "structure": true,
+   "plddt": true,
+   "placement": true,
+   "ligand_geometry": true
+  },
+  "pass": true
+ },
+ {
+  "target": "5i28-msa",
+  "family": "rosettafold3",
+  "samples": {
+   "release": 15,
+   "ours": 15
+  },
+  "plddt": {
+   "release": 86.77513333333333,
+   "ours": 87.37383281945868,
+   "tolerance": 2.0
+  },
+  "structure": {
+   "rel_rel": 0.19975530502756805,
+   "ours_rel": 0.568387249803592,
+   "ours_ours": 0.36008356270265707
+  },
+  "placement": {
+   "rel_rel": NaN,
+   "ours_rel": NaN
+  },
+  "ligand_geometry": {
+   "rel": null,
+   "ours": null
+  },
+  "checks": {
+   "structure": true,
+   "plddt": true,
+   "placement": true,
+   "ligand_geometry": true
+  },
+  "pass": true
+ },
+ {
+  "target": "5i28-msa",
+  "family": "intellifold2",
+  "samples": {
+   "release": 15,
+   "ours": 15
+  },
+  "plddt": {
+   "release": 94.563,
+   "ours": 94.39749092154848,
+   "tolerance": 2.0
+  },
+  "structure": {
+   "rel_rel": 0.09157209053572797,
+   "ours_rel": 0.10138283879303751,
+   "ours_ours": 0.10467173738428932
+  },
+  "placement": {
+   "rel_rel": NaN,
+   "ours_rel": NaN
+  },
+  "ligand_geometry": {
+   "rel": null,
+   "ours": null
+  },
+  "checks": {
+   "structure": true,
+   "plddt": true,
+   "placement": true,
+   "ligand_geometry": true
+  },
+  "pass": true
+ },
+ {
+  "target": "5i28-msa",
+  "family": "opendde",
+  "samples": {
+   "release": 15,
+   "ours": 15
+  },
+  "plddt": {
+   "release": 96.04333333333331,
+   "ours": 94.6806372045221,
+   "tolerance": 2.0
+  },
+  "structure": {
+   "rel_rel": 0.09197447298388928,
+   "ours_rel": 0.16800334614352672,
+   "ours_ours": 0.21770174440731171
+  },
+  "placement": {
+   "rel_rel": NaN,
+   "ours_rel": NaN
+  },
+  "ligand_geometry": {
+   "rel": null,
+   "ours": null
+  },
+  "checks": {
+   "structure": true,
+   "plddt": true,
+   "placement": true,
+   "ligand_geometry": true
+  },
+  "pass": true
+ },
+ {
+  "target": "5i28-msa",
+  "family": "esmfold2",
+  "samples": {
+   "release": 15,
+   "ours": 15
+  },
+  "plddt": {
+   "release": 94.06526666666666,
+   "ours": 92.53654938271606,
+   "tolerance": 2.0
+  },
+  "structure": {
+   "rel_rel": 0.13925481318748983,
+   "ours_rel": 0.16333172291229622,
+   "ours_ours": 0.16695508746906382
+  },
+  "placement": {
+   "rel_rel": NaN,
+   "ours_rel": NaN
+  },
+  "ligand_geometry": {
+   "rel": null,
+   "ours": null
+  },
+  "checks": {
+   "structure": true,
+   "plddt": true,
+   "placement": true,
+   "ligand_geometry": true
+  },
+  "pass": true
  }
 ]

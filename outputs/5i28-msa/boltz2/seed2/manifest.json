@@ -1,0 +1,32 @@
+{
+ "family": "boltz2",
+ "target": "5i28-msa",
+ "seed": 2,
+ "samples": [
+  {
+   "file": "sample0.cif.gz",
+   "source": "boltz_model_0.cif",
+   "mean_plddt": 97.124
+  },
+  {
+   "file": "sample1.cif.gz",
+   "source": "boltz_model_1.cif",
+   "mean_plddt": 96.987
+  },
+  {
+   "file": "sample2.cif.gz",
+   "source": "boltz_model_2.cif",
+   "mean_plddt": 96.885
+  },
+  {
+   "file": "sample3.cif.gz",
+   "source": "boltz_model_3.cif",
+   "mean_plddt": 96.879
+  },
+  {
+   "file": "sample4.cif.gz",
+   "source": "boltz_model_4.cif",
+   "mean_plddt": 96.8
+  }
+ ]
+}

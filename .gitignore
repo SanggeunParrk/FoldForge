@@ -1,42 +1,20 @@
-# Weights. ~44 GB across the predictors — set up locally, never committed.
-# No trailing slash: here these are SYMLINKS into a sibling checkout, and a
-# `name/` pattern matches directories only, so the symlink would sail past it
-# and get committed as a link to one machine's absolute path.
-model_checkpoints
-
-# Local, machine-specific trees: the release environments the references are
-# regenerated with (scripts/references/run_release.sh), the CCD database, and
-# scratch environments.
-/releases/
-/data/
-.venv-*/
-
-# Measurements and predictions. Both are outputs of a run, not of the source:
-# they describe a machine and a checkpoint, and they change on every run while
-# the code does not.
-benchmark/
-validation
-# ...except the verdicts against the released implementations, which the README
-# links: they describe the code, and change only when the code does.
-!docs/validation
-# references/ is NOT ignored: it holds the released implementations' reference
-# structures FoldForge is validated against (see references/README.md).
-logs/
+# FoldForge keeps weights, databases, release environments and runs outside the
+# repository, under $FOLDFORGE_HOME (default ~/.cache/foldforge; see
+# src/foldforge/paths.py). Nothing machine-specific belongs in the checkout.
 
 # Python
 __pycache__/
 *.py[cod]
 .venv/
+.venv-*/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
 uv.lock.bak
+build/
+dist/
 
-# Shared local chemistry assets, separate from model weights.
-/data/ccd/
-
-# Every structure-prediction run and archived prediction.
-/runs/
-
-# Local compile caches, validation snapshots, and experiment scratch files.
-/.bench/
+# Slurm logs from jobs submitted at the repo root
+slurm-*.out
+slurm-*.log
+slurm-*.err

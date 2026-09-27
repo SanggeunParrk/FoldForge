@@ -2,9 +2,9 @@
 #
 # GPU tests (about 180 of them skip here) and the release-reference validation
 # need an A100 and run on the cluster:
-#   sbatch runs/.../tests.sbatch             (full GPU suite)
-#   scripts/references/validate.sh fast      (fold vs references/, then
-#   foldforge validate runs/validate-fast)
+#   python -m pytest tests                   (on a GPU node: the full suite)
+#   tools/references/validate.sh fast        (fold vs tests/release_references/, then
+#   foldforge validate $FOLDFORGE_HOME/runs/validate-fast)
 # The test job needs read access to the private team-gm and miniworld-engine
 # repositories: add a deploy key that can read both as the repository secret
 # FOLDFORGE_CI_SSH_KEY. Without it the job is skipped, not failed.
@@ -26,9 +26,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - name: ruff check
-        run: uvx ruff@0.15.22 check src tests scripts
+        run: uvx ruff@0.15.22 check src tests tools
       - name: ruff format
-        run: uvx ruff@0.15.22 format --check src tests scripts
+        run: uvx ruff@0.15.22 format --check src tests tools
 
   test-cpu:
     runs-on: ubuntu-latest

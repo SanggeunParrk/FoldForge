@@ -8,7 +8,7 @@ that: a stale attribute, a record with no module behind it, a family whose
 optional stage the builder still reaches for unconditionally.
 
 It does NOT check that the names or shapes match a released checkpoint. That is
-`scripts/diff_dense_checkpoint.py`, and it needs the weights.
+`tools/diff_dense_checkpoint.py`, and it needs the weights.
 """
 
 from __future__ import annotations

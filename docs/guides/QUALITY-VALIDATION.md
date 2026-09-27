@@ -31,7 +31,7 @@ unchanged; additions are development tooling and typing dependencies.
 Run the static checks again with:
 
 ```bash
-bash scripts/check_quality.sh
+bash tools/check_quality.sh
 ```
 
 The final data layout has seven subpackages instead of thirteen. Imports, CLI

@@ -11,8 +11,8 @@ import pytest
 import yaml
 from biomol.core import FeatureContainer, IndexTable, NodeFeature
 from biomol.core.utils import to_bytes
-from support import REPOSITORY_ROOT
 
+from foldforge import paths
 from foldforge.data.inputs.build import limit_msa, load
 from foldforge.data.inputs.lmdb import (
     Alignment,
@@ -24,7 +24,7 @@ from foldforge.data.inputs.template_mol import TemplateMol
 CCD_DATABASE = Path(
     os.environ.get(
         "FOLDFORGE_TEST_CCD_DB",
-        str(REPOSITORY_ROOT / "data/ccd/preprocessed_CCD.lmdb"),
+        str(paths.ccd_db()),
     )
 )
 

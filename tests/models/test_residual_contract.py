@@ -1,7 +1,7 @@
 """No model may re-add a residual an engine op already owns.
 
 Engine ops apply their own self-residual and fuse it into the kernel epilogue
-(`libs/team-gm/docs/ARCHITECTURE.md` rule 2). Writing ``x = x + op(x)`` on top of
+(`third_party/team-gm/docs/ARCHITECTURE.md` rule 2). Writing ``x = x + op(x)`` on top of
 that doubles it, and **nothing raises** — it produces a plausible, wrong
 structure. It cost one 3PTB fold pLDDT 0.973 -> 0.750 via a tripled conditioned
 pair (|x| 15.1 -> 46.1) and an over-compacted structure (Rg 15.9 -> 14.9 A).

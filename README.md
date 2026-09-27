@@ -38,7 +38,7 @@ model = load("protenix2", backend="miniworld", dtype=torch.bfloat16, device="cud
 
 FoldForge is a **terminal** repo in a three-layer stack. The boundary rules —
 which decide whether a piece of code belongs here or a layer down — are
-canonical in [libs/team-gm/docs/ARCHITECTURE.md](libs/team-gm/docs/ARCHITECTURE.md).
+canonical in [third_party/team-gm/docs/ARCHITECTURE.md](third_party/team-gm/docs/ARCHITECTURE.md).
 The short version:
 
 | layer | repo | holds |
@@ -60,7 +60,7 @@ uv sync --extra cu12    # CUDA 12.8   (or --extra cu13 for CUDA 13)
 
 For an existing checkout: `git submodule update --init --recursive`.
 The checked-in submodule revision is the validated dependency: team-gm
-`52292ac` on branch `foldforge/dense-families`. Keep that revision when
+`67e163e` on branch `foldforge/pypi-transformers`. Keep that revision when
 reproducing the recorded results; newer `exp/miniworld` commits use a
 different engine/patch set.
 
@@ -70,9 +70,9 @@ CUTLASS DSL 4.5.2. On this cluster:
 
 ```bash
 mkdir -p validation/reports/logs
-sbatch scripts/setup_env.sbatch
+sbatch tools/setup_env.sbatch
 # After installation succeeds, before running Python directly:
-source scripts/activate_env.sh
+source tools/activate_env.sh
 ```
 
 Use the setup script for updates too: it reuses the verified FA2 wheel when
@@ -90,7 +90,7 @@ with its required C++ runtime. See [the environment record](docs/archive/ENVIRON
 ### The engine pin
 
 `miniworld-engine` is a git dependency, pinned by `rev` in **both**
-`pyproject.toml` and `libs/team-gm/pyproject.toml`. team-gm is a uv workspace member;
+`pyproject.toml` and `third_party/team-gm/pyproject.toml`. team-gm is a uv workspace member;
 the root source declaration governs the workspace. Keep the member's pin aligned
 so its standalone environment uses the same engine revision.
 
@@ -100,24 +100,37 @@ revision, validation results, and FlashAttention setup required for GPU SWA.
 ## Layout
 
 ```
-libs/team-gm/            submodule, pinned; branch foldforge/dense-families
-src/foldforge/
-  cli.py                 foldforge models / ccd / checkpoints / validate / fold <model>
-  prediction.py          the one output type every predictor returns
-  models/                the registry, the one AF3 architecture, checkpoints, the
-                         loading / execution / sampling / precision lifecycle, io
-  modules/               the dense graph's blocks (dense/), shared ops, ESM-C glue
-  data/                  CCD database, chemical constants, dense features and
-                         family conventions, MiniWorld input specs
-  eval/                  the release-reference judge, confidence decoding, structure I/O
-  utils/                 geometry, seeding, logging and tensor helpers
-scripts/                 Slurm wrappers, release runners, conversion, benchmarks
-configs/  tests/  docs/  references/  typings/
+src/foldforge/        the package
+  cli.py              foldforge models / ccd / checkpoints / validate / fold <model>
+  paths.py            where weights, databases, release envs and runs live
+  models/             registry, the one AF3 architecture, checkpoints, loading,
+                      execution, sampling, precision, io
+  modules/            the dense graph's blocks (dense/), shared ops, ESM-C glue
+  data/               CCD database, chemical constants, dense features and
+                      family conventions, MiniWorld input specs
+  eval/               the release-reference judge, confidence decoding, structures
+  utils/              geometry, seeding, logging and tensor helpers
+tests/                unit and GPU tests; release_references/ holds every release's
+                      own structures and the inputs they were made from
+docs/                 guides, validation verdicts, findings, bug reports, examples/
+tools/                release runners, validation, conversion, benchmarks, Slurm
+                      wrappers; typings/ (pyright stubs)
+third_party/          team-gm (submodule) and the AF3 feature package
 ```
 
-`model_checkpoints/`, `benchmark/`, `runs/` and `validation/` are gitignored: weights are
-~44 GB, and measurements describe a machine and a checkpoint rather than the
-source.
+Nothing machine-specific lives in the checkout. Weights, the CCD database, the
+release environments, runs and benchmark inputs sit under `$FOLDFORGE_HOME`
+(default `~/.cache/foldforge`), each overridable on its own
+(`src/foldforge/paths.py`):
+
+```
+$FOLDFORGE_HOME/
+  checkpoints/   converted blobs, one directory per model   FOLDFORGE_CHECKPOINT_DIR
+  ccd/           preprocessed_CCD.lmdb                       FOLDFORGE_CCD_DB
+  runs/          where `--out <name>` goes                   FOLDFORGE_RUNS
+  releases/      release environments (reference regen)      FOLDFORGE_RELEASE_ROOT
+  benchmarks/    benchmark input sets                        FOLDFORGE_BENCHMARKS
+```
 
 ## Conventions
 
@@ -173,18 +186,18 @@ On an allocated GPU node, every family takes the same MiniWorld YAML and the
 same flags — there is one CLI, not one per predictor:
 
 ```bash
-source scripts/activate_env.sh
+source tools/activate_env.sh
 foldforge models
-foldforge fold af3      --spec configs/inference/1ubq.yaml --out runs/af3
-foldforge fold protenix2 --spec configs/inference/1ubq.yaml --out runs/protenix2
-foldforge fold opendde  --spec configs/inference/1ubq.yaml --out runs/opendde
-foldforge fold esmfold2 --spec configs/inference/1ubq.yaml --out runs/esmfold2
+foldforge fold af3      --spec docs/examples/inference/1ubq.yaml --out $FOLDFORGE_HOME/runs/af3
+foldforge fold protenix2 --spec docs/examples/inference/1ubq.yaml --out $FOLDFORGE_HOME/runs/protenix2
+foldforge fold opendde  --spec docs/examples/inference/1ubq.yaml --out $FOLDFORGE_HOME/runs/opendde
+foldforge fold esmfold2 --spec docs/examples/inference/1ubq.yaml --out $FOLDFORGE_HOME/runs/esmfold2
 ```
 
 `--checkpoint` is optional when the release's default file is in
-`model_checkpoints/<model>/`. The command writes CIF and JSON recording the
+`$FOLDFORGE_HOME/checkpoints/<model>/`. The command writes CIF and JSON recording the
 actual precision, sampling, compile and CUDA-graph settings. Every family
-reads the MiniWorld BioMol LMDB at `data/ccd/preprocessed_CCD.lmdb`.
+reads the MiniWorld BioMol LMDB at `$FOLDFORGE_HOME/ccd/preprocessed_CCD.lmdb`.
 
 ### Exact and fast modes
 
@@ -204,13 +217,13 @@ dropout, its ligand atom names and so on -- are in both modes.
 
 ### Accuracy against the released implementations
 
-`references/` holds, for three reference targets (protein; protein + ligand +
+`tests/release_references/` holds, for three reference targets (protein; protein + ligand +
 ion; DNA + protein + ions), every family's structures from its **own released
 code**, three seeds of five samples. `foldforge validate` judges a FoldForge
 run against them -- structure, pLDDT, ligand bond geometry and ligand/ion
 placement, each relative to the release's own seed-to-seed spread -- and the
 current verdicts are in [docs/validation/](docs/validation/). See
-[references/README.md](references/README.md) to regenerate or extend them.
+[tests/release_references/README.md](tests/release_references/README.md) to regenerate or extend them.
 
 Today 37 of 38 family x condition rows pass in both modes, the MSA condition
 included. The one exception,
@@ -234,20 +247,20 @@ nested model settings, data conventions and checkpoint-specific capabilities.
 ## Tests, validation and prediction outputs
 
 - `tests/`: maintained regression tests by responsibility; run `pytest tests`.
-- `validation/inputs/`: prepared evaluation targets and model input specs.
+- `$FOLDFORGE_HOME/benchmarks/`: prepared evaluation targets and model input specs.
 - `validation/reports/`: validation logs and artifact relocation manifests.
 - `validation/archive/`: historical scripts, temporary source copies and checks.
-- `runs/`: all structure-prediction outputs, including benchmark predictions.
+- `$FOLDFORGE_HOME/runs/`: all structure-prediction outputs, including benchmark predictions.
 
 Both CLI forms enforce the same destination. `--out experiment` and
-`--out runs/experiment` write to `<repo>/runs/experiment`, independent of the
-working directory. Without `--out`, a unique `runs/<model>/<timestamp-id>/` is
+`--out $FOLDFORGE_HOME/runs/experiment` write to `<repo>/runs/experiment`, independent of the
+working directory. Without `--out`, a unique `$FOLDFORGE_HOME/runs/<model>/<timestamp-id>/` is
 used. Absolute paths must be within this runs tree; outside destinations fail
 before input preparation or prediction writing. Prepared inputs, coordinates,
 confidence files and the run report are kept together. Historical predictions
-are preserved under `runs/archive/validation/`; relocation manifests map old
+are preserved under `$FOLDFORGE_HOME/runs/archive/validation/`; relocation manifests map old
 paths to their new locations.
 
-Development checks: run `bash scripts/check_quality.sh` for Ruff lint/format and
+Development checks: run `bash tools/check_quality.sh` for Ruff lint/format and
 Pyright. See [code quality](docs/guides/CODE-QUALITY.md) for scope, retained numerical-code
 exceptions, and compute-node regression checks.

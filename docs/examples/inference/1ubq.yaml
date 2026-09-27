@@ -1,0 +1,12 @@
+# Paths are relative to this spec. Single sequence, no MSA; add `a3m: {A: ...}`
+# or `msa_db:` for an alignment. The CCD database is the machine's default
+# (foldforge.paths.ccd_db()).
+name: 1ubq
+chain_letters:
+  0: A
+fasta:
+  A: 1ubq.fasta
+n_trunk_samples: 1
+n_diffusion_samples: 1
+diffusion_batch_size: 1
+save_trajectory: false

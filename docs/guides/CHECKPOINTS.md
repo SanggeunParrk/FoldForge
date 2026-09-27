@@ -8,7 +8,7 @@ exact blob `checkpoints.lock` pins.
 
 ## Layout and lookup
 
-Blobs live under `model_checkpoints/<dir>/` (see `DEFAULT_FILES` in
+Blobs live under `$FOLDFORGE_HOME/checkpoints/<dir>/` (see `DEFAULT_FILES` in
 `src/foldforge/models/checkpoints/__init__.py`), or under
 `$FOLDFORGE_CHECKPOINT_DIR/<dir>/` to keep them on shared or larger storage.
 `foldforge checkpoints verify` checks every blob against the lock; loading
@@ -18,14 +18,14 @@ refuses a blob whose size is not the locked one.
 
 The converter is sokrypton/alphafold3, branch `af3-any-model`, at
 `301430b3cbf9122912663c67eb19628fd6feec3e` (public), driven by FoldForge's
-`scripts/convert_dense_checkpoint.py`, which runs in FoldForge's environment:
+`tools/convert_dense_checkpoint.py`, which runs in FoldForge's environment:
 
 ```bash
 git clone -b af3-any-model https://github.com/sokrypton/alphafold3 ../refs/alphafold3-any-model
 git -C ../refs/alphafold3-any-model checkout 301430b3cbf9122912663c67eb19628fd6feec3e
-source scripts/activate_env.sh
-python scripts/convert_dense_checkpoint.py --model <model> --checkpoint <release file> \
-  --reference ../refs/alphafold3-any-model --out model_checkpoints/<dir>
+source tools/activate_env.sh
+python tools/convert_dense_checkpoint.py --model <model> --checkpoint <release file> \
+  --reference ../refs/alphafold3-any-model --out $FOLDFORGE_HOME/checkpoints/<dir>
 foldforge checkpoints verify
 ```
 
@@ -34,7 +34,7 @@ foldforge checkpoints verify
 "Reproduces" is the result of converting the listed release file on
 2026-09-26 and comparing with `checkpoints.lock`.
 
-| `--model` | release file (sha256, first 12) | output under `model_checkpoints/` | reproduces |
+| `--model` | release file (sha256, first 12) | output under `$FOLDFORGE_HOME/checkpoints/` | reproduces |
 |---|---|---|---|
 | `esmfold2` | `biohub/ESMFold2` `model.safetensors` (HF) | `esmfold2/esmfold2.bin.zst` + `.lm.npz` | bit-identical |
 | `esmfold2_fast` | `biohub/ESMFold2-Fast` `model.safetensors` (`60ca19f28981`) | `esmfold2-fast/esmfold2_fast.bin.zst` + `.lm.npz` | bit-identical |
@@ -50,10 +50,10 @@ foldforge checkpoints verify
 | AF3 | DeepMind's `af3.bin.zst`, on request | `af3/af3.bin.zst` | the release file itself |
 
 ESM-C 6B (`biohub/ESMC-6B`) is read directly from its release directory
-`model_checkpoints/esmc-6b/`; do not rely on the Hugging Face cache copy (see
+`$FOLDFORGE_HOME/checkpoints/esmc-6b/`; do not rely on the Hugging Face cache copy (see
 `docs/bug-reports/esmfold2-hf-esmc-random-weights.md`).
 
 Where a conversion reproduces only to fp32 rounding, the freshly converted blob
 folds the same but is refused by the lock's size check: copy the locked blob from
 a machine that has it (verify with `foldforge checkpoints verify`), or, after
-re-validating (`scripts/references/validate.sh`), update the lock.
+re-validating (`tools/references/validate.sh`), update the lock.

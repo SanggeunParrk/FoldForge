@@ -15,6 +15,7 @@ import torch
 from support import REFERENCE_ROOT, REPOSITORY_ROOT
 from team_gm.modules.blocks.attention_math import attention, outer_product_projection
 
+from foldforge import paths
 from foldforge.data.ccd import CCDDatabase
 from foldforge.data.inputs.build import load
 
@@ -24,11 +25,7 @@ REFERENCE = Path(
         "MINIWORLD_TEST_SOURCE", str(REPOSITORY.parent / "MiniWorld/src/miniworld")
     )
 )
-DATABASE = Path(
-    os.environ.get(
-        "FOLDFORGE_TEST_CCD_DB", str(REPOSITORY / "data/ccd/preprocessed_CCD.lmdb")
-    )
-)
+DATABASE = Path(os.environ.get("FOLDFORGE_TEST_CCD_DB", str(paths.ccd_db())))
 
 
 @pytest.mark.parametrize("efficient", [False, True])

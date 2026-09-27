@@ -1,14 +1,14 @@
 # Validation against the released implementations
 
 `fast.md` and `exact.md` are `foldforge validate` verdicts for the two modes
-against `references/`: every family's structures from its **own released code**
+against `tests/release_references/`: every family's structures from its **own released code**
 on 5I28 (protein), 3PTB (protein + ligand + ion) and 1A1K (DNA + protein +
 ions) with no MSA, and on 5I28 again with one shared MSA (`5i28-msa`: the same
 6789-sequence alignment handed to every release in its own input format);
 three seeds of five samples each, no template.
 
-Regenerate with `scripts/references/validate.sh fast` (or `exact`), then
-`foldforge validate runs/validate-<mode> --report docs/validation/<mode>.md`.
+Regenerate with `tools/references/validate.sh fast` (or `exact`), then
+`foldforge validate $FOLDFORGE_HOME/runs/validate-<mode> --report docs/validation/<mode>.md`.
 
 ## How a row is judged
 

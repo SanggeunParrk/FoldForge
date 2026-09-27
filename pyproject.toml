@@ -57,17 +57,17 @@ conflicts = [
 ]
 
 [tool.uv.workspace]
-members = ["libs/team-gm"]
+members = ["third_party/team-gm"]
 
 [tool.uv.sources]
-foldforge-af3-data = { path = "libs/af3-data" }
+foldforge-af3-data = { path = "third_party/af3-data" }
 # Match the reference ESMFold2 input processor.
 esm = { git = "https://github.com/Biohub/esm.git", rev = "fba1e42a8a0f8df2b7e08611c88807aa32a25d9c" }
 # transformers comes from PyPI: the Biohub fork that carried ESM-C was taken
 # down, and team_gm.models.esmc now vendors its ESM-C verbatim.
 team-gm = { workspace = true }
 # The workspace uses this root engine source. Keep the same revision in
-# libs/team-gm/pyproject.toml for its standalone installs.
+# third_party/team-gm/pyproject.toml for its standalone installs.
 miniworld-engine = { git = "ssh://git@github.com/SanggeunParrk/miniworld-engine.git", rev = "d2266a035de11384c46f8cc980e6460f60925413" }
 
 [dependency-groups]
@@ -82,7 +82,7 @@ dev = [
 [tool.ruff]
 line-length = 88
 target-version = "py312"
-extend-exclude = ["libs", "validation", "runs", "model_checkpoints"]
+extend-exclude = ["third_party", "tools/typings"]
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -110,7 +110,7 @@ known-third-party = ["wandb"]
 [tool.ruff.lint.per-file-ignores]
 # Optional dependency fixtures/importorskip must run before backend imports.
 "tests/*" = ["D", "ANN201", "S101", "INP001", "ANN001", "PLR2004", "E402", "PLC0415"]
-"scripts/*" = [
+"tools/*" = [
   "D",
   "ANN201",
   "S101",
@@ -146,7 +146,8 @@ testpaths = ["tests"]
 
 [tool.pyright]
 include = ["src/foldforge"]
-exclude = ["libs", "validation", "runs"]
+exclude = ["third_party"]
+stubPath = "tools/typings"
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.12"

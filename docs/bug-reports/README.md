@@ -1,7 +1,7 @@
 # Upstream bug reports
 
 Defects in released third-party code found while validating FoldForge against
-each release (`references/`, `docs/validation/`). Each file is written to be filed
+each release (`tests/release_references/`, `docs/validation/`). Each file is written to be filed
 as-is on the upstream tracker. None has been filed yet; when one is, add its
 link to the table.
 

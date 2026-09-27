@@ -7,25 +7,23 @@ AF3 in another.
 
 Lookup order for ``<model>``:
 
-1. ``$FOLDFORGE_CHECKPOINT_DIR/<model>`` — set this to keep ~44 GB off a quota'd
-   home directory.
-2. ``model_checkpoints/<model>`` next to the repo root.
-3. the ``path`` recorded for that model in ``model_checkpoints/registry.yaml``,
+1. ``<checkpoints>/<model>``, where ``<checkpoints>`` is
+   ``foldforge.paths.checkpoints()`` (``$FOLDFORGE_CHECKPOINT_DIR``, else
+   ``$FOLDFORGE_HOME/checkpoints``).
+2. the ``path`` recorded for that model in ``<checkpoints>/registry.yaml``,
    which is where a shared cluster location goes.
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import yaml
 
-#: Repo root — this file is ``<root>/src/foldforge/models/checkpoints/__init__.py``.
-ROOT = Path(__file__).resolve().parents[4]
+from foldforge import paths
 
-#: Per-model directories live under here unless the env var overrides it.
-DEFAULT_DIR = ROOT / "model_checkpoints"
+#: Per-model directories live under here.
+DEFAULT_DIR = paths.checkpoints()
 
 #: Default weight file inside each model's directory.
 DEFAULT_FILES = {
@@ -75,12 +73,7 @@ def _roots(model: str) -> list[Path]:
     for name in (known.store, known.family) if known else ():
         if name and name not in names:
             names.append(name)
-    candidates: list[Path] = []
-    override = os.environ.get("FOLDFORGE_CHECKPOINT_DIR")
-    for name in names:
-        if override:
-            candidates.append(Path(override) / name)
-        candidates.append(DEFAULT_DIR / name)
+    candidates = [DEFAULT_DIR / name for name in names]
     manifest = _registry().get(model) or {}
     if manifest.get("path"):
         candidates.append(Path(manifest["path"]))
@@ -103,7 +96,8 @@ def resolve(model: str, filename: str | None = None) -> Path:
         f"no checkpoint for {model!r}"
         + (f" (file {filename!r})" if filename else "")
         + f". Searched:\n  {searched}\n"
-        f"Set FOLDFORGE_CHECKPOINT_DIR, or see model_checkpoints/README.md."
+        "Set FOLDFORGE_HOME or FOLDFORGE_CHECKPOINT_DIR; "
+        "see docs/guides/CHECKPOINTS.md."
     )
     raise FileNotFoundError(msg)
 

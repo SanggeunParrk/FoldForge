@@ -3,7 +3,7 @@
 Run all static checks from an already installed FoldForge environment:
 
 ```bash
-bash scripts/check_quality.sh
+bash tools/check_quality.sh
 ```
 
 The script runs Ruff lint, Ruff formatting, and Pyright. It does not change the

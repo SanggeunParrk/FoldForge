@@ -1,7 +1,7 @@
 """Judge FoldForge folds against the released implementations' own outputs.
 
-``references/`` holds, for a few reference targets, each family's structures
-from its RELEASED code (``scripts/references``): three seeds of five samples
+``tests/release_references/`` holds, for a few reference targets, each family's structures
+from its RELEASED code (``tools/references``): three seeds of five samples
 under shared conditions. A FoldForge run of the same family, target and
 seeds is judged against them on four things, each relative to the release's
 own seed-to-seed variation rather than to a fixed number, because a fold with
@@ -31,8 +31,8 @@ from typing import Any
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[3]
-REFERENCES = ROOT / "references"
+from foldforge.paths import RELEASE_REFERENCES as REFERENCES
+
 #: The original conditions first, then any further target references/ holds (the
 #: MSA condition, ...), so a new reference directory is judged without a code edit.
 _CORE_TARGETS = ("5i28", "3ptb", "1a1k")

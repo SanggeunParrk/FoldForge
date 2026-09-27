@@ -10,16 +10,16 @@ profiles and legacy shards without search evidence are excluded. Logs and round
 records remain available for another invocation with a new output directory.
 
 ```bash
-source scripts/activate_env.sh
-python scripts/build_autotune_cache.py \
+source tools/activate_env.sh
+python tools/build_autotune_cache.py \
   --model af3 --cache-dir benchmark/cache/a6000 \
-  --out runs/cache-units/af3-1ubq --timeout 3600 -- \
-  --spec configs/inference/operational-1ubq.yaml \
-  --config configs/inference/graph-bf16.yaml
+  --out $FOLDFORGE_HOME/runs/cache-units/af3-1ubq --timeout 3600 -- \
+  --spec docs/examples/inference/operational-1ubq.yaml \
+  --config docs/examples/inference/graph-bf16.yaml
 
-foldforge fold af3 --spec configs/inference/operational-1ubq.yaml \
-  --config configs/inference/graph-bf16.yaml \
-  --engine-cache-dir benchmark/cache/a6000 --out runs/af3-1ubq
+foldforge fold af3 --spec docs/examples/inference/operational-1ubq.yaml \
+  --config docs/examples/inference/graph-bf16.yaml \
+  --engine-cache-dir benchmark/cache/a6000 --out $FOLDFORGE_HOME/runs/af3-1ubq
 ```
 
 The example uses the cluster's operational BioMol MSA/template stores; edit paths

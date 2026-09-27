@@ -5,18 +5,18 @@ repos:
         name: ruff check
         entry: uv run --no-sync ruff check --fix
         language: system
-        files: ^(src|tests|scripts)/.*\.py$
+        files: ^(src|tests|tools)/.*\.py$
         require_serial: true
       - id: ruff-format
         name: ruff format
         entry: uv run --no-sync ruff format
         language: system
-        files: ^(src|tests|scripts)/.*\.py$
+        files: ^(src|tests|tools)/.*\.py$
         require_serial: true
       - id: pyright
         name: pyright
         entry: uv run --no-sync pyright
         language: system
-        files: ^(src|tests|scripts)/.*\.py$
+        files: ^(src|tests|tools)/.*\.py$
         pass_filenames: false
         require_serial: true

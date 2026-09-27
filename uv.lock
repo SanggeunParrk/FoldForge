@@ -833,7 +833,7 @@ requires-dist = [
     { name = "biotite", specifier = ">=1.4,<2" },
     { name = "esm", git = "https://github.com/Biohub/esm.git?rev=fba1e42a8a0f8df2b7e08611c88807aa32a25d9c" },
     { name = "flash-attn", marker = "extra == 'flash2'", specifier = "==2.8.3.post1" },
-    { name = "foldforge-af3-data", directory = "libs/af3-data" },
+    { name = "foldforge-af3-data", directory = "third_party/af3-data" },
     { name = "lmdb", specifier = ">=1.7,<2" },
     { name = "matplotlib", specifier = ">=3.10,<4" },
     { name = "numpy", specifier = ">=2,<3" },
@@ -842,9 +842,9 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6,<7" },
     { name = "rdkit", specifier = ">=2025,<2027" },
     { name = "scipy", specifier = ">=1.15,<2" },
-    { name = "team-gm", editable = "libs/team-gm" },
-    { name = "team-gm", extras = ["cu12"], marker = "extra == 'cu12'", editable = "libs/team-gm" },
-    { name = "team-gm", extras = ["cu13"], marker = "extra == 'cu13'", editable = "libs/team-gm" },
+    { name = "team-gm", editable = "third_party/team-gm" },
+    { name = "team-gm", extras = ["cu12"], marker = "extra == 'cu12'", editable = "third_party/team-gm" },
+    { name = "team-gm", extras = ["cu13"], marker = "extra == 'cu13'", editable = "third_party/team-gm" },
     { name = "transformers", specifier = "==4.57.6" },
     { name = "zstandard", specifier = ">=0.23,<1" },
 ]
@@ -862,7 +862,7 @@ dev = [
 [[package]]
 name = "foldforge-af3-data"
 version = "3.0.1"
-source = { directory = "libs/af3-data" }
+source = { directory = "third_party/af3-data" }
 dependencies = [
     { name = "absl-py" },
     { name = "chex" },
@@ -2630,7 +2630,7 @@ wheels = [
 [[package]]
 name = "team-gm"
 version = "0.3.1"
-source = { editable = "libs/team-gm" }
+source = { editable = "third_party/team-gm" }
 dependencies = [
     { name = "beartype" },
     { name = "biomol" },

@@ -12,7 +12,6 @@ import base64
 import functools
 import hashlib
 import json
-import os
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -256,7 +255,9 @@ def database_cache(function: Callable | None = None, **_options: Any) -> Callabl
 
 def default_path() -> Path:
     """Shared CLI default, independent of the selected model."""
-    return Path(os.environ.get("FOLDFORGE_CCD_DB", "data/ccd/preprocessed_CCD.lmdb"))
+    from foldforge import paths
+
+    return paths.ccd_db()
 
 
 class _OverlayView(Mapping):

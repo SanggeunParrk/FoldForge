@@ -12,7 +12,7 @@ from support import REPOSITORY_ROOT
 
 @pytest.fixture
 def builder():
-    path = REPOSITORY_ROOT / "scripts" / "build_autotune_cache.py"
+    path = REPOSITORY_ROOT / "tools" / "build_autotune_cache.py"
     spec = importlib.util.spec_from_file_location("cache_builder", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

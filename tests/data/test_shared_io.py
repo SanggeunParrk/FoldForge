@@ -257,7 +257,7 @@ def test_artifact_comparison_detects_absent_head_regressions(tmp_path):
 
     script = (
         Path(foldforge.__file__).resolve().parents[2]
-        / "scripts/verify_prediction_artifacts.py"
+        / "tools/verify_prediction_artifacts.py"
     )
     spec = importlib.util.spec_from_file_location("artifact_check", script)
     module = importlib.util.module_from_spec(spec)

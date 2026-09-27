@@ -9,6 +9,8 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from foldforge import paths
+
 _CONTACT_RE = re.compile(
     r"^([A-Za-z0-9]+):(\d+)(?:#(\d+))?-([A-Za-z0-9]+):(\d+)(?:#(\d+))?$",
 )
@@ -339,7 +341,8 @@ class InferenceSpec(BaseModel):
     name: str | None = None
     chain_letters: dict[str, str]
     fasta: dict[str, Path]
-    ccd_db: Path
+    #: Optional: the machine's shared CCD database (foldforge.paths.ccd_db()).
+    ccd_db: Path = Field(default_factory=paths.ccd_db)
     a3m: dict[str, Path] = Field(default_factory=dict)
     # MSA LMDB lookup is letter-keyed, like a3m; each letter names its exact shard.
     msa_db: dict[str, Path] = Field(default_factory=dict)

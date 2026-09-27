@@ -12,6 +12,7 @@ import torch
 from torch import nn
 
 import foldforge
+from foldforge import paths
 from foldforge.models import get_model, load, loading
 
 
@@ -279,7 +280,7 @@ def test_every_registered_family_names_a_distinct_default_checkpoint():
 
 
 @pytest.mark.skipif(
-    not (Path(foldforge.__file__).parents[2] / "model_checkpoints").is_dir(),
+    not paths.checkpoints().is_dir(),
     reason="weights are not downloaded on this machine",
 )
 def test_every_registered_family_resolves_its_checkpoint():

@@ -11,11 +11,11 @@
 | Confidence decoding (pLDDT, PAE, PDE) | `eval/dense_confidence.py` |
 | Structure reading and comparison helpers | `eval/structure.py` |
 
-Featurization is AF3's (`alphafold3` from `libs/af3-data`), applied once for
+Featurization is AF3's (`alphafold3` from `third_party/af3-data`), applied once for
 every family; `data/features/dense_conventions.py` then applies the conventions a
 family's release needs (its reference conformer frame, dropped atoms, MSA
 deduplication, random reference pose, ...), all selected by `DenseSpec` fields.
 There is one featurization path.
 
-Prediction output stays under repository `runs/`, enforced by
+Prediction output stays under repository `$FOLDFORGE_HOME/runs/`, enforced by
 `models/io/paths.py` for the CLI and direct output writers.

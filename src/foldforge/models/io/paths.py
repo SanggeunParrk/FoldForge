@@ -1,4 +1,8 @@
-"""Resolve every structure-prediction destination inside the repository runs tree."""
+"""Resolve every structure-prediction destination inside the runs tree.
+
+The tree is ``foldforge.paths.runs()`` (``$FOLDFORGE_RUNS``, else
+``$FOLDFORGE_HOME/runs``), outside the repository.
+"""
 
 from __future__ import annotations
 
@@ -6,9 +10,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from foldforge.models.checkpoints import ROOT
+from foldforge import paths
 
-RUNS_ROOT = ROOT / "runs"
+RUNS_ROOT = paths.runs()
 
 
 def run_directory(
@@ -16,7 +20,7 @@ def run_directory(
 ) -> Path:
     """Resolve a run name or contained absolute path without creating directories.
 
-    ``example`` and ``runs/example`` both name ``<repo>/runs/example``.
+    ``example`` and ``runs/example`` both name ``<runs>/example``.
     An omitted destination receives a unique directory under the model name.
     Traversal and directory symlinks cannot redirect output outside runs.
     """

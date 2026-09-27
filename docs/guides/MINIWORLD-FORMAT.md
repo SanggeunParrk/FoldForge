@@ -32,12 +32,12 @@ raises an explicit error. No fictitious rings or bonds are substituted.
 Prepare once on an allocated compute node:
 
 ```bash
-source scripts/activate_env.sh
+source tools/activate_env.sh
 foldforge ccd prepare \
   --components data/ccd/components.cif \
   --rdkit data/ccd/molecules.pkl \
-  --out data/ccd/preprocessed_CCD.lmdb
-foldforge ccd verify --ccd-db data/ccd/preprocessed_CCD.lmdb
+  --out $FOLDFORGE_HOME/ccd/preprocessed_CCD.lmdb
+foldforge ccd verify --ccd-db $FOLDFORGE_HOME/ccd/preprocessed_CCD.lmdb
 ```
 
 The old files above are migration inputs only. Preparation uses a temporary sibling
@@ -53,9 +53,9 @@ from pickle transport. Caches belong to the selected lookup/database instance.
 ## Inputs and settings
 
 ```bash
-foldforge fold af3 --spec configs/inference/1ubq.yaml \
-  --config configs/inference/native-bf16.yaml --out runs/af3
-foldforge fold protenix2 --spec configs/inference/1ubq.yaml --out runs/protenix2
+foldforge fold af3 --spec docs/examples/inference/1ubq.yaml \
+  --config docs/examples/inference/native-bf16.yaml --out $FOLDFORGE_HOME/runs/af3
+foldforge fold protenix2 --spec docs/examples/inference/1ubq.yaml --out $FOLDFORGE_HOME/runs/protenix2
 ```
 
 The same `--spec` works with every model `foldforge models` lists. Paths in
@@ -287,7 +287,7 @@ coverage are in `validation/lmdb-results/`; the regression log is
 
 ## Qualified inference execution
 
-Use `configs/inference/graph-bf16.yaml` for native BF16 and explicit denoiser
+Use `docs/examples/inference/graph-bf16.yaml` for native BF16 and explicit denoiser
 CUDA graphs. Set `execution.compile: true` to also compile that callable.
 The trunk, host sampling and confidence remain outside capture; full-model graph
 capture is rejected. Reports record actual graph/replay counts. The complete

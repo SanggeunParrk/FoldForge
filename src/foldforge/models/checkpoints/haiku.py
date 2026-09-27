@@ -192,6 +192,10 @@ class _MultiFileIO(io.RawIOBase):
             raise ValueError(message)
         return self._abspos
 
+    def seekable(self) -> bool:
+        """Return True: io.BufferedReader calls this (file-object protocol)."""
+        return True
+
     def seek(self, pos: int, whence: int = os.SEEK_SET, /) -> int:
         """Move within the concatenated shards and return the absolute position."""
         if self.closed:
@@ -211,10 +215,6 @@ class _MultiFileIO(io.RawIOBase):
         self._abspos = position
         self._relpos = self._abs_to_rel(position)
         return position
-
-    def seekable(self) -> bool:
-        """Return whether the underlying shards support seeking."""
-        return True
 
     def readinto(self, b: WriteableBuffer, /) -> int:
         """Read across shard boundaries, including empty shards and end-of-file."""

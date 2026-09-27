@@ -102,16 +102,17 @@ revision, validation results, and FlashAttention setup required for GPU SWA.
 ```
 libs/team-gm/            submodule, pinned; branch foldforge/dense-families
 src/foldforge/
-  cli.py                 foldforge models / ccd / fold <model>
+  cli.py                 foldforge models / ccd / checkpoints / validate / fold <model>
   prediction.py          the one output type every predictor returns
-  models/                architectures, config, checkpoints, io adapters and the
-                         single loading / execution / sampling / precision lifecycle
-  modules/               the dense AF3 graph's blocks, shared ops, the ESM-C backbone
-  data/                  CCD, features, MSA, templates and MiniWorld input preparation
-  eval/                  RMSD / lDDT / TM, confidence metrics, permutation matching
-  training/  utils/      losses; geometry, seeding, logging and tensor helpers
-scripts/                 Slurm wrappers and measurement drivers
-configs/  tests/  docs/  typings/
+  models/                the registry, the one AF3 architecture, checkpoints, the
+                         loading / execution / sampling / precision lifecycle, io
+  modules/               the dense graph's blocks (dense/), shared ops, ESM-C glue
+  data/                  CCD database, chemical constants, dense features and
+                         family conventions, MiniWorld input specs
+  eval/                  the release-reference judge, confidence decoding, structure I/O
+  utils/                 geometry, seeding, logging and tensor helpers
+scripts/                 Slurm wrappers, release runners, conversion, benchmarks
+configs/  tests/  docs/  outputs/  typings/
 ```
 
 `model_checkpoints/`, `benchmark/`, `runs/` and `validation/` are gitignored: weights are

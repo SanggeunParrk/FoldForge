@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
@@ -12,14 +11,13 @@ import pytest
 import yaml
 from biomol.core import FeatureContainer, IndexTable, NodeFeature
 from biomol.core.utils import to_bytes
-from support import REPOSITORY_ROOT, production_module
+from support import REPOSITORY_ROOT
 
 from foldforge.data.inputs.build import limit_msa, load
 from foldforge.data.inputs.lmdb import (
     Alignment,
     load_templates,
     species_aliases,
-    template_features,
 )
 from foldforge.data.inputs.template_mol import TemplateMol
 
@@ -118,36 +116,6 @@ def target_files(tmp_path):
     return path, spec
 
 
-@pytest.mark.parametrize("subdir", [True, False])
-def test_msa_native_roundtrip(tmp_path, subdir):
-    from alphafold3.constants import mmcif_names
-    from alphafold3.data import msa, msa_features
-
-    path = tmp_path / "msa.lmdb"
-    record = msa_record()
-    write_db(path, "key", record, subdir=subdir)
-    alignment = Alignment.load(path, "key", "protein", "ARNDCQEG")
-    aliases = species_aliases([alignment])
-    assert "N/A" not in aliases
-    a3m = alignment.a3m(aliases)
-    native = msa.Msa.from_a3m(
-        query_sequence="ARNDCQEG",
-        chain_poly_type=mmcif_names.PROTEIN_CHAIN,
-        a3m=a3m,
-        deduplicate=False,
-    )
-    features = native.featurize()
-    expected = alignment.tokens.copy()
-    expected[expected == 31] = 21
-    np.testing.assert_array_equal(features["msa"], expected)
-    np.testing.assert_array_equal(features["deletion_matrix_int"], alignment.deletions)
-    species = msa_features.extract_species_ids(native.descriptions)
-    assert species == ["", aliases["long species/1"], aliases["long species/2"], ""]
-    for family in ["protenix", "opendde"]:
-        pairing = production_module(family, "data.msa.msa_utils").MSAPairingEngine
-        assert pairing.get_species_ids(native.descriptions) == species
-
-
 @pytest.mark.parametrize(("kind", "seq"), [("rna", "AUGCNAUG"), ("dna", "ATGCNATG")])
 def test_nucleotide_alphabets(tmp_path, kind, seq):
     path = tmp_path / "msa"
@@ -183,24 +151,6 @@ def test_common_adapters(target_files, tmp_path):
     spec["template"] = {}
     path.write_text(yaml.safe_dump(spec))
     _validate_input("esmfold2", load(path))
-
-
-@pytest.mark.parametrize("family", ["protenix", "opendde"])
-def test_template_coordinate_masks(target_files, family):
-    path, _ = target_files
-    target = load(path)
-    template = target.chains[0].templates[0]
-    features = template_features([template.payload()], "ARNDCQEG", family)[0]
-    utils = production_module(family, "data.template.template_utils")
-    indices = [utils.ATOM37_ORDER[x] for x in ["N", "CA", "C", "CB"]]
-    np.testing.assert_array_equal(
-        features["template_all_atom_positions"][:, indices], template.positions
-    )
-    np.testing.assert_array_equal(
-        features["template_all_atom_masks"][:, indices], template.mask
-    )
-    assert features["template_all_atom_masks"][2, utils.ATOM37_ORDER["CB"]] == 0
-    assert features["template_all_atom_masks"][:, utils.ATOM37_ORDER["O"]].sum() == 0
 
 
 def test_af3_template_mmcif(target_files):
@@ -276,43 +226,6 @@ def test_structcooker_blank_gaps_and_ca_fallback(tmp_path):
     assert len(parsed.atom_x) == int(t.mask.sum())
 
 
-@pytest.mark.parametrize("family", ["protenix", "opendde"])
-@pytest.mark.skipif(
-    not CCD_DATABASE.exists(), reason="prepared CCD integration database"
-)
-def test_dataset_consumes_lmdb_templates(target_files, tmp_path, family):
-    from foldforge.data.ccd import CCDDatabase
-
-    path, _ = target_files
-    target = load(path)
-    native = tmp_path / "adapter.json"
-    native.write_text(json.dumps(target.af_family()))
-    from functools import partial
-    from types import SimpleNamespace
-
-    from foldforge.models.config import configuration
-
-    model = SimpleNamespace(configuration=partial(configuration, family))
-    api = production_module(family, "data.inference.infer_dataloader")
-    cfg = model.configuration()
-    cfg.input_json_path = str(native)
-    cfg.dump_dir = str(tmp_path / "output")
-    cfg.use_template = True
-    cfg.use_msa = True
-    cfg.num_workers = 0
-    cfg.data.ccd_components_file = str(target.spec.ccd_db)
-    cfg.data.ccd_components_rdkit_mol_file = str(target.spec.ccd_db)
-    with CCDDatabase(target.spec.ccd_db).activate():
-        dataset = api.InferenceDataset(cfg)
-        assert dataset.online_template_featurizer is None
-        data, _atoms, error = dataset[0]
-        assert not error, error
-        features = data["input_feature_dict"]
-        assert features["template_pseudo_beta_mask"].sum() > 0
-        assert features["template_backbone_frame_mask"].sum() > 0
-        assert features["msa"].shape[0] > 1
-
-
 def test_species_aliases_are_shared_across_chain_order(tmp_path):
     from dataclasses import replace
 
@@ -330,46 +243,6 @@ def test_species_aliases_are_shared_across_chain_order(tmp_path):
     assert sa[2] == sb[1]
     assert sa[1] != sa[2]
     assert sa[0] == sa[3] == ""
-
-
-@pytest.mark.parametrize("family", ["protenix", "opendde"])
-@pytest.mark.skipif(
-    not CCD_DATABASE.exists(), reason="prepared CCD integration database"
-)
-def test_rna_lmdb_is_not_disabled_by_default(target_files, tmp_path, family):
-    from foldforge.data.ccd import CCDDatabase
-
-    path, spec = target_files
-    (tmp_path / "A.fasta").write_text(
-        "> rna | polyribonucleotide | Chain:A\nAUGCAUGC\n"
-    )
-    write_db(tmp_path / "rna.lmdb", "rna", msa_record("AUGCAUGC", "rna"))
-    spec.update(msa_db={"A": "rna.lmdb"}, msa={"A": "rna"}, template={})
-    path.write_text(yaml.safe_dump(spec))
-    target = load(path)
-    native = tmp_path / "rna.json"
-    native.write_text(json.dumps(target.af_family()))
-    from functools import partial
-    from types import SimpleNamespace
-
-    from foldforge.models.config import configuration
-
-    model = SimpleNamespace(configuration=partial(configuration, family))
-    api = production_module(family, "data.inference.infer_dataloader")
-    cfg = model.configuration()
-    cfg.input_json_path = str(native)
-    cfg.dump_dir = str(tmp_path / "output")
-    cfg.use_template = False
-    cfg.use_msa = True
-    cfg.use_rna_msa = False
-    cfg.data.ccd_components_file = str(target.spec.ccd_db)
-    cfg.data.ccd_components_rdkit_mol_file = str(target.spec.ccd_db)
-    with CCDDatabase(target.spec.ccd_db).activate():
-        dataset = api.InferenceDataset(cfg)
-        assert dataset.use_rna_msa
-        data, _atoms, error = dataset[0]
-        assert not error, error
-        assert data["input_feature_dict"]["msa"].shape[0] > 1
 
 
 def test_af3_native_template_feature_alignment(tmp_path):

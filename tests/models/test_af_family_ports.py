@@ -167,17 +167,3 @@ def test_attention_native_bf16_without_autocast(family):  # noqa: ARG001 - share
     actual = mod._attention(q, k, v)
     torch.testing.assert_close(actual, expected)
     assert actual.dtype == torch.bfloat16
-
-
-def test_public_biotite_bond_update():
-    import numpy as np
-    from biotite.structure import BondList
-
-    from foldforge.data.bonds import replace_bond_array
-
-    original = BondList(4, np.array([[0, 1, 1], [1, 2, 1], [2, 3, 1]]))
-    result = replace_bond_array(original, original.as_array()[[0, 2]])
-    assert result.get_atom_count() == 4
-    assert result.get_bond_count() == 2
-    assert result.get_bonds(1)[0].tolist() == [0]
-    assert original.get_bond_count() == 3

@@ -1,1 +1,0 @@
-"""protenix components."""

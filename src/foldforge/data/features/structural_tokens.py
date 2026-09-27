@@ -591,38 +591,6 @@ def _residue_ref_pos_onto_structural(
     return out.reshape(structural.shape).astype(structural.dtype)
 
 
-def structural_to_residue_positions(
-    positions: np.ndarray, residue_atom_gather: np.ndarray
-) -> np.ndarray:
-    """Scatter structural-token coordinates back onto the residue atom layout.
-
-    ``positions`` is (..., n_struct, max_atoms, 3) and the result is
-    (..., n_res, max_atoms, 3), which is what the mmCIF writer understands. The
-    reconstruction is exact: every residue atom lives in exactly one structural
-    slot, and `residue_atom_gather` names it.
-    """
-    values = np.asarray(positions)
-    lead = values.shape[:-3]
-    flat = values.reshape((*lead, -1, 3))
-    gather = np.asarray(residue_atom_gather)
-    index = np.clip(gather, 0, flat.shape[-2] - 1).reshape(-1)
-    out = flat[..., index, :].reshape((*lead, *gather.shape, 3))
-    return np.where((gather >= 0)[..., None], out, 0.0).astype(np.float32)
-
-
-def structural_to_residue_atoms(
-    values: np.ndarray, residue_atom_gather: np.ndarray
-) -> np.ndarray:
-    """Apply the same scatter to a per-(token, slot) scalar, such as atom pLDDT."""
-    array = np.asarray(values)
-    lead = array.shape[:-2]
-    flat = array.reshape((*lead, -1))
-    gather = np.asarray(residue_atom_gather)
-    index = np.clip(gather, 0, flat.shape[-1] - 1).reshape(-1)
-    out = flat[..., index].reshape((*lead, *gather.shape))
-    return np.where(gather >= 0, out, 0.0)
-
-
 @contextlib.contextmanager
 def capture_layouts() -> Iterator[list[dict[str, Any]]]:
     """Record what the structural layout has to be rebuilt from, while featurising.

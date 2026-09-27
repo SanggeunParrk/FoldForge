@@ -1,5 +1,3 @@
-from support import production_module
-
 """Common confidence units and explicit AF3 checkpoint selection."""
 
 from unittest import mock
@@ -56,36 +54,6 @@ def test_af3_honors_checkpoint_path(tmp_path, directory):
     ):
         params.import_jax_weights_(None, selected)
     read.assert_called_once_with(expected)
-
-
-@pytest.mark.parametrize("family", ["protenix", "opendde"])
-def test_actual_plddt_decoder_preserves_unit_interval(family):
-    from functools import partial
-    from types import SimpleNamespace
-
-    from foldforge.models.config import configuration
-
-    api = SimpleNamespace(configuration=partial(configuration, family))
-    decoder = production_module(family, "model.sample_confidence")
-    settings = api.configuration()
-    config = (settings.confidence if family == "opendde" else settings.loss).plddt
-    atom_scores = decoder.logits_to_score(
-        torch.zeros(3, config.no_bins), **decoder.get_bin_params(config)
-    )
-    full = {
-        "atom_plddt": atom_scores,
-        "atom_to_token_idx": torch.tensor([0, 0, 1]),
-        "token_asym_id": torch.tensor([0, 0]),
-        "token_pair_pae": torch.zeros(2, 2),
-    }
-    result = from_atom_confidence(
-        {
-            "coordinate": torch.zeros(1, 3, 3),
-            "full_data": [full],
-            "summary_confidence": [{"ptm": torch.tensor(0.5)}],
-        }
-    )
-    torch.testing.assert_close(result.plddt, torch.full((1, 2), 0.5))
 
 
 def test_atom_confidence_survives_cif_roundtrip(tmp_path):

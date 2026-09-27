@@ -32,31 +32,6 @@ class ContactsSpec(BaseModel):
     positive: list[str] = Field(default_factory=list)
     negative: list[str] = Field(default_factory=list)
 
-    @staticmethod
-    def parse_pair(s: str) -> tuple[str, int, int | None, str, int, int | None]:
-        """Parse pair.
-
-        Parse a contact string into ``(chain_a, res_a, tok_a, chain_b, res_b, tok_b)``.
-
-        ``tok_*`` is ``None`` when the ``#<tok>`` suffix is absent.
-        """
-        m = _CONTACT_RE.match(s.strip())
-        if m is None:
-            msg = (
-                f"Invalid contact pair {s!r}; expected "
-                "'<chain>:<res>[#<tok>]-<chain>:<res>[#<tok>]'."
-            )
-            raise ValueError(msg)
-        chain_a, res_a, tok_a, chain_b, res_b, tok_b = m.groups()
-        return (
-            chain_a,
-            int(res_a),
-            int(tok_a) if tok_a is not None else None,
-            chain_b,
-            int(res_b),
-            int(tok_b) if tok_b is not None else None,
-        )
-
 
 class ComplexTemplateSpec(BaseModel):
     """One multi-chain (complex) template entry.
@@ -123,14 +98,6 @@ class ComplexTemplateSpec(BaseModel):
             msg = "ComplexTemplateSpec.chain_map must list at least one chain."
             raise ValueError(msg)
         return self
-
-    def resolves_as_contact(self, *, spec_default: bool) -> bool:
-        """Return whether ``derive_contacts`` should consume this entry.
-
-        Per-entry ``as_contact`` overrides; ``None`` inherits ``spec_default``
-        (i.e. :attr:`InferenceSpec.template_as_contact`).
-        """
-        return self.as_contact if self.as_contact is not None else spec_default
 
 
 class FlexibleDockingGroupSpec(BaseModel):
@@ -607,31 +574,6 @@ class InferenceSpec(BaseModel):
             )
             raise ValueError(msg)
         return self
-
-    @classmethod
-    def from_yaml(
-        cls,
-        path: Path,
-        sampling_path: Path | None = None,
-    ) -> InferenceSpec:
-        """Load the spec from a data YAML, optionally overlaying a sampling YAML.
-
-        The data YAML holds target-bound fields (chain_letters, fasta, a3m,
-        ccd_db, contacts, diffusion_groups, tokenization, templates, ...). The
-        optional sampling YAML holds per-attempt sampling knobs
-        (n_trunk_samples, n_diffusion_samples, diffusion_batch_size,
-        save_trajectory). Keys in the sampling YAML overwrite the data YAML.
-        """
-        with Path(path).open("r") as f:
-            data = yaml.safe_load(f) or {}
-        if sampling_path is not None:
-            with Path(sampling_path).open("r") as f:
-                sampling = yaml.safe_load(f) or {}
-            data.update(sampling)
-        spec = cls.model_validate(data)
-        if spec.name is None:
-            spec.name = Path(path).stem
-        return spec
 
     def chain_indices(self) -> list[int]:
         """Return chain indices in ascending order (the model's chain order)."""

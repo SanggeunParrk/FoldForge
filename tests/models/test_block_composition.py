@@ -70,20 +70,6 @@ def test_af3_glycan_sets_follow_selected_database(tmp_path):
         assert set(sets.GLYCAN_LINKING_LIGANDS) == {"A"}
 
 
-def test_protenix_and_opendde_use_identical_ccd_functions():
-    import foldforge.data.parser as o
-    import foldforge.data.parser as p
-    from foldforge.data.ccd import components as ccd
-
-    for name in [
-        "get_component_atom_array",
-        "get_component_rdkit_mol",
-        "get_ccd_ref_info",
-        "add_inter_residue_bonds",
-    ]:
-        assert getattr(o.ccd, name) is getattr(p.ccd, name) is getattr(ccd, name)
-
-
 @pytest.mark.parametrize("family", ["af3", "protenix", "opendde"])
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="GPU composition parity")
 def test_shared_pairformer_matches_released_order(family):
@@ -120,29 +106,3 @@ def test_shared_pairformer_matches_released_order(family):
             )
     for a, e in zip(actual, expected, strict=True):
         torch.testing.assert_close(a, e, rtol=0.01, atol=0.02)
-
-
-def test_esm_ligand_cache_is_scoped_to_database(tmp_path, monkeypatch):
-    import numpy as np
-
-    from foldforge.data.ccd import esm_view
-
-    a, b = _database(tmp_path / "a", "A"), _database(tmp_path / "b", "B")
-
-    def conformer(_name) -> dict:
-        value = 1.0 if current_database() is a else 2.0
-        return {"C1": np.full(3, value)}
-
-    monkeypatch.setattr(esm_view, "get_ccd_conformer", conformer)
-    with a.activate():
-        np.testing.assert_array_equal(
-            esm_view.get_ligand_idealized_atom_pos("NAG", "C1"), np.ones(3)
-        )
-        with b.activate():
-            np.testing.assert_array_equal(
-                esm_view.get_ligand_idealized_atom_pos("NAG", "C1"), np.full(3, 2.0)
-            )
-        np.testing.assert_array_equal(
-            esm_view.get_ligand_idealized_atom_pos("NAG", "C1"), np.ones(3)
-        )
-        assert esm_view.get_ligand_idealized_atom_pos("NAG", "missing") is None

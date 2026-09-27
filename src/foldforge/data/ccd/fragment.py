@@ -241,33 +241,6 @@ def _handle_remaining_components(
     return frag_id
 
 
-def _merge_components(
-    component_of: NDArray[np.intp],
-    rotatable: NDArray[np.bool_],
-    src: NDArray,
-    dst: NDArray,
-    merge: int,
-) -> NDArray[np.intp]:
-    """Merge neighbouring small components up to *merge* bonds deep.
-
-    Returns fragment_of: an array of shape (num_atoms,) mapping each atom to a
-    fragment ID.  When merge <= 0, each component stays its own fragment.
-    """
-    comp_adj, comp_degree, comp_size = _build_component_graph(
-        component_of,
-        rotatable,
-        src,
-        dst,
-    )
-    return _merge_components_from_graph(
-        component_of,
-        comp_adj,
-        comp_degree,
-        comp_size,
-        merge,
-    )
-
-
 def _merge_components_from_graph(
     component_of: NDArray[np.intp],
     comp_adj: dict[int, list[int]],

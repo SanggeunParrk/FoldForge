@@ -128,11 +128,6 @@ class CCDDatabase:
             verified[name] = True
         return molecule
 
-    @functools.cached_property
-    def esm_molecules(self) -> Mapping:
-        """ESM atom properties over the same reference molecules."""
-        return _ESMMolecules(self)
-
     def verify(self) -> None:
         """Verify all stored assets against the preparation manifest."""
         for item in self.manifest["files"].values():
@@ -228,51 +223,6 @@ class _MoleculeView(_RecordView):
                 mol.ref_mask = np.asarray(mol.ref_mask, dtype=bool)
                 cache[key] = mol
         return cache[key]
-
-
-class _ESMMolecules(Mapping):
-    """Lazy RDKit property view; reference coordinates and atom indices stay intact."""
-
-    def __init__(self, database: CCDDatabase) -> None:
-        self.database = database
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.database.molecules)
-
-    def __len__(self) -> int:
-        return len(self.database.molecules)
-
-    def __getitem__(self, key: str) -> Any:
-        from rdkit import Chem
-
-        cache = self.database.cache("esm_molecule_view")
-        if key in cache:
-            return cache[key]
-        original = self.database.molecule(key)
-        if original is None:
-            raise KeyError(key)
-        mol = Chem.Mol(original)
-        atom_map = original.atom_map
-        component = self.database.cif[key]["chem_comp_atom"]
-        names = component["atom_id"].as_array()
-        leaving = dict(
-            zip(names, component["pdbx_leaving_atom_flag"].as_array(), strict=True)
-        )
-        for name, index in atom_map.items():
-            atom = mol.GetAtomWithIdx(index)
-            atom.SetProp("name", name)
-            atom.SetProp("leaving_atom", "1" if leaving.get(name) == "Y" else "0")
-        for conformer in mol.GetConformers():
-            # Preserve the prepared reference choice, do not generate a new
-            # conformer or assume a shared RDKit RNG matches another release.
-            conformer.SetProp(
-                "name",
-                "Computed"
-                if conformer.GetId() == original.ref_conf_id
-                else "Alternative",
-            )
-        cache[key] = mol
-        return mol
 
 
 def current_database() -> CCDDatabase:

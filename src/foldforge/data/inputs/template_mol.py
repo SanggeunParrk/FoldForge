@@ -35,10 +35,6 @@ class TemplateResidueView(
         """One-letter code (canonical)."""
 
     @property
-    def one_letter_code(self) -> NodeFeature:
-        """One-letter code (not canonical)."""
-
-    @property
     def cif_idx(self) -> NodeFeature:
         """Template residue indices."""
 

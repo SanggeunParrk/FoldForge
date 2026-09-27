@@ -76,10 +76,6 @@ class CCDResidueView(
         """Residue IDs. Example: 'PROTOPORPHYRIN IX CONTAINING FE'."""
 
     @property
-    def formular(self) -> NodeFeature:
-        """Formular of the residue. Example: 'C34 H32 Fe N4 O4'."""
-
-    @property
     def rdkit_smiles(self) -> NodeFeature:
         """RDKit SMILES representation of the residue."""
 

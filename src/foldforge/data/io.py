@@ -14,9 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 import torch
-from biotite.structure.io import load_structure, pdbx
 
-from foldforge.data.constants.chemistry import mmcif_restype_1to3
 from foldforge.utils.logging import get_logger
 from foldforge.utils.tensor import map_values_to_list, to_device
 
@@ -307,71 +305,6 @@ def dump_gzip_pickle(data: Any, pkl: str | Path) -> None:
     """
     with gzip.open(pkl, "wb") as f:
         pickle.dump(data, f)
-
-
-def pdb_to_cif(pdb_file: str, cif_file: str, sequence: str | None = None) -> None:
-    """Compute pdb to cif.
-
-    Convert monomer protein pdb to CIF, and fill "entity_poly" and
-    "entity_poly_seq"category.
-
-    pdb_file (str): PDB file path.
-    cif_file (str): output CIF file path.
-    """
-    entity_poly = pdbx.CIFCategory({"entity_id": "0", "type": "polypeptide(L)"})
-    block_dict = {"entity_poly": entity_poly}
-
-    if sequence is not None:
-        entity_id = ["0"] * len(sequence)
-        num = []
-        mon_id = []
-        for idx, i in enumerate(sequence):
-            num.append(str(idx + 1))
-            mon_id.append(mmcif_restype_1to3.get(i, "UNK"))
-            if not (i in mmcif_restype_1to3 or i == "X"):
-                message = f"{i} is not in mmcif_restype_1to3"
-                raise ValueError(message)
-
-        block_dict["entity_poly_seq"] = pdbx.CIFCategory(
-            {
-                "entity_id": entity_id,
-                "num": num,
-                "mon_id": mon_id,
-            }
-        )
-
-    block = pdbx.CIFBlock()
-    for key, value in block_dict.items():
-        block[key] = value
-    pdb_path = Path(pdb_file)
-    block_name = pdb_path.stem
-    cif = pdbx.CIFFile({block_name: block})
-    atom_array = load_structure(pdb_path, extra_fields=["b_factor"])
-    pdbx.set_structure(cif, atom_array)
-    cif.write(cif_file)
-
-
-class FloatEncoder(json.JSONEncoder):
-    """Represent float encoder."""
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self.precision = kwargs.pop("precision", 2)
-        super().__init__(*args, **kwargs)
-
-    def encode(self, o: Any) -> str:
-        """Encode ."""
-
-        def float_converter(o: Any) -> Any:
-            """Compute float converter."""
-            if isinstance(o, float):
-                return format(o, f".{self.precision}f")
-            if isinstance(o, list):
-                return [float_converter(i) for i in o]
-            if isinstance(o, dict):
-                return {k: float_converter(v) for k, v in o.items()}
-            return o
-
-        return super().encode(float_converter(o))
 
 
 def save_json(data: dict[str, Any], output_fpath: str | Path, indent: int = 4) -> None:

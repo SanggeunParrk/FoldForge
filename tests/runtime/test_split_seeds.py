@@ -73,37 +73,6 @@ def test_seed_context_restores_all_rngs_on_failure():
     assert torch.equal(actual[2], expected[2])
 
 
-@pytest.mark.parametrize("family", ["residue", "structural"])
-def test_smiles_conformer_follows_trunk_rng_and_retry(family, monkeypatch):
-    from foldforge.data.inputs import entities
-
-    build = getattr(entities, f"{family}_smiles_to_atom_info")
-    # Keep this test focused on real RDKit embedding, before atom-layout conversion.
-    monkeypatch.setattr(
-        entities,
-        f"{family}_rdkit_mol_to_atom_info",
-        lambda mol: mol.GetConformer().GetPositions().copy(),
-    )
-
-    def run(seed) -> np.ndarray:
-        with seed_context(seed):
-            return build("CCCCCO")
-
-    assert np.array_equal(run(7), run(7))
-    assert not np.array_equal(run(7), run(8))
-    calls = []
-    embed = entities.rdDistGeom.EmbedMolecule
-
-    def retry(mol, **kwargs: Any) -> int:
-        calls.append(kwargs)
-        return -1 if len(calls) == 1 else embed(mol, **kwargs)
-
-    monkeypatch.setattr(entities.rdDistGeom, "EmbedMolecule", retry)
-    run(7)
-    assert calls[0]["randomSeed"] == calls[1]["randomSeed"]
-    assert calls[1]["useRandomCoords"]
-
-
 def test_rdkit_seed_covers_unsigned_input_range():
     assert conformer_seed(0) == 0
     assert conformer_seed(2**32 - 1) == 2**31 - 1

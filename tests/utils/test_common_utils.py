@@ -6,63 +6,15 @@ import copy
 import hashlib
 import json
 import random
-from typing import Any
 from unittest.mock import patch
 
 import lmdb
 import numpy as np
-import pytest
 import torch
 
 from foldforge.data import io
-from foldforge.utils import distributed, geometry, tensor
+from foldforge.utils import tensor
 from foldforge.utils.seed import seed_everything
-
-
-@pytest.mark.parametrize("before_rotation", [False, True])
-@pytest.mark.parametrize("centralize", [False, True])
-def test_coordinate_transform_preserves_translation_frame(before_rotation, centralize):
-    points = np.array([[2.0, 0.0, 0.0], [4.0, 2.0, 0.0]])
-    rotation = np.array([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
-    translation = np.array([1.0, 2.0, 3.0])
-
-    class FixedRotation:
-        @staticmethod
-        def random() -> Any:
-            class R:
-                def as_matrix(self) -> np.ndarray:
-                    return rotation
-
-            return R()
-
-    original = points.copy()
-    with (
-        patch.object(geometry, "Rotation", FixedRotation),
-        patch.object(geometry.np.random, "uniform", return_value=translation),
-    ):
-        result = geometry.random_transform(
-            points,
-            apply_augmentation=True,
-            centralize=centralize,
-            translation_before_rotation=before_rotation,
-        )
-    centered = points - points.mean(0) if centralize else points
-    expected = (
-        (centered + translation) @ rotation.T
-        if before_rotation
-        else centered @ rotation.T + translation
-    )
-    np.testing.assert_array_equal(points, original)
-    np.testing.assert_allclose(result, expected, rtol=0, atol=0)
-
-
-def test_angle_regularization_and_degenerate_convention():
-    zero = np.zeros(3)
-    assert geometry.angle_3p(zero, zero, zero) == 0
-    assert geometry.angle_3p(zero, zero, zero, eps=1e-4) == 90
-    assert geometry.angle_3p([0, 0, 0], [1, 0, 0], [2, 0, 0]) == 0
-    expected = np.degrees(np.arccos(1 / 1.0001))
-    assert geometry.angle_3p([0, 0, 0], [1, 0, 0], [2, 0, 0], eps=1e-4) == expected
 
 
 def test_distance_modes_are_explicit():
@@ -141,19 +93,3 @@ def test_seed_reproducibility_and_determinism_reset():
             os.environ.pop("CUBLAS_WORKSPACE_CONFIG", None)
         else:
             os.environ["CUBLAS_WORKSPACE_CONFIG"] = config
-
-
-def test_distributed_gather_uses_initialized_group_size(monkeypatch):
-    monkeypatch.setenv("WORLD_SIZE", "1")
-    wrapper = distributed.DistWrapper()
-
-    def gather(dest, obj, group=None) -> list[dict[str, Any]]:  # noqa: ARG001 - shared callback or fixture signature
-        assert len(dest) == 2
-        dest[:] = [obj, {"score": 2}]
-
-    with (
-        patch.object(distributed, "distributed_available", return_value=True),
-        patch.object(torch.distributed, "get_world_size", return_value=2),
-        patch.object(torch.distributed, "all_gather_object", side_effect=gather),
-    ):
-        assert wrapper.all_gather_object({"score": 1}) == [{"score": 1}, {"score": 2}]

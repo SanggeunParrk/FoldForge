@@ -20,7 +20,7 @@ from biomol.core.utils import load_bytes
 from foldforge.data.inputs.template_mol import TemplateMol
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Iterable
 
 # Each lookup opens/closes a readonly environment inside the lock. No live LMDB
 # handles survive input preparation or are pickled into dataloader workers.
@@ -361,55 +361,3 @@ def load_templates(
         if len(templates) >= count:
             break
     return tuple(templates)
-
-
-def template_features(
-    payloads: Sequence[Mapping[str, Any]], query_sequence: str, family: str
-) -> list[dict[str, Any]]:
-    """Use aligned coordinates directly at each released featurizer's boundary."""
-    from foldforge.data.constants import chemistry as constants
-    from foldforge.data.template import features as utils
-
-    if family not in {"protenix", "opendde"}:
-        msg = f"Unsupported flat template layout: {family}"
-        raise ValueError(msg)
-    results = []
-    for payload in payloads:
-        sequence = payload["sequence"]
-        pos = np.asarray(payload["positions"], dtype=np.float32)
-        mask = np.asarray(payload["mask"], dtype=bool)
-        length = len(query_sequence)
-        if (
-            len(sequence) != length
-            or pos.shape != (length, 4, 3)
-            or mask.shape != (length, 4)
-        ):
-            msg = "Invalid aligned MiniWorld template shape"
-            raise ValueError(msg)
-        if not np.isfinite(pos).all():
-            msg = "Template positions must be finite with an explicit mask"
-            raise ValueError(msg)
-        full_pos = np.zeros((length, 37, 3), dtype=np.float32)
-        full_mask = np.zeros((length, 37), dtype=np.float32)
-        for a, atom in enumerate(("N", "CA", "C", "CB")):
-            full_pos[:, utils.ATOM37_ORDER[atom]] = np.where(
-                mask[:, a, None], pos[:, a], 0
-            )
-            full_mask[:, utils.ATOM37_ORDER[atom]] = mask[:, a]
-        results.append(
-            {
-                "template_all_atom_positions": full_pos,
-                "template_all_atom_masks": full_mask,
-                "template_sequence": sequence.encode(),
-                "template_aatype": np.asarray(
-                    utils.encode_template_restype(constants.PROTEIN_CHAIN, sequence),
-                    dtype=np.int32,
-                ),
-                "template_domain_names": np.array(payload["id"].encode(), dtype=object),
-                "template_sum_probs": [1.0],
-                "template_release_date": np.array(
-                    (payload.get("release_date") or "9999-12-31").encode(), dtype=object
-                ),
-            }
-        )
-    return results

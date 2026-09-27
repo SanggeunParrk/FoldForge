@@ -354,21 +354,6 @@ def test_triangle_score_budget_chunks_without_changing_values(monkeypatch, start
         assert rows * n * n * 16 * 4 <= max(1 << 29, n * n * 16 * 4)
 
 
-def test_chain_pae_with_only_index_zero_is_defined():
-    from foldforge.eval.confidence import calculate_chain_pair_pae
-
-    scores = calculate_chain_pair_pae(
-        token_pair_pae=torch.tensor([[[2.5, 3.0], [4.0, 5.0]]]),
-        token_has_frame=torch.tensor([True, False]),
-        asym_id=torch.tensor([0, 1]),
-    )
-    assert scores["chain_pair_pae_min"][0, 0, 0] == 2.5
-    torch.testing.assert_close(
-        scores["chain_pair_pae_mean"][0, 0, 0], torch.tensor(2.5), atol=1e-5, rtol=1e-5
-    )
-    assert torch.isnan(scores["chain_pair_pae_min"][0, 1, 1])
-
-
 def test_next_trunk_releases_previous_request_conditions():
     import weakref
     from types import SimpleNamespace

@@ -1,4 +1,4 @@
-"""Normalise one release run into outputs/<target>/<family>/seed<k>/.
+"""Normalise one release run into references/<target>/<family>/seed<k>/.
 
 Usage: collect.py FAMILY TARGET SEED RAW_DIR
 
@@ -79,7 +79,7 @@ def main() -> None:
     if len(cifs) != 5:  # noqa: PLR2004 - every reference run draws five samples
         message = f"{family} {target} seed {seed}: {len(cifs)} samples in {raw}"
         raise SystemExit(message)
-    dest = ROOT / "outputs" / target / family / f"seed{seed}"
+    dest = ROOT / "references" / target / family / f"seed{seed}"
     dest.mkdir(parents=True, exist_ok=True)
     samples = []
     for i, cif in enumerate(cifs):

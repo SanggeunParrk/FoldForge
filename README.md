@@ -112,7 +112,7 @@ src/foldforge/
   eval/                  the release-reference judge, confidence decoding, structure I/O
   utils/                 geometry, seeding, logging and tensor helpers
 scripts/                 Slurm wrappers, release runners, conversion, benchmarks
-configs/  tests/  docs/  outputs/  typings/
+configs/  tests/  docs/  references/  typings/
 ```
 
 `model_checkpoints/`, `benchmark/`, `runs/` and `validation/` are gitignored: weights are
@@ -204,13 +204,13 @@ dropout, its ligand atom names and so on -- are in both modes.
 
 ### Accuracy against the released implementations
 
-`outputs/` holds, for three reference targets (protein; protein + ligand +
+`references/` holds, for three reference targets (protein; protein + ligand +
 ion; DNA + protein + ions), every family's structures from its **own released
 code**, three seeds of five samples. `foldforge validate` judges a FoldForge
 run against them -- structure, pLDDT, ligand bond geometry and ligand/ion
 placement, each relative to the release's own seed-to-seed spread -- and the
 current verdicts are in [docs/validation/](docs/validation/). See
-[outputs/README.md](outputs/README.md) to regenerate or extend them.
+[references/README.md](references/README.md) to regenerate or extend them.
 
 Today 37 of 38 family x condition rows pass in both modes, the MSA condition
 included. The one exception,

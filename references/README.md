@@ -1,6 +1,6 @@
 # Reference outputs from the released implementations
 
-Every structure under `outputs/<target>/<family>/` was produced by that
+Every structure under `references/<target>/<family>/` was produced by that
 family's **own released code and weights**, not by FoldForge. They are the
 ground truth FoldForge is judged against: `foldforge validate` folds the same
 inputs under the same conditions and reports, per family and target, whether
@@ -9,7 +9,7 @@ FoldForge is inside the release's own seed-to-seed variation.
 ## Layout
 
 ```
-outputs/
+references/
   inputs/<target>/            the same target in every release's input format
     foldforge.yaml  boltz.yaml  intellifold.yaml  protenix.json
     of3.json  rf3.json  chai.fasta  *.fasta
@@ -53,10 +53,12 @@ everything: `sbatch scripts/references/generate.sbatch` (each task runs one
 family x target x seed and normalises it with `scripts/references/collect.py`).
 
 The released environments are too large for the repository. The runner reads
-`FOLDFORGE_RELEASE_ROOT` (the directory holding `of3-deps`, `rf3-deps`,
-`if2-deps`, `chai-rdkit-deps`, `protenix-root` and `boltz-cache`, each an
-isolated `pip install --target` of that release's pinned dependencies) and
-`FOLDFORGE_RELEASE_ENVS` (the Boltz, Protenix and Chai-lab environments).
+`FOLDFORGE_RELEASE_ROOT` (default `releases/` at the repo root, gitignored),
+which holds `of3-deps`, `rf3-deps`, `if2-deps`, `chai-deps`, `chai-rdkit-deps`,
+`chai-msa-deps`, `protenix-root`, `boltz-cache` and
+`esmfold2-transformers-fork`, each an isolated `pip install --target` (or copy)
+of that release's pinned dependencies, and `FOLDFORGE_RELEASE_ENVS` (the Boltz,
+Protenix and Chai-lab environments).
 
 ## Release quirks recorded here
 

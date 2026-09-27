@@ -64,7 +64,7 @@ Not in git (`runs/` is ignored):
 
 - `runs/plddt_test/`: per-pair folders with the release and the four
   FoldForge variants, superposed, pLDDT in B-factors; `pairs.md`, `README.md`.
-- `runs/release-compare-20260924/odde-noise/`: the recorded release draws.
-- Tools: `runs/release-compare-20260924/tools/odde_noisecap.py` (record),
+- `runs/archive/release-compare-20260924/odde-noise/`: the recorded release draws.
+- Tools: `runs/archive/release-compare-20260924/tools/odde_noisecap.py` (record),
   `ours_noise_replay.py` (replay; conformer/pose settings), `dump_inputs.py`
   (input equality check).

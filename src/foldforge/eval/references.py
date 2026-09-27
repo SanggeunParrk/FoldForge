@@ -1,6 +1,6 @@
 """Judge FoldForge folds against the released implementations' own outputs.
 
-``outputs/`` holds, for a few reference targets, each family's structures
+``references/`` holds, for a few reference targets, each family's structures
 from its RELEASED code (``scripts/references``): three seeds of five samples
 under shared conditions. A FoldForge run of the same family, target and
 seeds is judged against them on four things, each relative to the release's
@@ -32,17 +32,17 @@ from typing import Any
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[3]
-OUTPUTS = ROOT / "outputs"
-#: The original conditions first, then any further target outputs/ holds (the
+REFERENCES = ROOT / "references"
+#: The original conditions first, then any further target references/ holds (the
 #: MSA condition, ...), so a new reference directory is judged without a code edit.
 _CORE_TARGETS = ("5i28", "3ptb", "1a1k")
 TARGETS = _CORE_TARGETS + tuple(
     sorted(
         p.name
-        for p in OUTPUTS.iterdir()
+        for p in REFERENCES.iterdir()
         if p.is_dir() and p.name != "inputs" and p.name not in _CORE_TARGETS
     )
-    if OUTPUTS.is_dir()
+    if REFERENCES.is_dir()
     else ()
 )
 SEEDS = (0, 1, 2)
@@ -208,7 +208,7 @@ def ligand_geometry(structure: Structure, ideal: dict[str, np.ndarray]) -> float
 def load_reference(target: str, family: str) -> dict[int, list[Structure]]:
     """The release's structures, by seed, with its recorded pLDDTs."""
     out: dict[int, list[Structure]] = {}
-    for seed_dir in sorted((OUTPUTS / target / family).glob("seed*")):
+    for seed_dir in sorted((REFERENCES / target / family).glob("seed*")):
         manifest = json.loads((seed_dir / "manifest.json").read_text())
         out[int(manifest["seed"])] = [
             read_cif(seed_dir / s["file"], plddt=s["mean_plddt"])
@@ -232,7 +232,7 @@ def ideal_ligands(target: str) -> dict[str, np.ndarray]:
     from foldforge.data.ccd.database import CCDDatabase  # noqa: PLC0415 - heavy
     from foldforge.data.inputs.build import load  # noqa: PLC0415 - heavy
 
-    spec = load(OUTPUTS / "inputs" / target / "foldforge.yaml")
+    spec = load(REFERENCES / "inputs" / target / "foldforge.yaml")
     database = CCDDatabase(spec.spec.ccd_db)
     ideal = {}
     with database.activate():
@@ -390,7 +390,7 @@ def main(argv: list[str]) -> int:
             judge(target, family, args.runs / family / target, ideal)
             for family in args.families
             # A release that cannot fold a target has no reference for it.
-            if (OUTPUTS / target / family).is_dir()
+            if (REFERENCES / target / family).is_dir()
         )
     text = report(results)
     print(text)  # noqa: T201 - CLI output contract

@@ -18,7 +18,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     checkpoints.add_argument("arguments", nargs=argparse.REMAINDER)
     validate = commands.add_parser(
-        "validate", help="Judge FoldForge folds against the releases' outputs/"
+        "validate", help="Judge FoldForge folds against the releases' references/"
     )
     validate.add_argument("arguments", nargs=argparse.REMAINDER)
     fold = commands.add_parser("fold", help="Run a predictor")

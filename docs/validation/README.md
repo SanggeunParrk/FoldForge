@@ -1,7 +1,7 @@
 # Validation against the released implementations
 
 `fast.md` and `exact.md` are `foldforge validate` verdicts for the two modes
-against `outputs/`: every family's structures from its **own released code**
+against `references/`: every family's structures from its **own released code**
 on 5I28 (protein), 3PTB (protein + ligand + ion) and 1A1K (DNA + protein +
 ions) with no MSA, and on 5I28 again with one shared MSA (`5i28-msa`: the same
 6789-sequence alignment handed to every release in its own input format);

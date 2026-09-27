@@ -179,7 +179,7 @@ trunk -- because both take a `token_single_trunk_repr`.
 
 
 The other releases, all runnable from this machine (details in
-`runs/release-compare-20260924/tools/*.sbatch`):
+`runs/archive/release-compare-20260924/tools/*.sbatch`):
 
 - **Boltz-2**: `/public_data/thalkak_envs/boltz/bin/boltz predict`, cache = a
   directory with `boltz2_conf.ckpt` and `mols` linked from
@@ -269,7 +269,7 @@ takes the conditioning from 16% error to 0.09% -- but is worth 0.03 pLDDT
   `triangle_attention.linear_out`, `transition_single.linear_out`,
   `attention_pair_bias.attention.output_proj`) and compare with our first K
   blocks on the release's captured inputs.
-  `runs/chai-native-20260923/tools/trunk_bisect.py` does K = 0..48 and three
+  `runs/archive/chai-native-20260923/tools/trunk_bisect.py` does K = 0..48 and three
   recycles.
 - **Compare values, not names.** Cutting every tensor into vectors along each
   axis (rounded to bf16) and looking them up on the other side matches through
@@ -339,7 +339,7 @@ under `runs/release-compare-20260924/`.
 generalise: capture the release's stage outputs (a forward pre-hook copies the
 INPUTS, since Protenix and OpenFold3 update in place -- read after the call, an
 input is already the output), feed the release's own inputs to our model LOADED
-BY THE CLI (`runs/release-compare-20260924/tools/ours_blocks.py` does a
+BY THE CLI (`runs/archive/release-compare-20260924/tools/ours_blocks.py` does a
 teacher-forced per-block pass inside a real `inference.run`), and swap one input
 at a time into a real fold.
 
@@ -483,7 +483,7 @@ the release gives zero rows. Only protein chains reach the tower now.
 The Chai-1 RELEASE had silently dropped both of 3PTB's ligands (RDKit 2026 no
 longer accepts `useChirality` on ETKDG parameters; the entity fails to tokenise
 and the fold goes ahead without it). Pin `rdkit==2024.9.5`
-(`runs/release-compare-20260924/chai-rdkit-deps`) or the control is protein-only.
+(`releases/chai-rdkit-deps`) or the control is protein-only.
 
 RoseTTAFold3 stays 0.15-0.19 A against a release that itself spreads
 0.01-0.16 A; its extra atom channels (`ref_pos_ground_truth`,
@@ -583,7 +583,7 @@ A single-seed Protenix comparison is therefore a coin toss: compare seeds
 with the dropout in the same state, or distributions.
 
 **Score every entity by its own geometry, not by the protein around it.**
-`runs/release-compare-20260924/tools/complex_compare.py` reports it per family.
+`runs/archive/release-compare-20260924/tools/complex_compare.py` reports it per family.
 
 ### The one real defect this found
 

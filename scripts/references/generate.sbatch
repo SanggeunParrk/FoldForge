@@ -1,5 +1,5 @@
 #!/bin/bash
-# Regenerate outputs/: every family x target x seed with the RELEASED code.
+# Regenerate references/: every family x target x seed with the RELEASED code.
 #   sbatch scripts/references/generate.sbatch            (all 72)
 #   sbatch --array=<ids> scripts/references/generate.sbatch
 #SBATCH --partition=A100

@@ -3,7 +3,7 @@
 # GPU tests (about 180 of them skip here) and the release-reference validation
 # need an A100 and run on the cluster:
 #   sbatch runs/.../tests.sbatch             (full GPU suite)
-#   scripts/references/validate.sh fast      (fold vs outputs/, then
+#   scripts/references/validate.sh fast      (fold vs references/, then
 #   foldforge validate runs/validate-fast)
 # The test job needs read access to the private team-gm and miniworld-engine
 # repositories: add a deploy key that can read both as the repository secret

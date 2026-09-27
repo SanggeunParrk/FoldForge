@@ -15,7 +15,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 from foldforge.cli import main as foldforge  # noqa: E402
-from foldforge.eval.references import FAMILIES, OUTPUTS  # noqa: E402
+from foldforge.eval.references import FAMILIES, REFERENCES  # noqa: E402
 
 parser = argparse.ArgumentParser()
 parser.add_argument("family", choices=list(FAMILIES))
@@ -45,7 +45,7 @@ raise SystemExit(
             "fold",
             family["model"],
             "--spec",
-            str(OUTPUTS / "inputs" / args.target / "foldforge.yaml"),
+            str(REFERENCES / "inputs" / args.target / "foldforge.yaml"),
             "--config",
             fh.name,
             "--out",

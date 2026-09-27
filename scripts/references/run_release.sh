@@ -11,14 +11,14 @@
 #
 # The released environments and their dependency trees are too large for the
 # repository. FOLDFORGE_RELEASE_ROOT points at the directory that holds them
-# (see outputs/README.md for how each was built); the Python environments of
+# (see references/README.md for how each was built); the Python environments of
 # Boltz, Protenix and Chai-lab live under /public_data/thalkak_envs.
 set -euo pipefail
 FAMILY=$1; TARGET=$2; SEED=$3; OUT=$(realpath -m "$4")
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
-REL=${FOLDFORGE_RELEASE_ROOT:-$ROOT/runs/release-compare-20260924}
+REL=${FOLDFORGE_RELEASE_ROOT:-$ROOT/releases}
 ENVS=${FOLDFORGE_RELEASE_ENVS:-/public_data/thalkak_envs}
-IN=$ROOT/outputs/inputs/$TARGET
+IN=$ROOT/references/inputs/$TARGET
 HERE=$ROOT/scripts/references
 mkdir -p "$OUT"
 # Inputs may name their MSA as {IN}/A.a3m; materialise absolute paths per run.
@@ -69,7 +69,7 @@ intellifold2)
     --precision no --num_workers 0 --override ;;
 chai1)
   CHAI_DOWNLOADS_DIR=$ROOT/model_checkpoints/chai1 \
-  PYTHONPATH=$REL/chai-rdkit-deps:$REL/chai-msa-deps:$ROOT/runs/chai-native-20260923/deps:$ENVS/chai-lab \
+  PYTHONPATH=$REL/chai-rdkit-deps:$REL/chai-msa-deps:$REL/chai-deps:$ENVS/chai-lab \
     python "$HERE/chai_run.py" "$IN/chai.fasta" "$OUT" "$SEED" ;;
 opendde)
   S=${OPENDDE_SRC:-/home/kkh517/OpenDDE}

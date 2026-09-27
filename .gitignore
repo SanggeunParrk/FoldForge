@@ -4,6 +4,13 @@
 # and get committed as a link to one machine's absolute path.
 model_checkpoints
 
+# Local, machine-specific trees: the release environments the references are
+# regenerated with (scripts/references/run_release.sh), the CCD database, and
+# scratch environments.
+/releases/
+/data/
+.venv-*/
+
 # Measurements and predictions. Both are outputs of a run, not of the source:
 # they describe a machine and a checkpoint, and they change on every run while
 # the code does not.
@@ -12,8 +19,8 @@ validation
 # ...except the verdicts against the released implementations, which the README
 # links: they describe the code, and change only when the code does.
 !docs/validation
-# outputs/ is NOT ignored: it holds the released implementations' reference
-# structures FoldForge is validated against (see outputs/README.md).
+# references/ is NOT ignored: it holds the released implementations' reference
+# structures FoldForge is validated against (see references/README.md).
 logs/
 
 # Python

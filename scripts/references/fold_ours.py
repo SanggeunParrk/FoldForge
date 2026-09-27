@@ -36,8 +36,6 @@ config = {
     "diffusion": {"steps": 200},
     "execution": {"compile": False, "cuda_graph": False, "bucketing": True},
 }
-if "variant" in family:
-    config["variant"] = family["variant"]
 with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as fh:
     yaml.safe_dump(config, fh)
 out = f"{args.run_root}/{args.family}/{args.target}/seed{args.seed}"

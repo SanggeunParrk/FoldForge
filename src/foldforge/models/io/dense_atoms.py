@@ -95,17 +95,15 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
     )
     ccd = database.af3_ccd(user_ccd=fold_input.user_ccd)
     from foldforge.data.features import bond_orders, structural_tokens
+    from foldforge.models import entry
     from foldforge.models.bucketing import TOKEN_SHAPES, bucket_af3
-    from foldforge.models.loading import resolve_family
     from foldforge.modules.dense.spec import SPECS
 
     # A family that folds on structural tokens needs the AtomLayouts the
     # featurisation keeps to itself, so take them from the one call that
     # already happens rather than featurising a second time. The family is
     # resolved without building the model: nothing here needs the weights yet.
-    family, _ = resolve_family(
-        args.model, args.variant if args.model == "protenix" else None
-    )
+    family = entry(args.model).family
     with (
         (
             structural_tokens.capture_layouts()
@@ -132,9 +130,6 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         recycles=args.recycles,
         samples=args.samples,
         steps=args.steps,
-        # One model here publishes several releases, and the release is the
-        # dense family; the rest ignore it.
-        variant=args.variant if args.model == "protenix" else None,
         mode=args.mode,
     )
 

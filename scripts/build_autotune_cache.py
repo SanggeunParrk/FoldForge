@@ -193,7 +193,9 @@ def publish_unit(out: Path, cache_dir: Path, code: int) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--model", required=True, choices=("af3", "protenix", "opendde", "esmfold2")
+        "--model",
+        required=True,
+        choices=("af3", "protenix1", "protenix2", "opendde", "esmfold2"),
     )
     parser.add_argument("--cache-dir", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)

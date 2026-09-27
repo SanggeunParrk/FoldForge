@@ -20,6 +20,9 @@ class Entry:
     summary: str
     #: Row of ``foldforge.models.config.dense.SPECS`` for dense AF3-graph families.
     family: str | None = None
+    #: Directory under ``model_checkpoints/`` when several releases share one
+    #: (both Protenix blobs sit in ``protenix/``); the model name otherwise.
+    store: str | None = None
 
 
 _REGISTRY = {
@@ -52,13 +55,19 @@ _REGISTRY = {
         "RoseTTAFold3 — RosettaCommons foundry, BSD-3-Clause",
         "rosettafold3",
     ),
-    "protenix": Entry(
+    "protenix1": Entry(
         "foldforge.models.architectures.af3.AlphaFold3",
         "dense_atoms",
-        "Protenix v1 / v2 — ByteDance; --variant picks the release",
-        # The family is the RELEASE, which --variant names, so it is resolved
-        # per call rather than fixed here.
-        None,
+        "Protenix v1 (protenix_base_default_v1.0.0) — ByteDance",
+        "protenix1",
+        "protenix",
+    ),
+    "protenix2": Entry(
+        "foldforge.models.architectures.af3.AlphaFold3",
+        "dense_atoms",
+        "Protenix v2 — ByteDance",
+        "protenix2",
+        "protenix",
     ),
     "opendde": Entry(
         "foldforge.models.architectures.af3.AlphaFold3",
@@ -125,7 +134,7 @@ def describe(name: str) -> str:
 def load(name: str, checkpoint: str | Path | None = None, **options: Any) -> Any:
     """Load any supported checkpoint with one precision/backend/strictness contract.
 
-    ``load("protenix", path, variant="protenix-v2", backend="miniworld",
+    ``load("protenix2", path, backend="miniworld",
     dtype=torch.bfloat16, device="cuda")``. Importing the registry stays CPU-light.
     """
     model = entry(name)

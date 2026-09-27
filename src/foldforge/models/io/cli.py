@@ -60,16 +60,6 @@ def parse(model: str, argv: list[str] | None = None) -> Request:
         choices=("bf16", "fp32", "af3_default", "model_default"),
         default="bf16",
     )
-    if model == "protenix":
-        parser.add_argument(
-            "--variant",
-            default="protenix_base_default_v1.0.0",
-            choices=(
-                "protenix_base_default_v1.0.0",
-                "protenix_base_20250630_v1.0.0",
-                "protenix-v2",
-            ),
-        )
     options = vars(parser.parse_args(argv))
     output = OutputConfig(images=tuple(options.pop("save_images") or ()))
     legacy_seed = options.pop("seed")

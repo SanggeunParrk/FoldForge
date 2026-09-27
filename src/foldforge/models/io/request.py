@@ -36,7 +36,6 @@ class Request:
     samples: int = 1
     msa_depth: int = PREPARED_ROWS
     guidance: bool | None = None
-    variant: str = "protenix_base_default_v1.0.0"
     mode: str = "fast"
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     output: OutputConfig = field(default_factory=OutputConfig)

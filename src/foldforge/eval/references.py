@@ -48,16 +48,12 @@ TARGETS = _CORE_TARGETS + tuple(
 SEEDS = (0, 1, 2)
 
 #: How FoldForge folds each family under the references' conditions: the CLI
-#: model, its trunk passes as the config counts them, and the release variant.
+#: model and its trunk passes as the config counts them.
 FAMILIES: dict[str, dict[str, Any]] = {
     "boltz2": {"model": "boltz2", "recycles": 3},
     "chai1": {"model": "chai1", "recycles": 3},
-    "protenix1": {
-        "model": "protenix",
-        "recycles": 4,
-        "variant": "protenix_base_default_v1.0.0",
-    },
-    "protenix2": {"model": "protenix", "recycles": 4, "variant": "protenix-v2"},
+    "protenix1": {"model": "protenix1", "recycles": 4},
+    "protenix2": {"model": "protenix2", "recycles": 4},
     "openfold3": {"model": "openfold3", "recycles": 3},
     "openfold3-preview2": {"model": "openfold3-preview2", "recycles": 3},
     "rosettafold3": {"model": "rosettafold3", "recycles": 4},

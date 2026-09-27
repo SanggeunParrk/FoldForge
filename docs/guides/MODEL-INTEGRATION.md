@@ -10,6 +10,17 @@ All predictors must use FoldForge's environment, team-gm blocks, and
 miniworld-engine ops. A package name or a subprocess launching an untouched
 upstream model is not a completed shared-engine port.
 
+**Current state (2026-09-27).** Twelve models fold on one graph: AF3,
+Boltz-2, Chai-1, Protenix v1 (`protenix1`), Protenix v2 (`protenix2`), OpenFold3
+v0.5.0 (`openfold3`), OpenFold3 preview-2, RoseTTAFold3, IntelliFold-v2,
+OpenDDE, ESMFold2 and ESMFold2-Fast. Each release is its own model name; there
+is no `--variant`. Against every family's own released code, 37 of 38
+family x condition rows pass in both modes, an MSA condition included
+([validation](../validation/README.md)). How each blob is produced from its
+release file: [checkpoints](CHECKPOINTS.md). Defects found in third-party code:
+[bug reports](../bug-reports/README.md). Open research finding:
+[reference conformer and pose](../findings/reference-conformer-pose-sensitivity.md).
+
 **As of 2026-09-23 there is one graph.** `models/architectures/af3.py` is the
 only architecture in the tree, and a predictor is a `DenseSpec` row in
 `modules/dense/spec.py` stating where its release disagrees with AF3. The flat
@@ -669,14 +680,12 @@ foldforge ccd verify --ccd-db data/ccd/preprocessed_CCD.lmdb
 foldforge fold af3 --input validation/inputs/data/1ubq/af3-full.json \
   --checkpoint model_checkpoints/af3/af3.bin.zst \
   --ccd-db data/ccd/preprocessed_CCD.lmdb --samples 1 --out runs/af3
-foldforge fold protenix --input validation/inputs/data/1ubq/af-family.json \
-  --checkpoint model_checkpoints/protenix/protenix_base_default_v1.0.0.pt \
-  --ccd-db data/ccd/preprocessed_CCD.lmdb --samples 1 --out runs/protenix
-# For v2, change both --variant and --checkpoint:
-foldforge fold protenix --variant protenix-v2 \
-  --input validation/inputs/data/1ubq/af-family.json \
-  --checkpoint model_checkpoints/protenix/protenix-v2.pt \
-  --ccd-db data/ccd/preprocessed_CCD.lmdb --samples 1 --out runs/protenix-v2
+foldforge fold protenix1 --input validation/inputs/data/1ubq/af-family.json \
+  --checkpoint model_checkpoints/protenix/protenix1.bin.zst \
+  --ccd-db data/ccd/preprocessed_CCD.lmdb --samples 1 --out runs/protenix1
+foldforge fold protenix2 --input validation/inputs/data/1ubq/af-family.json \
+  --checkpoint model_checkpoints/protenix/protenix2.bin.zst \
+  --ccd-db data/ccd/preprocessed_CCD.lmdb --samples 1 --out runs/protenix2
 foldforge fold opendde --input validation/inputs/data/1ubq/af-family.json \
   --checkpoint model_checkpoints/opendde/opendde.pt \
   --ccd-db data/ccd/preprocessed_CCD.lmdb --samples 1 --out runs/opendde
@@ -812,7 +821,7 @@ inventoried and migrated with their manifest paths intact before any deletion.
 
 ## Optional diagnostic images (implemented)
 
-All four inference adapters use the same image writer. PNG export is disabled by
+Every model uses the same image writer. PNG export is disabled by
 default. Both CLI forms (`--spec` and legacy `--input`/`--input-spec`) accept:
 
 ```bash

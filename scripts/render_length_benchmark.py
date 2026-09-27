@@ -359,8 +359,8 @@ def main() -> int:
         "python scripts/render_length_benchmark.py --set a100 matrix scaling",
         "```",
         "",
-        "Use `--model opendde`, `--model esmfold2` or `--model protenix --variant "
-        "protenix-v2`; inputs live under `validation/inputs/qualification/5i28x<N>/`.",
+        "Use `--model opendde`, `--model esmfold2` or `--model protenix2`; inputs "
+        "live under `validation/inputs/qualification/5i28x<N>/`.",
         "",
     ]
     if args.notes:

@@ -27,8 +27,7 @@ ROOT = Path(__file__).resolve().parents[4]
 #: Per-model directories live under here unless the env var overrides it.
 DEFAULT_DIR = ROOT / "model_checkpoints"
 
-#: Default weight file inside each model's directory; Protenix names its file by
-#: variant and ESMFold2 is a directory, so neither is listed.
+#: Default weight file inside each model's directory.
 DEFAULT_FILES = {
     "af3": "af3.bin.zst",
     "boltz2": "boltz2.bin.zst",
@@ -39,6 +38,8 @@ DEFAULT_FILES = {
     "openfold3": "openbind0.bin.zst",
     "openfold3-preview2": "openfold3.bin.zst",
     "opendde": "opendde.bin.zst",
+    "protenix1": "protenix1.bin.zst",
+    "protenix2": "protenix2.bin.zst",
     "rosettafold3": "rosettafold3.bin.zst",
 }
 
@@ -68,11 +69,12 @@ def _roots(model: str) -> list[Path]:
 
     names = [model]
     try:
-        family = registered(model).family
+        known = registered(model)
     except (KeyError, ValueError):
-        family = None
-    if family and family not in names:
-        names.append(family)
+        known = None
+    for name in (known.store, known.family) if known else ():
+        if name and name not in names:
+            names.append(name)
     candidates: list[Path] = []
     override = os.environ.get("FOLDFORGE_CHECKPOINT_DIR")
     for name in names:

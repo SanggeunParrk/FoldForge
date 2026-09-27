@@ -18,7 +18,6 @@ import torch
 
 from foldforge.models import entry
 from foldforge.models.checkpoints import DEFAULT_FILES, resolve
-from foldforge.models.config import PROTENIX_FAMILIES, VARIANTS
 from foldforge.models.msa_policy import RECORD
 
 
@@ -80,29 +79,6 @@ def reorder_esm_nucleic_columns(model: Any) -> int:
     return fixed
 
 
-def resolve_family(
-    name: str, variant: str | None = None
-) -> tuple[str | None, str | None]:
-    """Resolve a model name (and release) to its dense family and variant.
-
-    One model publishes several releases and the release is the family, so the
-    two are resolved together. Callers that need the family BEFORE building the
-    model -- the input adapters, which featurise differently for a family that
-    folds on structural tokens -- ask here rather than loading the checkpoint.
-    """
-    if variant is not None and name != "protenix":
-        message = "variant applies only to Protenix"
-        raise ValueError(message)
-    family = entry(name).family
-    if name == "protenix":
-        variant = variant or VARIANTS[0]
-        if variant not in VARIANTS:
-            message = f"Unsupported Protenix variant {variant!r}; choose {VARIANTS}"
-            raise ValueError(message)
-        family = PROTENIX_FAMILIES[variant]
-    return family, variant
-
-
 def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint lifecycle
     name: str,
     checkpoint: str | Path | None = None,
@@ -110,7 +86,6 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     backend: str = "miniworld",
     dtype: torch.dtype | None = None,
     device: str | torch.device = "cuda",
-    variant: str | None = None,
     recycles: int = 10,
     samples: int = 5,
     steps: int = 200,
@@ -140,13 +115,9 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     spec = entry(name)
     if spec.architecture is None:
         raise NotImplementedError(name)
-    family, variant = resolve_family(name, variant)
+    family = spec.family
     if checkpoint is None:
-        filename = {
-            **DEFAULT_FILES,
-            **({"protenix": f"{variant}.bin.zst"} if name == "protenix" else {}),
-        }[name]
-        checkpoint = resolve(name, filename)
+        checkpoint = resolve(name, DEFAULT_FILES[name])
     checkpoint = Path(checkpoint)
     from foldforge.models.checkpoints.lock import check_size
 

@@ -33,7 +33,14 @@ def test_prediction_keeps_absent_heads_as_none():
 
 def test_registry_lists_without_importing_any_model():
     # Listing must not need weights or an upstream package on the path.
-    assert set(known_models()) >= {"af3", "boltz2", "chai1", "esmfold2", "protenix"}
+    assert set(known_models()) >= {
+        "af3",
+        "boltz2",
+        "chai1",
+        "esmfold2",
+        "protenix1",
+        "protenix2",
+    }
     assert describe("esmfold2")
 
 
@@ -63,7 +70,7 @@ def test_unknown_model_names_the_known_ones():
         get_model("no-such-model")
 
 
-@pytest.mark.parametrize("name", ["af3", "protenix", "opendde"])
+@pytest.mark.parametrize("name", ["af3", "protenix1", "protenix2", "opendde"])
 def test_new_ports_are_loadable(name):
     assert name in registered_models()
     assert callable(get_model(name))

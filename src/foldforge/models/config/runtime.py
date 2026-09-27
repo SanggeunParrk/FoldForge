@@ -77,7 +77,6 @@ class Config(BaseModel):
     diffusion: DiffusionConfig = Field(default_factory=DiffusionConfig)
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
-    variant: str | None = None
     #: "fast" folds with AF3's computation wherever a release's own folds the
     #: same; "exact" keeps every release convention (DenseSpec.EXACT_CONVENTIONS).
     mode: Literal["fast", "exact"] = "fast"
@@ -86,6 +85,12 @@ class Config(BaseModel):
     @classmethod
     def legacy_seed(cls, values: object) -> object:
         """Translate old seed-only configs without ambiguous mixed policies."""
+        if isinstance(values, dict) and "variant" in values:
+            message = (
+                "`variant` is gone: each release is its own model "
+                "(fold protenix1 or protenix2)"
+            )
+            raise ValueError(message)
         if isinstance(values, dict) and "seed" in values:
             if "trunk_seed" in values or "diffusion_seed" in values:
                 message = "Use either seed or trunk_seed/diffusion_seed, not both"

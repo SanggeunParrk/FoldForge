@@ -57,7 +57,9 @@ def test_outside_destinations_rejected(selection, runs, tmp_path):
         paths.run_directory(selection)
 
 
-@pytest.mark.parametrize("model", ["af3", "protenix", "opendde", "esmfold2"])
+@pytest.mark.parametrize(
+    "model", ["af3", "protenix1", "protenix2", "opendde", "esmfold2"]
+)
 def test_all_legacy_clis_default_inside_runs(model, runs):
     request = parse(model, cli())
     assert request.out.parent == runs / model

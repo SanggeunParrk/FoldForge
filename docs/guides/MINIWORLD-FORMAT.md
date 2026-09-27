@@ -55,11 +55,10 @@ from pickle transport. Caches belong to the selected lookup/database instance.
 ```bash
 foldforge fold af3 --spec configs/inference/1ubq.yaml \
   --config configs/inference/native-bf16.yaml --out runs/af3
-foldforge fold protenix --spec configs/inference/1ubq.yaml \
-  --config configs/inference/protenix-v2.yaml --out runs/protenix-v2
+foldforge fold protenix2 --spec configs/inference/1ubq.yaml --out runs/protenix2
 ```
 
-The same `--spec` works with `af3`, `protenix`, `opendde` and `esmfold2`. Paths in
+The same `--spec` works with every model `foldforge models` lists. Paths in
 it are relative to the spec file. Numeric `chain_letters` keys determine chain
 order; repeated letters share FASTA/MSA input. The adapter emits unique chain IDs
 and records the mapping in `chain-map.json`. MiniWorld's typed FASTA headers support

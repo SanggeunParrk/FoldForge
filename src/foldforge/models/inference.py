@@ -29,13 +29,10 @@ def _family(model: str) -> DenseSpec:
     return SPECS[entry(model).family or "alphafold3"]
 
 
-def _validate_input(model: str, target: Input, config: Config) -> None:
+def _validate_input(model: str, target: Input) -> None:
     """Validate checkpoint capabilities before creating output artifacts."""
     if not _family(model).template_layers and target.spec.template:
         msg = f"the {model} checkpoint has no template conditioning path"
-        raise ValueError(msg)
-    if config.variant is not None and model != "protenix":
-        msg = "variant applies only to Protenix"
         raise ValueError(msg)
     if target.spec.save_trajectory:
         msg = "Released adapters write final structures; set save_trajectory: false"
@@ -99,7 +96,7 @@ def run(model: str, argv: list[str]) -> int:
         overrides["output"] = {"images": args.save_images}
     config = Config.model_validate({**config.model_dump(), **overrides})
     target = load(args.spec)
-    _validate_input(model, target, config)
+    _validate_input(model, target)
     db = CCDDatabase(target.spec.ccd_db)
     for chain in target.chains:
         for ccd in set(chain.ccds):
@@ -131,14 +128,8 @@ def run(model: str, argv: list[str]) -> int:
     checkpoint = args.checkpoint
     if checkpoint is None:
         from foldforge.models.checkpoints import DEFAULT_FILES, resolve
-        from foldforge.models.config import VARIANTS
 
-        checkpoint = (
-            # Protenix names its blob by release, which --variant picks.
-            resolve(model, f"{config.variant or VARIANTS[0]}.bin.zst")
-            if model == "protenix"
-            else resolve(model, DEFAULT_FILES[model])
-        )
+        checkpoint = resolve(model, DEFAULT_FILES[model])
     path = args.out / "input.adapter.json"
     write_adapter_input(target, path, config.trunk_seed)
     return predict(
@@ -158,7 +149,6 @@ def run(model: str, argv: list[str]) -> int:
             recycles=config.trunk.recycles or 10,
             steps=config.diffusion.steps or 200,
             msa_depth=config.trunk.msa_depth or PREPARED_ROWS,
-            variant=config.variant or "protenix_base_default_v1.0.0",
             mode=config.mode,
             execution=config.execution,
             output=config.output,

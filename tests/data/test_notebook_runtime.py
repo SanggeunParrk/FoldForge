@@ -47,7 +47,7 @@ def test_launch_preserves_request_options(tmp_path, monkeypatch, split):
     }
     assert [(r.trunk_seed, r.diffusion_seed) for r in requests] == expected[split]
     for request in requests:
-        assert request.model == "protenix"
+        assert request.model == "protenix1"
         assert request.backend == "pytorch"
         assert request.precision == "bf16"
         assert (request.recycles, request.steps, request.samples) == (3, 8, 5)

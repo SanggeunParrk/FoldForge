@@ -98,7 +98,9 @@ def test_invalid_output_fails_before_creating_prediction_artifacts(tmp_path, err
     assert not list(tmp_path.iterdir())
 
 
-@pytest.mark.parametrize("model", ["af3", "esmfold2", "protenix", "opendde"])
+@pytest.mark.parametrize(
+    "model", ["af3", "esmfold2", "protenix1", "protenix2", "opendde"]
+)
 def test_legacy_flags_have_one_execution_contract(model, tmp_path):
     request = parse(
         model,
@@ -236,7 +238,7 @@ def test_runtime_owns_forward_count_and_every_target_output(tmp_path, monkeypatc
 
 def test_model_cli_shims_cannot_own_execution_or_persistence():
     root = Path(foldforge.__file__).parent
-    for model in ("af3", "esmfold2", "protenix", "opendde"):
+    for model in ("af3", "esmfold2", "protenix1", "protenix2", "opendde"):
         assert not (root / f"models/{model}/inference.py").exists()
     cli = (root / "cli.py").read_text()
     assert '"foldforge.models.io.cli"' in cli

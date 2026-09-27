@@ -72,6 +72,13 @@ def download_tos_url(tos_url: str, local_file_path: str | Path) -> None:
     logger.info("Downloaded %s to %s", tos_url, target)
 
 
+#: The FoldForge model each Protenix release name folds as.
+RELEASE_MODELS = {
+    "protenix_base_default_v1.0.0": "protenix1",
+    "protenix-v2": "protenix2",
+}
+
+
 class TooLargeComplexError(Exception):
     """Represent too large complex error."""
 
@@ -572,8 +579,7 @@ class RequestParser:
                     previous_trunk_seed = trunk_seed
                 run(
                     Request(
-                        model="protenix",
-                        variant=self.model_name,
+                        model=RELEASE_MODELS[self.model_name],
                         ccd_db=database.root,
                         input=input_path,
                         checkpoint=checkpoint,

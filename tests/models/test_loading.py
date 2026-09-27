@@ -74,7 +74,7 @@ def test_every_backend_spelling_reaches_one_loading_lifecycle(
 
 def test_registry_returns_one_loader_and_retired_packages_are_absent():
     root = Path(foldforge.__file__).parent
-    for name in ("af3", "protenix", "opendde", "esmfold2"):
+    for name in ("af3", "protenix1", "protenix2", "opendde", "esmfold2"):
         bound = get_model(name)
         assert bound.func is load
         assert bound.args == (name,)
@@ -272,8 +272,7 @@ def test_every_registered_family_names_a_distinct_default_checkpoint():
     from foldforge.models import registered_models
     from foldforge.models.checkpoints import DEFAULT_FILES
 
-    # Protenix names its blob by release, so `--variant` supplies the name.
-    named = {name for name in registered_models() if name != "protenix"}
+    named = set(registered_models())
     assert named <= set(DEFAULT_FILES)
     files = [DEFAULT_FILES[name] for name in named]
     assert len(set(files)) == len(files), sorted(files)
@@ -296,8 +295,6 @@ def test_every_registered_family_resolves_its_checkpoint():
 
     missing = []
     for name in sorted(registered_models()):
-        if name == "protenix":
-            continue  # --variant supplies the filename
         try:
             resolve(name, DEFAULT_FILES[name])
         except FileNotFoundError as error:

@@ -176,14 +176,13 @@ def test_common_adapters(target_files, tmp_path):
     )
     # A checkpoint with no template stack refuses a templated input. Asked of
     # the family ROW, so the rule holds for whichever families lack the stack.
-    from foldforge.models.config import Config
     from foldforge.models.inference import _validate_input
 
     with pytest.raises(ValueError, match="no template conditioning"):
-        _validate_input("esmfold2", target, Config())
+        _validate_input("esmfold2", target)
     spec["template"] = {}
     path.write_text(yaml.safe_dump(spec))
-    _validate_input("esmfold2", load(path), Config())
+    _validate_input("esmfold2", load(path))
 
 
 @pytest.mark.parametrize("family", ["protenix", "opendde"])

@@ -31,8 +31,7 @@ have their own owner.
 import torch
 from foldforge import load
 
-model = load("protenix", "/path/to/protenix-v2.pt", variant="protenix-v2",
-             backend="miniworld", dtype=torch.bfloat16, device="cuda")
+model = load("protenix2", backend="miniworld", dtype=torch.bfloat16, device="cuda")
 ```
 
 ## Where this sits
@@ -157,7 +156,7 @@ is what actually loads; they are now the same set.
 | family | what its row says |
 |---|---|
 | AF3 | the reference the other rows are stated against |
-| Protenix v1 / v2 | `--variant` picks the release |
+| Protenix v1 / v2 | two models, `protenix1` and `protenix2` |
 | OpenDDE | folds on structural tokens: the diffusion axis is re-tokenised, the trunk stays on residues |
 | ESMFold2 | pair-only trunk, SSM recycle, ESM-C 6B into the pair track |
 | ESMFold2-Fast | the same row at 24 trunk blocks and no MSA stack |
@@ -176,7 +175,7 @@ same flags — there is one CLI, not one per predictor:
 source scripts/activate_env.sh
 foldforge models
 foldforge fold af3      --spec configs/inference/1ubq.yaml --out runs/af3
-foldforge fold protenix --spec configs/inference/1ubq.yaml --out runs/protenix
+foldforge fold protenix2 --spec configs/inference/1ubq.yaml --out runs/protenix2
 foldforge fold opendde  --spec configs/inference/1ubq.yaml --out runs/opendde
 foldforge fold esmfold2 --spec configs/inference/1ubq.yaml --out runs/esmfold2
 ```

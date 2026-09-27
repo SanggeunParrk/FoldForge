@@ -49,7 +49,9 @@ LEGACY_MODES = {
 def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--model", required=True, choices=["af3", "esmfold2", "protenix", "opendde"]
+        "--model",
+        required=True,
+        choices=["af3", "esmfold2", "protenix1", "protenix2", "opendde"],
     )
     parser.add_argument("--root", type=Path, default=Path("benchmark/e2e"))
     execution = parser.add_mutually_exclusive_group()
@@ -67,7 +69,6 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
         choices=list(MODES) + list(AF3_REFERENCE_MODES) + list(LEGACY_MODES),
         help="Explicit execution modes; defaults to all five modes",
     )
-    parser.add_argument("--variant", choices=["protenix-v2"])
     parser.add_argument("--no-templates", action="store_true")
     parser.add_argument("--benchmark-repeats", type=int, default=0)
     parser.add_argument("--trunk-seed", type=int, default=0)
@@ -105,8 +106,6 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
     if not torch.cuda.is_available():
         msg = "Allocated job has no usable CUDA device"
         raise RuntimeError(msg)
-    if args.variant and args.model != "protenix":
-        parser.error("--variant applies only to Protenix")
     default_modes = [
         *REFERENCE_MODES,
         "pytorch_compile_bf16",
@@ -203,8 +202,6 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
                     "benchmark_repeats": args.benchmark_repeats,
                 },
             }
-            if args.variant:
-                config["variant"] = args.variant
             if previous is not None and previous["status"] == 0:
                 if previous["config"] != config or previous.get("input_spec") != spec:
                     msg = f"Resume inputs/config changed for {label}; use another root"
@@ -312,7 +309,7 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
                 assert report["precision"] == precision
                 assert report["autocast"] is (
                     precision == "model_default"
-                    and args.model in {"esmfold2", "protenix"}
+                    and args.model in {"esmfold2", "protenix1", "protenix2"}
                 )
                 if args.model == "af3":
                     assert report["samples_per_denoiser_call"] == args.samples

@@ -348,7 +348,7 @@ def render(rows: list[dict], docs: Path) -> None:
         f"  --msa-depth {MSA_DEPTH} --template-n {TEMPLATE_N}",
         "```",
         "",
-        "Use `--model opendde`, or `--model protenix --variant protenix-v2`.",
+        "Use `--model opendde`, or `--model protenix2`.",
         "The first two modes select `model_default` (`af3_default` for AF3). The three",
         "comparison modes select native BF16. Whole-model FP32 remains an explicit",
         "diagnostic mode; it is not substituted for the model-default reference.",

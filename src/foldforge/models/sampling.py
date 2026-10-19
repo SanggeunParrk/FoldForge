@@ -1,21 +1,23 @@
 # Optional chemistry/GPU backends load at the selected execution boundary.
 # ruff: noqa: PLC0415
-"""Checkpoint-facing argument adapters for team-gm's common diffusion runtime.
+"""Checkpoint-facing argument adapters for the engine's common diffusion runtime.
 
 This module owns argument names only. Noise, augmentation, schedules, sample
-chunking, integration and training corruption live in team_gm.diffusion.
+chunking, integration and training corruption live in
+miniworld_engine.architecture.diffusion.
 """
 
 from __future__ import annotations
 
-from functools import partial, wraps
+from functools import wraps
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
-from team_gm.diffusion.augmentation import centre_random_augmentation
-from team_gm.diffusion.edm.sampling import EulerSampler
-from team_gm.diffusion.edm.training import sample_training
+from miniworld_engine.architecture.diffusion.augmentation import (
+    centre_random_augmentation,
+)
+from miniworld_engine.architecture.diffusion.edm.sampling import EulerSampler
 
 from foldforge.utils.seed import seed_context
 
@@ -86,11 +88,11 @@ def sample_diffusion(
         return denoise_net(x_noisy=coords, t_hat_noise_level=sigma, **context)
 
     if parse_guidance is None:
-        from team_gm.diffusion.guidance.config import parse_tfg_config
+        from foldforge.guidance.config import parse_tfg_config
 
         parse_guidance = parse_tfg_config
     if guidance_factory is None:
-        from team_gm.diffusion.guidance.compat import TFGEngine
+        from foldforge.guidance.compat import TFGEngine
 
         guidance_factory = TFGEngine
     guidance: (
@@ -155,51 +157,6 @@ def sample_diffusion(
         message = "Sampling without trajectories must return a Tensor"
         raise TypeError(message)
     return result
-
-
-def sample_diffusion_training(
-    noise_sampler: Callable,
-    denoise_net: Callable,
-    label_dict: dict[str, torch.Tensor],
-    input_feature_dict: dict[str, Any],
-    s_inputs: torch.Tensor,
-    s_trunk: torch.Tensor,
-    z_trunk: torch.Tensor,
-    pair_z: torch.Tensor | None,
-    p_lm: torch.Tensor | None,
-    c_l: torch.Tensor | None,
-    N_sample: int = 1,  # noqa: N803 - checkpoint-compatible keyword
-    diffusion_chunk_size: int | None = None,
-    *,
-    use_conditioning: bool = True,
-    enable_efficient_fusion: bool = False,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Adapt training model arguments; corruption and chunking are shared."""
-    network = partial(
-        denoise_net,
-        input_feature_dict=input_feature_dict,
-        s_inputs=s_inputs,
-        s_trunk=s_trunk,
-        z_trunk=z_trunk,
-        pair_z=pair_z,
-        p_lm=p_lm,
-        c_l=c_l,
-        use_conditioning=use_conditioning,
-        enable_efficient_fusion=enable_efficient_fusion,
-    )
-
-    def denoise(coords: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
-        """Compute denoise."""
-        return network(x_noisy=coords, t_hat_noise_level=sigma)
-
-    return sample_training(
-        denoise,
-        label_dict["coordinate"],
-        label_dict["coordinate_mask"],
-        noise_sampler,
-        num_samples=N_sample,
-        chunk_size=diffusion_chunk_size,
-    )
 
 
 def bind_sampling_seed(model: torch.nn.Module, seed: int) -> None:

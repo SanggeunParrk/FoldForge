@@ -1,15 +1,8 @@
 import torch
 import torch.nn as nn
-from team_gm.diffusion.edm.preconditioning import (
-    reconstruct_coordinates,
-    scale_coordinates,
-)
-from team_gm.diffusion.edm.schedules import PowerLawSchedule
-from team_gm.modules.blocks.fourier_math import fourier_features
-from team_gm.modules.checkpoints.backend_attention import layernorm_projection
+from miniworld_engine.architecture.diffusion.edm.schedules import PowerLawSchedule
 
 from foldforge.data.features import dense_batch as feat_batch
-from foldforge.modules import ops as fastnn
 from foldforge.modules.dense import featurization
 from foldforge.modules.dense.atom_cross_attention import (
     AtomCrossAttDecoder,
@@ -19,7 +12,15 @@ from foldforge.modules.dense.diffusion_transformer import (
     DiffusionTransformer,
     DiffusionTransition,
 )
+from foldforge.modules.dense.preconditioning import (
+    reconstruct_coordinates,
+    scale_coordinates,
+)
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
+from foldforge.modules.engine.attention_ops import (
+    layernorm_projection,
+)
+from foldforge.modules.reference.fourier import fourier_features
 
 # Copyright 2024 xfold authors
 # Copyright 2024 DeepMind Technologies Limited
@@ -87,7 +88,7 @@ class DiffusionHead(nn.Module):
         # halves, so which width it runs at is a real difference in the path.
         self.compress_trunk_pair = trunk_pair_channel != pair_channel
         if self.compress_trunk_pair:
-            self.z_trunk_norm = fastnn.LayerNorm(trunk_pair_channel, bias=False)
+            self.z_trunk_norm = nn.LayerNorm(trunk_pair_channel, bias=False)
             self.z_trunk_projection = nn.Linear(
                 trunk_pair_channel, pair_channel, bias=False
             )
@@ -99,7 +100,7 @@ class DiffusionHead(nn.Module):
             if self.pair_init_cond
             else (pair_channel if spec.diffusion_projected_relpos else 139)
         )
-        self.pair_cond_initial_norm = fastnn.LayerNorm(
+        self.pair_cond_initial_norm = nn.LayerNorm(
             self.c_pair_cond_initial, bias="pair_cond_initial_norm" in affine
         )
         self.pair_cond_initial_projection = nn.Linear(
@@ -115,7 +116,7 @@ class DiffusionHead(nn.Module):
 
         self.cond_final_norm = spec.diffusion_cond_final_norm
         if self.cond_final_norm:
-            self.pair_cond_final_norm = fastnn.LayerNorm(self.pair_channel, bias=True)
+            self.pair_cond_final_norm = nn.LayerNorm(self.pair_channel, bias=True)
 
         # Trunk single plus the target features -- unless there is no trunk
         # single at all, in which case the conditioning is the features alone.
@@ -125,7 +126,7 @@ class DiffusionHead(nn.Module):
             if self.pair_only_trunk
             else spec.seq_channel + spec.target_feat_channel + 2 * padded_single_cond
         )
-        self.single_cond_initial_norm = fastnn.LayerNorm(
+        self.single_cond_initial_norm = nn.LayerNorm(
             self.c_single_cond_initial, bias="single_cond_initial_norm" in affine
         )
         self.single_cond_initial_projection = nn.Linear(
@@ -135,7 +136,7 @@ class DiffusionHead(nn.Module):
         )
 
         self.c_noise_embedding = 256
-        self.noise_embedding_initial_norm = fastnn.LayerNorm(
+        self.noise_embedding_initial_norm = nn.LayerNorm(
             self.c_noise_embedding, bias="noise_embedding_initial_norm" in affine
         )
         self.noise_embedding_initial_projection = nn.Linear(
@@ -149,7 +150,7 @@ class DiffusionHead(nn.Module):
             self.seq_channel, c_single_cond=None
         )
         if spec.diffusion_cond_final_norm:
-            self.single_cond_final_norm = fastnn.LayerNorm(self.seq_channel, bias=True)
+            self.single_cond_final_norm = nn.LayerNorm(self.seq_channel, bias=True)
 
         self.atom_cross_att_encoder = AtomCrossAttEncoder(
             per_token_channels=self.c_act,
@@ -162,9 +163,7 @@ class DiffusionHead(nn.Module):
         )
 
         self.single_cond_embedding_norm = (
-            fastnn.LayerNorm(
-                self.seq_channel, bias="single_cond_embedding_norm" in affine
-            )
+            nn.LayerNorm(self.seq_channel, bias="single_cond_embedding_norm" in affine)
             if spec.single_cond_embedding_norm
             else None
         )
@@ -179,7 +178,7 @@ class DiffusionHead(nn.Module):
             spec=spec,
         )
 
-        self.output_norm = fastnn.LayerNorm(self.c_act, bias="output_norm" in affine)
+        self.output_norm = nn.LayerNorm(self.c_act, bias="output_norm" in affine)
 
         self.atom_cross_att_decoder = AtomCrossAttDecoder(spec=spec)
 

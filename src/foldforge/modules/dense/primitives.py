@@ -1,5 +1,4 @@
 # Optional chemistry/GPU backends load at the selected execution boundary.
-# ruff: noqa: PLC0415
 # Copyright 2024 xfold authors
 # Copyright 2024 DeepMind Technologies Limited
 #
@@ -14,9 +13,9 @@
 
 import torch
 import torch.nn as nn
-from team_gm.modules.checkpoints.af_family import reference_transition
 
-from foldforge.modules import ops as fastnn
+from foldforge.modules.engine.modules import engine_of
+from foldforge.modules.engine.routing import enabled, reference_transition
 
 
 class Transition(nn.Module):
@@ -26,7 +25,7 @@ class Transition(nn.Module):
         super().__init__()
         self.num_intermediate_factor = num_intermediate_factor
         self.c_in = c_x
-        self.input_layer_norm = fastnn.LayerNorm(c_x)
+        self.input_layer_norm = nn.LayerNorm(c_x)
         self.transition1 = nn.Linear(
             c_x, self.num_intermediate_factor * c_x * 2, bias=False
         )
@@ -62,7 +61,7 @@ class OuterProductMean(nn.Module):
         self.groups = groups
         self.epsilon = 1e-3
 
-        self.layer_norm_input = fastnn.LayerNorm(self.c_msa)
+        self.layer_norm_input = nn.LayerNorm(self.c_msa)
         width = self.groups * self.num_outer_channel
         self.left_projection = nn.Linear(self.c_msa, width, bias=projection_bias)
         self.right_projection = nn.Linear(self.c_msa, width, bias=projection_bias)
@@ -72,7 +71,7 @@ class OuterProductMean(nn.Module):
             # BROADCASTS the group index, giving G*K*K products where one group
             # gives K*K. The product norm carries eps 0.1 because the depth axis
             # is summed and never divided; that norm is what absorbs the scale.
-            self.product_norm = fastnn.LayerNorm(
+            self.product_norm = nn.LayerNorm(
                 self.groups * self.num_outer_channel**2, eps=0.1
             )
         self.output_w = nn.Parameter(
@@ -87,6 +86,10 @@ class OuterProductMean(nn.Module):
 
     def forward(self, msa: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """Compute the module output."""
+        built = engine_of(self)
+        if built is not None and enabled(self, msa):
+            # The raw update (the engine adds no residual without one), from the CUDA kernels.
+            return built(msa[None], (mask > 0)[None])[0]
         mask = mask.to(msa.dtype).unsqueeze(-1)
         msa = self.layer_norm_input(msa)
         left_act = mask * self.left_projection(msa)
@@ -95,7 +98,7 @@ class OuterProductMean(nn.Module):
         if self.groups > 1:
             return self._grouped(left_act, right_act)
 
-        from team_gm.modules.blocks.attention_math import af3_outer_product_mean
+        from foldforge.modules.reference.attention import af3_outer_product_mean
 
         if not self.bias_after_norm and not self.clamped_norm:
             # AF3's normalisation: mean over MSA rows, 1e-3 offset, bias before

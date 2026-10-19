@@ -1,4 +1,0 @@
-[submodule "libs/team-gm"]
-	path = third_party/team-gm
-	url = git@github.com:CSSB-SNU/team-gm.git
-	branch = foldforge/pypi-transformers

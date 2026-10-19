@@ -15,16 +15,18 @@ import dataclasses
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from team_gm.modules.checkpoints.backend_attention import layernorm_projection
 
 from foldforge.data.features import dense_batch as feat_batch
-from foldforge.modules import ops as fastnn
-from foldforge.modules.dense import atom_layout, utils
+from foldforge.modules.dense import utils
 from foldforge.modules.dense.chirality import dihedral_error_gradient
 from foldforge.modules.dense.diffusion_transformer import (
     DiffusionCrossAttTransformer,
 )
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
+from foldforge.modules.engine.attention_ops import (
+    layernorm_projection,
+)
+from foldforge.utils import atom_layout
 
 
 @dataclasses.dataclass(frozen=True)
@@ -164,7 +166,7 @@ class AtomCrossAttEncoder(nn.Module):
                 torch.zeros(self.per_atom_channels)
             )
         self.atom_features_norm = (
-            fastnn.LayerNorm(self.per_atom_channels, bias=True)
+            nn.LayerNorm(self.per_atom_channels, bias=True)
             if spec.normed_atom_features
             else None
         )
@@ -242,7 +244,7 @@ class AtomCrossAttEncoder(nn.Module):
 
         if self.with_trunk_single_cond is True:
             self.c_trunk_single_cond = trunk_single_channels
-            self.lnorm_trunk_single_cond = fastnn.LayerNorm(
+            self.lnorm_trunk_single_cond = nn.LayerNorm(
                 self.c_trunk_single_cond,
                 bias="lnorm_trunk_single_cond" in spec.affine_norms,
             )
@@ -265,7 +267,7 @@ class AtomCrossAttEncoder(nn.Module):
 
         if self.with_trunk_pair_cond is True:
             self.c_trunk_pair_cond = trunk_pair_channels
-            self.lnorm_trunk_pair_cond = fastnn.LayerNorm(
+            self.lnorm_trunk_pair_cond = nn.LayerNorm(
                 self.c_trunk_pair_cond,
                 bias="lnorm_trunk_pair_cond" in spec.affine_norms,
             )
@@ -680,12 +682,12 @@ class AtomCrossAttDecoder(nn.Module):
         # A second, affine norm over the encoder's atom conditioning. AF3 reuses
         # the encoder's unchanged.
         self.post_atom_cond_layer_norm = (
-            fastnn.LayerNorm(self.per_atom_channels, bias=True)
+            nn.LayerNorm(self.per_atom_channels, bias=True)
             if spec.post_atom_cond_norm
             else None
         )
 
-        self.atom_features_layer_norm = fastnn.LayerNorm(
+        self.atom_features_layer_norm = nn.LayerNorm(
             self.per_atom_channels, bias="atom_features_layer_norm" in spec.affine_norms
         )
         self.atom_features_to_position_update = nn.Linear(

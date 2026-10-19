@@ -34,6 +34,7 @@ class GatherInfo:
       input_shape: np or jnp ndarray of int: the shape of the unflattened input
         array
       shape: output shape. Just returns gather_idxs.shape
+
     """
 
     gather_idxs: torch.Tensor
@@ -245,6 +246,7 @@ class AtomLayout:
 
         Raises:
           ValueError: incompatible shapes.
+
         """
         if len(shape) != len(self.atom_name.shape):
             msg = f"Incompatible shape {shape}. Current layout has shape {self.shape}."
@@ -309,11 +311,13 @@ class AtomLayout:
         """Create an AtomLayout object from a numpy array with shape (6, ...).
 
         see also to_array()
+
         Args:
           arr: np.ndarray of object with shape (6, <layout_shape>)
 
         Returns:
           AtomLayout object with shape (<layout_shape>)
+
         """
         if arr.shape[0] != 6:
             msg = (
@@ -362,6 +366,7 @@ class Residues:
       deprotonation: (optional) np.ndarray of set() [num_res], e.g. {'HD1', 'HE2'}
       smiles_string: (optional) np.ndarray of str [num_res], e.g. 'Cc1ccccc1'
       shape: shape of the layout (just returns res_name.shape)
+
     """
 
     __hash__ = None  # pyright: ignore[reportAssignmentType]

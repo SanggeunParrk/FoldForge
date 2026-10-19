@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from support import production_module
+from support import production_module, triton_ops_run
 
 # Tests target private upstream equations directly without loading full checkpoints.
 # ruff: noqa: SLF001
@@ -13,29 +13,17 @@ from unittest import mock
 import pytest
 import torch
 from miniworld_engine import ops
-from team_gm.modules.checkpoints.af_family import (
-    configure_model,
-    transition_residual,
-    triangle_residual,
-)
+
+from foldforge.modules.engine.configure import configure_model
+from foldforge.modules.engine.routing import transition_residual, triangle_residual
 
 
-@pytest.mark.parametrize("family", ["af3", "protenix", "opendde"])
 @pytest.mark.parametrize("outgoing", [True, False])
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA kernel parity")
-def test_triangle_mask_and_weight_layout(family, outgoing):
+def test_triangle_mask_and_weight_layout(outgoing):
     torch.manual_seed(42)
-    if family == "af3":
-        mod = importlib.import_module("foldforge.modules.dense.triangle_multiplication")
-        layer = mod.TriangleMultiplication(c_pair=128, _outgoing=outgoing)
-    else:
-        mod = importlib.import_module("team_gm.modules.checkpoints.triangle")
-        cls = (
-            mod.TriangleMultiplicationOutgoing
-            if outgoing
-            else mod.TriangleMultiplicationIncoming
-        )
-        layer = cls(c_z=128, c_hidden=128)
+    mod = importlib.import_module("foldforge.modules.dense.triangle_multiplication")
+    layer = mod.TriangleMultiplication(c_pair=128, _outgoing=outgoing)
     # Upstream initializes output projections to zero: randomize them so a
     # swapped direction, mask omission or incorrect interleave cannot pass.
     with torch.no_grad():
@@ -56,7 +44,7 @@ def test_triangle_mask_and_weight_layout(family, outgoing):
     ):
         expected = triangle_residual(reference, x.clone(), mask)
         actual = triangle_residual(engine, x.clone(), mask)
-    assert call.call_count == 1
+    assert call.call_count == triton_ops_run()
     error = (actual - expected).float()
     assert error.square().mean().sqrt() < 0.007
     assert (
@@ -67,18 +55,10 @@ def test_triangle_mask_and_weight_layout(family, outgoing):
     )
 
 
-@pytest.mark.parametrize("family", ["af3", "protenix", "opendde"])
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA kernel parity")
-def test_transition_residual_once(family):
+def test_transition_residual_once():
     torch.manual_seed(9)
-    path = "nn.primitives" if family == "af3" else "model.modules.primitives"
-    if family == "af3":
-        cls = production_module(family, path).Transition
-    else:
-        from team_gm.modules.checkpoints.dense import Transition
-
-        cls = Transition
-    layer = cls(128) if family == "af3" else cls(128, 4)
+    layer = production_module("af3", "nn.primitives").Transition(128)
     with torch.no_grad():
         for p in layer.parameters():
             if p.ndim > 1:
@@ -99,8 +79,8 @@ def test_transition_residual_once(family):
 
 
 def test_pairformer_single_transition_receives_backend():
-    from team_gm.modules.blocks.pairformer import PairformerBlock
-    from team_gm.modules.exceptions import ImplementationType
+    from miniworld_engine.architecture.blocks.pairformer import PairformerBlock
+    from miniworld_engine.architecture.exceptions import ImplementationType
 
     impl = ImplementationType.MINIWORLD_ENGINE
     block = PairformerBlock(implementation=impl)
@@ -145,7 +125,7 @@ def test_af3_diffusion_preserves_random_noise_field():
         predicted_structure_info=SimpleNamespace(atom_mask=torch.ones(4, 24))
     )
     with mock.patch(
-        "team_gm.diffusion.augmentation.masked_dense_rigid_motion",
+        "miniworld_engine.architecture.diffusion.augmentation.masked_dense_rigid_motion",
         side_effect=lambda positions, _mask: positions,
     ):
         result = model._sample_diffusion(batch, {})["atom_positions"]
@@ -153,17 +133,3 @@ def test_af3_diffusion_preserves_random_noise_field():
     assert result.std() > 0
     assert not torch.equal(result[0], result[1])
     assert torch.unique(result).numel() == result.numel()
-
-
-@pytest.mark.parametrize("family", ["protenix", "opendde"])
-def test_attention_native_bf16_without_autocast(family):  # noqa: ARG001 - shared callback or fixture signature
-    mod = importlib.import_module("team_gm.modules.checkpoints.dense")
-    q = torch.randn(1, 2, 7, 16, dtype=torch.bfloat16)
-    k = torch.randn(1, 2, 9, 16, dtype=torch.bfloat16)
-    v = torch.randn_like(k)
-    expected = torch.nn.functional.scaled_dot_product_attention(
-        q.float(), k.float(), v.float(), scale=1.0
-    ).to(q.dtype)
-    actual = mod._attention(q, k, v)
-    torch.testing.assert_close(actual, expected)
-    assert actual.dtype == torch.bfloat16

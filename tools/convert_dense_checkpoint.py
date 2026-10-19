@@ -56,7 +56,7 @@ def _seed_reference_params(reference: Path) -> None:
         for path in Path(__file__)
         .resolve()
         .parents[1]
-        .glob(".venv/lib/python*/site-packages/alphafold3")
+        .glob(".pixi/envs/*/lib/python*/site-packages/alphafold3")
     ]
     paths = {
         "alphafold3": [str(source), *compiled],

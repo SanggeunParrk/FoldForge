@@ -16,10 +16,10 @@
 These are historical snapshots, not the current benchmark table. New benchmark
 figures and compact measurement data belong in `assets/`.
 
-The current benchmark pins `libs/team-gm` to `92a50c9` on branch
+The recorded benchmarks (before the team-gm dependency was removed, commit `f3e6128`) pinned `libs/team-gm` to `92a50c9` on branch
 `foldforge/msa-bucket-1024`: the validated `a823f69` runtime plus a 1024-row MSA
 inference bucket. The 2026-09-16 release used `a823f69` itself, which is also
 included in `exp/miniworld`.
-Use `git submodule update --init --recursive` to reproduce this release;
+To reproduce those releases, check out `f3e6128` and run `git submodule update --init --recursive`;
 `git submodule update --remote` selects newer runtime and dependency changes
 that are not covered by these recorded measurements.

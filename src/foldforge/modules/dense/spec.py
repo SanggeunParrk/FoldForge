@@ -451,7 +451,7 @@ class DenseSpec:
     #: update through the running activation.
     #:
     #: Undocumented (AF3 SI Algorithm 17 is sequential; the Chai-1 report says
-    #: only that it "largely follows" AF3), read from the traced trunk. team-gm's
+    #: only that it "largely follows" AF3), read from the traced trunk. FoldForge's
     #: install_pairformers must NOT swap such a block for its sequential one.
     parallel_pairformer_block: bool = False
     #: chai-1's MSA block is parallel in two stages, and its pair transition

@@ -18,7 +18,7 @@ from typing import Any, Self
 import torch
 
 from foldforge.data.features import bond_orders, chirality
-from foldforge.modules.dense import atom_layout
+from foldforge.utils import atom_layout
 
 type BatchDict = dict[str, torch.Tensor]
 

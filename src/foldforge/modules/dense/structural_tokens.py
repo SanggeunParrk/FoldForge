@@ -17,8 +17,6 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from foldforge.modules import ops as fastnn
-
 #: The vendor's structural-token roles.
 ATOM, PROTEIN_BB, PROTEIN_SC, DNA_BB, DNA_BASE, RNA_BB, RNA_BASE = range(7)
 N_ROLES = 7
@@ -52,7 +50,7 @@ class StructuralTokenExpander(nn.Module):
 
         self.single_input_role_embedding = nn.Embedding(N_ROLES, c_target_feat)
         self.single_role_embedding = nn.Embedding(N_ROLES, c_single)
-        self.single_split_norm = fastnn.LayerNorm(c_single)
+        self.single_split_norm = nn.LayerNorm(c_single)
         self.single_split_1 = nn.Linear(c_single, 2 * c_single, bias=False)
         self.single_split_2 = nn.Linear(2 * c_single, c_single, bias=False)
 

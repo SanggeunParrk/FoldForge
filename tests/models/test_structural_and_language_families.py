@@ -86,8 +86,8 @@ def test_rotary_is_tiled_not_interleaved():
 
 def test_sliding_window_counts_valid_atoms_not_slots():
     """The window is +/-N by RANK among valid atoms, not by position."""
-    from foldforge.modules.dense import atom_layout
     from foldforge.modules.dense.atom_cross_attention import sliding_window_mask
+    from foldforge.utils import atom_layout
 
     queries_mask = torch.tensor([[1.0, 0.0, 1.0, 1.0]])
     identity = atom_layout.GatherInfo(

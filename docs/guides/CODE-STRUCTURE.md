@@ -4,7 +4,7 @@ Every model is a row of one graph. `foldforge.load(name, checkpoint, **options)`
 and `foldforge fold <model>` run the same lifecycle for all of them:
 registry entry -> `DenseSpec` row (`spec_for(family, mode)`) -> the one
 architecture (`models/architectures/af3.py`) -> strict checkpoint import ->
-precision policy -> backend installation (team-gm / miniworld-engine blocks).
+precision policy -> backend installation (miniworld-engine blocks).
 A new release is a registry entry and a spec row, not new code.
 
 ```text
@@ -19,21 +19,29 @@ src/foldforge/
     config/            the runtime configuration schema
     io/                request/runtime, input adapters, language-model glue, output
     loading.py         one strict loading lifecycle
-    execution.py       compile and CUDA-graph ownership
-    bucketing.py       inference padding policies
-    sampling.py        team-gm sampler adaptation
-    precision.py       parameter/normalization precision policy
+    execution.py       bounded compile + CUDA-graph callables, complete-forward timing
+    bucketing.py       inference padding ladders (tokens / atoms / MSA rows)
+    sampling.py        engine sampler adaptation, sampling-seed binding
   modules/
-    dense/             the graph's blocks and DenseSpec (spec.py)
-    ops/               shared operator entry points
+    dense/             the graph's blocks and DenseSpec (spec.py); confidence decoding
+    reference/         pure-torch equations of the released checkpoints (no engine imports)
+    engine/            backend routing: which dense module calls miniworld-engine
+      routing.py       engine-or-reference forward of Transition / TriMul / conditioned blocks
+      modules.py       the engine's own nn.Module ops built from the dense weights (hand-CUDA legs)
+      configure.py     native precision, FP32 norms, per-module backend flag
+      conditioning.py  swaps AdaLN / ConditionedTransition for the engine's modules
+      pairformer.py    swaps the Pairformer composition for the engine's block
+      native_linear.py projection in parameter dtype with an explicit compute dtype
+    esmc/              the vendored ESM-C model
     language_model.py  ESM2 / ESM-C token and pair streams
+  guidance/            TFG guidance (not wired into the AF3 sampler yet)
   data/
     ccd/               the MiniWorld BioMol CCD database
     constants/         chemical tables and per-frame reference geometry
     features/          dense featurization, family conventions, structural tokens
     inputs/            MiniWorld input specs, FASTA/LMDB resources, validation
-  eval/                references.py (the judge), confidence decoding, structure I/O
-  utils/               geometry, seeding, logging and tensor helpers
+  eval/                references.py (the judge), structure I/O
+  utils/               atom_layout (gather tables), dense_geometry, seeding, tensor helpers
 ```
 
 ## Where to make a change
@@ -45,8 +53,8 @@ src/foldforge/
 | Choose backend or precision at load | `models/loading.py` |
 | Serialized weight names or packing | `models/checkpoints/`, the converter (see [checkpoints](CHECKPOINTS.md)) |
 | Input conventions a family needs | `data/features/dense_conventions.py` |
-| Shared attention, triangle, MSA, transition equations | `team_gm.modules` |
-| An accelerated kernel | `miniworld_engine` |
+| Shared attention, triangle, MSA, transition equations | `miniworld_engine.architecture` (blocks, layers), `modules/reference` |
+| An accelerated kernel, or how a call picks it | `miniworld_engine`; FoldForge only routes (`modules/engine`) |
 
 ## What is not here
 

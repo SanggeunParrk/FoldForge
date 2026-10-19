@@ -12,11 +12,10 @@
 
 import torch
 import torch.nn as nn
-from team_gm.modules.checkpoints.af_family import (
+
+from foldforge.modules.engine.routing import (
     reference_triangle,
 )
-
-from foldforge.modules import ops as fastnn
 
 
 class TriangleMultiplication(nn.Module):
@@ -32,16 +31,16 @@ class TriangleMultiplication(nn.Module):
         super().__init__()
 
         self.c_pair = c_pair
-        #: Read by the shared triangle update (team-gm): the contraction is
+        #: Read by the shared triangle update (engine): the contraction is
         #: divided by the sequence length before the centre norm. Exact mode only.
         self.divide_by_length = divide_by_length
         #: AF3 ties the projection width to the channel count; one family's
         #: template stack widens it without widening the pair.
         hidden = hidden_dim or c_pair
-        self.left_norm_input = fastnn.LayerNorm(self.c_pair)
+        self.left_norm_input = nn.LayerNorm(self.c_pair)
         self.projection = nn.Linear(self.c_pair, 2 * hidden, bias=False)
         self.gate = nn.Linear(self.c_pair, 2 * hidden, bias=False)
-        self.center_norm = fastnn.LayerNorm(hidden)
+        self.center_norm = nn.LayerNorm(hidden)
         self.output_projection = nn.Linear(hidden, self.c_pair, bias=False)
         self.gating_linear = nn.Linear(self.c_pair, self.c_pair, bias=False)
 

@@ -23,3 +23,13 @@ def production_module(family, path):
     return SimpleNamespace(
         **(vars(module) | {old: getattr(module, new) for old, new in names.items()})
     )
+
+
+def triton_ops_run() -> int:
+    """1 where the Triton-only engine ``ops`` serve a call; 0 on H100 / B200."""
+    import torch
+    from miniworld_engine.modules.dispatch import restricted_card
+
+    return (
+        0 if torch.cuda.is_available() and restricted_card(torch.device("cuda")) else 1
+    )

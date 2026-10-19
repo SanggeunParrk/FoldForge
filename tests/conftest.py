@@ -19,3 +19,14 @@ REQUIRED_CLI = ["--input", "input.json", "--checkpoint", "weights.pt"]
 def cli(*extra: str) -> list[str]:
     """Return the required flags followed by whatever the test is testing."""
     return [*REQUIRED_CLI, *extra]
+
+
+@pytest.fixture(autouse=True)
+def fresh_engine_weight_caches():
+    """Weights built by a test may reuse a freed address: no stale re-layout."""
+    try:
+        from foldforge.modules.engine.modules import clear_engine_weight_caches
+
+        clear_engine_weight_caches()
+    except ImportError:
+        pass

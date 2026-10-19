@@ -5,10 +5,13 @@ from unittest.mock import patch
 import pytest
 import torch
 from miniworld_engine import ops
-from team_gm.modules.checkpoints.af_family import configure_model
-from team_gm.modules.checkpoints.backend_attention import layernorm_projection
-from team_gm.modules.checkpoints.layers import LayerNorm
-from team_gm.modules.precision import NativeLinear
+from support import triton_ops_run
+
+from foldforge.modules.engine.attention_ops import (
+    layernorm_projection,
+)
+from foldforge.modules.engine.configure import configure_model
+from foldforge.modules.engine.native_linear import NativeLinear
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA validation")
 
@@ -26,7 +29,7 @@ pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA vali
 )
 def test_native_projection(width, out_width, compute):
     torch.manual_seed(54)
-    norm = LayerNorm(width, create_offset=False)
+    norm = torch.nn.LayerNorm(width, bias=False)
     linear = NativeLinear(width, out_width, bias=False)
     linear.compute_dtype = compute
     model = configure_model(
@@ -39,7 +42,7 @@ def test_native_projection(width, out_width, compute):
     ):
         a = layernorm_projection(model[0], model[1], x)
         b = model[1](model[0](x))
-        assert called.call_count == (1 if out_width <= 16 else 0)
+        assert called.call_count == (1 if out_width <= 16 else 0) * triton_ops_run()
         error = (
             a.float() - b.float()
         ).square().mean().sqrt() / b.float().square().mean().sqrt()

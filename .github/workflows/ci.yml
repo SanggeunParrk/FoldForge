@@ -1,12 +1,12 @@
 # Lint and CPU tests on every push and pull request.
 #
 # GPU tests (about 180 of them skip here) and the release-reference validation
-# need an A100 and run on the cluster:
-#   python -m pytest tests                   (on a GPU node: the full suite)
+# need a GPU and run on the cluster:
+#   pixi run pytest tests                    (on a GPU node: the full suite)
 #   tools/references/validate.sh fast        (fold vs tests/release_references/, then
 #   foldforge validate $FOLDFORGE_HOME/runs/validate-fast)
-# The test job needs read access to the private team-gm and miniworld-engine
-# repositories: add a deploy key that can read both as the repository secret
+# The test job needs read access to the private miniworld-engine repository:
+# add a deploy key that can read it as the repository secret
 # FOLDFORGE_CI_SSH_KEY. Without it the job is skipped, not failed.
 name: ci
 
@@ -24,11 +24,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: prefix-dev/setup-pixi@v0.8.14
+        with:
+          run-install: false
       - name: ruff check
-        run: uvx ruff@0.15.22 check src tests tools
+        run: pixi exec ruff@0.15 check src tests tools
       - name: ruff format
-        run: uvx ruff@0.15.22 format --check src tests tools
+        run: pixi exec ruff@0.15 format --check src tests tools
 
   test-cpu:
     runs-on: ubuntu-latest
@@ -41,16 +43,10 @@ jobs:
         if: env.HAS_KEY == 'true'
         with:
           ssh-private-key: ${{ secrets.FOLDFORGE_CI_SSH_KEY }}
-      - name: submodules
-        if: env.HAS_KEY == 'true'
-        run: git submodule update --init --recursive
-      - uses: astral-sh/setup-uv@v6
+      - uses: prefix-dev/setup-pixi@v0.8.14
         if: env.HAS_KEY == 'true'
         with:
-          python-version: "3.12"
-      - name: install
-        if: env.HAS_KEY == 'true'
-        run: uv sync --extra cu12 --group dev --frozen
+          locked: true
       - name: pytest (CPU; GPU tests skip)
         if: env.HAS_KEY == 'true'
-        run: uv run pytest tests -q -rs
+        run: pixi run pytest tests -q -rs

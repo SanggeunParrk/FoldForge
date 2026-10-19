@@ -19,14 +19,13 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from team_gm.modules.blocks.composition import template_embedding_mean
 
 from foldforge.data.features import dense as features
 from foldforge.data.features import dense_protein as protein_data_processing
-from foldforge.eval import dense_confidence as scoring
-from foldforge.modules import ops as fastnn
+from foldforge.modules.dense import confidence as scoring
 from foldforge.modules.dense import pairformer
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
+from foldforge.modules.reference.composition import template_embedding_mean
 
 _EPS = 1e-10
 
@@ -195,7 +194,7 @@ class FusedTemplateEmbedding(nn.Module):
         self.spec = spec
         self.build, width = _FEATURES[spec.template]
         channels = spec.template_channel
-        self.z_norm = fastnn.LayerNorm(spec.pair_channel)
+        self.z_norm = nn.LayerNorm(spec.pair_channel)
         self.z_proj = nn.Linear(spec.pair_channel, channels, bias=False)
         self.a_proj = nn.Linear(width, channels, bias=False)
         self.tmpl_pairformer = nn.ModuleList(
@@ -212,7 +211,7 @@ class FusedTemplateEmbedding(nn.Module):
                 for _ in range(spec.template_layers)
             ]
         )
-        self.v_norm = fastnn.LayerNorm(channels)
+        self.v_norm = nn.LayerNorm(channels)
         self.u_proj = nn.Linear(channels, spec.pair_channel, bias=False)
 
     def forward(

@@ -229,8 +229,8 @@ def load_ours(run_dir: Path) -> dict[int, list[Structure]]:
 
 def ideal_ligands(target: str) -> dict[str, np.ndarray]:
     """CCD ideal heavy-atom coordinates of every multi-atom ligand chain."""
-    from foldforge.data.ccd.database import CCDDatabase  # noqa: PLC0415 - heavy
-    from foldforge.data.inputs.build import load  # noqa: PLC0415 - heavy
+    from foldforge.data.ccd.database import CCDDatabase
+    from foldforge.data.inputs.build import load
 
     spec = load(REFERENCES / "inputs" / target / "foldforge.yaml")
     database = CCDDatabase(spec.spec.ccd_db)
@@ -373,7 +373,7 @@ def report(results: list[dict[str, Any]]) -> str:
 
 def main(argv: list[str]) -> int:
     """``foldforge validate RUNS [--report FILE] [--families ...] [--targets ...]``."""
-    import argparse  # noqa: PLC0415
+    import argparse
 
     parser = argparse.ArgumentParser(prog="foldforge validate")
     parser.add_argument(
@@ -393,7 +393,7 @@ def main(argv: list[str]) -> int:
             if (REFERENCES / target / family).is_dir()
         )
     text = report(results)
-    print(text)  # noqa: T201 - CLI output contract
+    print(text)
     if args.report:
         args.report.write_text(text)
         args.report.with_suffix(".json").write_text(

@@ -5,13 +5,15 @@ from typing import Any
 
 import torch
 import torch.nn as nn
-from team_gm.diffusion.augmentation import masked_dense_rigid_motion
-from team_gm.diffusion.edm.sampling import EulerSampler
-from team_gm.diffusion.edm.schedules import PowerLawSchedule
-from team_gm.modules.bucketing import MSA_SHAPES, ceiling, pad_axis
+from miniworld_engine.architecture.diffusion.augmentation import (
+    masked_dense_rigid_motion,
+)
+from miniworld_engine.architecture.diffusion.edm.sampling import EulerSampler
+from miniworld_engine.architecture.diffusion.edm.schedules import PowerLawSchedule
 
 from foldforge.data.features import dense as features
 from foldforge.data.features import dense_batch as feat_batch
+from foldforge.models.bucketing import MSA_SHAPES, ceiling, pad_axis
 from foldforge.modules.dense import atom_cross_attention, diffusion_head, featurization
 from foldforge.modules.dense.fused_template import FusedTemplateEmbedding
 from foldforge.modules.dense.head import ConfidenceHead, DistogramHead

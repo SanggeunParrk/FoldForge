@@ -9,19 +9,19 @@ bash tools/check_quality.sh
 The script runs Ruff lint, Ruff formatting, and Pyright. It does not change the
 CUDA environment or synchronize packages. Install the development group through
 the normal environment setup before using it. Optional commit hooks use the same
-commands (`uv run --no-sync pre-commit install`).
+commands (`pixi run --frozen pre-commit install`).
 
 ## Coverage and policy
 
 - Ruff checks every Python file in `src`, `tests`, and `scripts`, selects `ALL`,
   targets Python 3.12, and uses an 88-character line length. Global exceptions
-  match team-gm's Ruff policy.
+  follow the former team-gm policy.
 - Pyright checks all `src/foldforge` with `typeCheckingMode = "standard"` and the
-  project `.venv`. Tests and scripts remain included in Ruff.
+  pixi environment. Tests and scripts remain included in Ruff.
 - Vendored libraries, archived validation outputs, weights and generated runs
   are separate projects/data, not FoldForge source. No FoldForge source subtree
   is excluded from either source check.
-- Numerical modules use the same notation/annotation exceptions as team-gm's
+- Numerical modules use the same notation/annotation exceptions as the former team-gm
   diffusion and SE(3) code. Ordered chemistry and MSA routines retain explicit
   complexity exceptions while their types and other lint rules remain checked.
 - Function-local comments document retained checkpoint keyword names, upstream

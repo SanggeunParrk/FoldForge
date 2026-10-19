@@ -3,7 +3,7 @@
 **Many structure predictors, one environment, one set of kernels.**
 
 Eleven AF3-family predictors share MiniWorld-format inputs, one CCD LMDB,
-team-gm block compositions and miniworld-engine kernels — and one graph. A
+miniworld-engine blocks and kernels — and one graph. A
 family is a `DenseSpec` row stating where its release disagrees with AF3;
 where a release's equations, checkpoint layout or confidence head differ, the
 difference is a field in that row rather than a second implementation.
@@ -36,66 +36,47 @@ model = load("protenix2", backend="miniworld", dtype=torch.bfloat16, device="cud
 
 ## Where this sits
 
-FoldForge is a **terminal** repo in a three-layer stack. The boundary rules —
-which decide whether a piece of code belongs here or a layer down — are
-canonical in [third_party/team-gm/docs/ARCHITECTURE.md](third_party/team-gm/docs/ARCHITECTURE.md).
-The short version:
+FoldForge is a **terminal** repo on top of one dependency, miniworld-engine
+(team-gm was absorbed into the engine and into MiniWorld; FoldForge no longer
+depends on it). The boundary rule decides whether a piece of code belongs here or
+a layer down:
 
 | layer | repo | holds |
 |---|---|---|
-| engine | miniworld-engine | fused kernels + the ops that wrap them |
-| framework | team-gm | representative AF3 **blocks**, diffusion, training base |
-| terminal | **FoldForge** | the **full models**, data pipeline, eval, CLI |
+| engine | miniworld-engine | fused kernels, the ops that wrap them, the representative AF3 **blocks**, diffusion and the checkpoint-attention helpers (`miniworld_engine.architecture`) |
+| terminal | **FoldForge** | the **full models**, the checkpoint installers, data pipeline, eval, CLI |
 
 Nothing here defines an op or a general-purpose block. If you are writing one,
-it goes a layer down.
+it goes in the engine. What used to come from team-gm and has no engine home — the routing of dense
+modules to engine ops (`modules/engine`), the reference equations of the released
+checkpoints (`modules/reference`), compile/graph execution and bucketing
+(`models/`), TFG guidance, the ESM-C model — now lives here; see [the directory guide](docs/guides/CODE-STRUCTURE.md).
 
 ## Install
 
+One **pixi** environment, the same layout as MiniWorld and miniworld-engine
+(torch 2.13.0+cu129, cuequivariance 0.12, FlashAttention-4; `-e cu13` for CUDA 13).
+No GPU is needed to install, and nothing is run on a login node: use a CPU
+allocation of the cluster.
+
 ```bash
-git clone --recurse-submodules git@github.com:SanggeunParrk/FoldForge.git
+git clone git@github.com:SanggeunParrk/FoldForge.git
 cd FoldForge
-uv sync --extra cu12    # CUDA 12.8   (or --extra cu13 for CUDA 13)
+srun -p h100 -A cssb --qos=normal_h100 --gres=none -c 8 --mem=32G pixi install
+pixi run --frozen python -m pytest tests -q        # on a GPU allocation
 ```
 
-For an existing checkout: `git submodule update --init --recursive`.
-The checked-in submodule revision is the validated dependency: team-gm
-`67e163e` on branch `foldforge/pypi-transformers`. Keep that revision when
-reproducing the recorded results; newer `exp/miniworld` commits use a
-different engine/patch set.
-
-The pinned Biohub ESMFold2 processor requires **Python 3.12**. For
-A5000/A6000/A100, the complete environment includes FA2, Quack 0.5.0 and
-CUTLASS DSL 4.5.2. On this cluster:
-
-```bash
-mkdir -p validation/reports/logs
-sbatch tools/setup_env.sbatch
-# After installation succeeds, before running Python directly:
-source tools/activate_env.sh
-```
-
-Use the setup script for updates too: it reuses the verified FA2 wheel when
-available, otherwise builds the pinned release. Model runners activate `.venv`
-with its required C++ runtime. See [the environment record](docs/archive/ENVIRONMENT-20260913.md).
-
-
-> [!NOTE]
-> Resolve with **uv**, not plain pip. The CUDA index routing that picks a torch
-> build matching `cuequivariance-ops-torch-cuNN` is uv-specific; pip ignores it
-> and installs a mismatched torch. `cu12` and `cu13` are mutually exclusive.
->
-> team-gm owns torch and the CUDA ops stack — never declare torch here.
+The pinned Biohub ESMFold2 processor requires **Python 3.12**. On
+A5000/A6000/A100 add FlashAttention-2 (`FOLDFORGE_FLASH2=1 sbatch tools/setup_env.sbatch`).
+Before running Python directly: `source tools/activate_env.sh`.
 
 ### The engine pin
 
-`miniworld-engine` is a git dependency, pinned by `rev` in **both**
-`pyproject.toml` and `third_party/team-gm/pyproject.toml`. team-gm is a uv workspace member;
-the root source declaration governs the workspace. Keep the member's pin aligned
-so its standalone environment uses the same engine revision.
-
-See [the integration handoff](docs/archive/ENGINE-INTEGRATION-20260913.md) for the pinned
-revision, validation results, and FlashAttention setup required for GPU SWA.
+`miniworld-engine` is a git dependency pinned by `rev` in `pyproject.toml`
+(`[tool.pixi.pypi-dependencies]`); `pixi.lock` records the resolved commit. Bump
+both together, then re-run the tests: the engine changes contracts between
+releases (for example, since the 2026-10 release every `x = x + f(x)` module
+returns the residual itself — use `.delta` for the bare update).
 
 ## Layout
 
@@ -105,7 +86,9 @@ src/foldforge/        the package
   paths.py            where weights, databases, release envs and runs live
   models/             registry, the one AF3 architecture, checkpoints, loading,
                       execution, sampling, precision, io
-  modules/            the dense graph's blocks (dense/), shared ops, ESM-C glue
+  modules/            the dense graph's blocks (dense/), engine routing (engine/),
+                      reference equations (reference/), ESM-C (esmc/) and its glue
+  guidance/           TFG guidance (not wired into the AF3 sampler yet)
   data/               CCD database, chemical constants, dense features and
                       family conventions, MiniWorld input specs
   eval/               the release-reference judge, confidence decoding, structures
@@ -115,7 +98,7 @@ tests/                unit and GPU tests; release_references/ holds every releas
 docs/                 guides, validation verdicts, findings, bug reports, examples/
 tools/                release runners, validation, conversion, benchmarks, Slurm
                       wrappers; typings/ (pyright stubs)
-third_party/          team-gm (submodule) and the AF3 feature package
+third_party/          the AF3 feature package
 ```
 
 Nothing machine-specific lives in the checkout. Weights, the CCD database, the
@@ -153,9 +136,9 @@ $FOLDFORGE_HOME/
 | the unit | lives in |
 |---|---|
 | wraps a kernel, one PyTorch reference | miniworld-engine |
-| representative AF3 block (Pairformer, MSA module, template, diffusion transformer) | team-gm |
+| representative AF3 block (Pairformer, MSA module, template, diffusion transformer) | miniworld-engine (`architecture`) |
 | specific to one predictor | `models/architectures/<name>.py` |
-| needed by two or more predictors, no reason for team-gm to carry it | `modules/` |
+| needed by two or more predictors, no reason for the engine to carry it | `modules/` |
 
 A single-consumer block in `modules/` is the common mistake: it reads as shared,
 and the next person changing it has to prove nothing else depends on it.

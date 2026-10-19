@@ -1,5 +1,4 @@
 # Optional chemistry/GPU backends load at the selected execution boundary.
-# ruff: noqa: PLC0415
 # Copyright 2024 DeepMind Technologies Limited
 #
 # AlphaFold 3 source code is licensed under CC BY-NC-SA 4.0. To view a copy of
@@ -14,14 +13,16 @@
 import einops
 import torch
 import torch.nn as nn
-from team_gm.modules.checkpoints.backend_attention import (
+
+from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
+from foldforge.modules.engine.attention_ops import (
     engine_attention_supported,
     engine_triangle_attention,
     gated_projection,
 )
-
-from foldforge.modules import ops as fastnn
-from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
+from foldforge.modules.engine.modules import engine_of, residue_mask
+from foldforge.modules.engine.routing import enabled
+from foldforge.modules.reference.attention import dot_product_attention
 
 
 def _row_chunked_attention(
@@ -47,9 +48,9 @@ def _row_chunked_attention(
     chunk = max(1, budget // max(1, tokens * tokens))
     chunk = 1 << (chunk.bit_length() - 1)
     if chunk >= rows:
-        return fastnn.dot_product_attention(q, k, v, mask=mask, bias=bias)
+        return dot_product_attention(q, k, v, mask=mask, bias=bias)
     parts = [
-        fastnn.dot_product_attention(
+        dot_product_attention(
             q[start : start + chunk],
             k[start : start + chunk],
             v[start : start + chunk],
@@ -91,7 +92,7 @@ class GridSelfAttention(nn.Module):
             transpose and spec.untransposed_column_pair_output and not dual_output
         )
 
-        self.act_norm = fastnn.LayerNorm(self.c_pair)
+        self.act_norm = nn.LayerNorm(self.c_pair)
         self.pair_bias_projection = nn.Linear(self.c_pair, self.num_head, bias=False)
 
         self.q_projection = nn.Linear(self.c_pair, hidden, bias=False)
@@ -185,6 +186,16 @@ class GridSelfAttention(nn.Module):
 
         return out
 
+    def residual(self, pair: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        """``pair + forward(pair, mask)``; the engine module owns the residual when installed.
+
+        ``mask`` is the outer-product pair mask, as everywhere in the dense graph.
+        """
+        built = engine_of(self)
+        if built is not None and enabled(self, pair):
+            return built(pair[None], residue_mask(mask))[0]
+        return pair + self(pair, mask)
+
 
 class MSAAttention(nn.Module):
     """Represent m s a attention."""
@@ -205,8 +216,8 @@ class MSAAttention(nn.Module):
         self.value_dim = value_dim or self.c_msa // self.num_head
         hidden = self.num_head * self.value_dim
 
-        self.act_norm = fastnn.LayerNorm(self.c_msa)
-        self.pair_norm = fastnn.LayerNorm(self.c_pair)
+        self.act_norm = nn.LayerNorm(self.c_msa)
+        self.pair_norm = nn.LayerNorm(self.c_pair)
         self.pair_logits = nn.Linear(self.c_pair, self.num_head, bias=False)
         self.v_projection = nn.Linear(
             self.c_msa, self.num_head * self.value_dim, bias=False
@@ -234,3 +245,13 @@ class MSAAttention(nn.Module):
 
         gate_values = self.gating_query(msa)
         return gated_projection(self, self.output_projection, gate_values, v_avg)
+
+    def residual(
+        self, msa: torch.Tensor, msa_mask: torch.Tensor, pair: torch.Tensor
+    ) -> torch.Tensor:
+        """``msa + forward(msa, msa_mask, pair)``; the engine module owns the residual when installed."""
+        built = engine_of(self)
+        if built is not None and enabled(self, msa):
+            key_mask = (msa_mask.max(dim=0).values > 0)[None]
+            return built(msa[None], pair[None], key_mask)[0]
+        return msa + self(msa, msa_mask, pair)

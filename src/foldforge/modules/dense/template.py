@@ -13,15 +13,14 @@ from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
-from team_gm.modules.blocks.composition import template_embedding_mean
 
 from foldforge.data.constants import residue_names
 from foldforge.data.features import dense as features
 from foldforge.data.features import dense_protein as protein_data_processing
-from foldforge.eval import dense_confidence as scoring
-from foldforge.modules import ops as fastnn
+from foldforge.modules.dense import confidence as scoring
 from foldforge.modules.dense import pairformer
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
+from foldforge.modules.reference.composition import template_embedding_mean
 from foldforge.utils import dense_geometry as geometry
 
 
@@ -173,7 +172,7 @@ class SingleTemplateEmbedding(nn.Module):
 
         self.dgram_features_config = DistogramFeaturesConfig()
 
-        self.query_embedding_norm = fastnn.LayerNorm(pair_channel)
+        self.query_embedding_norm = nn.LayerNorm(pair_channel)
         self.template_feature_bias = (
             nn.Parameter(torch.zeros(self.num_channels))
             if spec.template_feature_bias
@@ -205,7 +204,7 @@ class SingleTemplateEmbedding(nn.Module):
             ]
         )
 
-        self.output_layer_norm = fastnn.LayerNorm(self.num_channels)
+        self.output_layer_norm = nn.LayerNorm(self.num_channels)
 
     def _masked_class_distogram(
         self, positions: torch.Tensor, covered: torch.Tensor

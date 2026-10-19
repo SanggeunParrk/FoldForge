@@ -1,6 +1,5 @@
 # A released tower loads through a pinned Transformers fork; import it only
 # where one is actually asked for.
-# ruff: noqa: PLC0415
 """Protein language models: their alphabets, their towers, and what reads them.
 
 Three predictors here read one. Two take residue embeddings as part of their
@@ -27,7 +26,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from jaxtyping import Bool, Float, Int
-from team_gm import typecheck
+from miniworld_engine.architecture.primitives import LayerNorm
+from miniworld_engine.architecture.typing import typecheck
+from torch import nn
 
 from foldforge.data.constants import residue_names
 
@@ -596,7 +597,7 @@ class _FP32NormMLP(torch.nn.Module):
 
 
 def _prepare_esmc_norms(model: torch.nn.Module) -> None:
-    from team_gm.models.esmc.modeling_esmc import (
+    from foldforge.modules.esmc.modeling import (
         _PyTorchLayerNormLinear,
         _PyTorchLayerNormMLP,
     )
@@ -615,7 +616,7 @@ def load_esmc(
 ) -> LanguageModel:
     """Load the released ESMC model through ``transformers``.
 
-    team-gm vendors the ESM-C implementation (``team_gm.models.esmc``); import it
+    FoldForge vendors the ESM-C implementation (``foldforge.modules.esmc``); import it
     lazily when a language model is requested.
 
     Parameters
@@ -632,9 +633,7 @@ def load_esmc(
     LanguageModel
         The loaded model, frozen and in eval mode.
     """
-    from team_gm.models.esmc import ESMCModel
-
-    from foldforge.models.precision import inference_precision
+    from foldforge.modules.esmc import ESMCModel
 
     model = ESMCModel.from_pretrained(path)
     _prepare_esmc_norms(model)
@@ -642,3 +641,40 @@ def load_esmc(
     for parameter in model.parameters():
         parameter.requires_grad_(False)  # noqa: FBT003 - PyTorch binding is positional
     return model
+
+
+def _explicit_fp32_norms(model: nn.Module) -> None:
+    # Plain PyTorch CUDA LayerNorm does not support every mixed-affine shape.
+    # The shared reference norm explicitly reduces in FP32 and restores x.dtype.
+    for name, child in list(model.named_children()):
+        if type(child) is nn.LayerNorm:
+            norm = LayerNorm(
+                list(child.normalized_shape),
+                eps=child.eps,
+                elementwise_affine=child.elementwise_affine,
+                bias=child.bias is not None,
+            )
+            norm.weight, norm.bias = child.weight, child.bias
+            setattr(model, name, norm)
+        else:
+            _explicit_fp32_norms(child)
+
+
+def inference_precision(
+    model: nn.Module, device: torch.device, dtype: torch.dtype
+) -> nn.Module:
+    """Keep norm values exact and respect upstream device/buffer hooks."""
+    _explicit_fp32_norms(model)
+    norm_values = []
+    for module in model.modules():
+        is_norm = isinstance(module, (nn.LayerNorm, nn.RMSNorm))
+        for name, parameter in module.named_parameters(recurse=False):
+            if is_norm or name in {"layer_norm_weight", "layer_norm_bias"}:
+                norm_values.append((module, name, parameter.detach().float().clone()))
+    # ESMC RoPE's _apply materializes meta buffers and regenerates FP32 inv_freq.
+    model.to(device=device, dtype=dtype)
+    with torch.no_grad():
+        for module, name, value in norm_values:
+            getattr(module, name).data = value.to(device=device)
+    model.requires_grad_(requires_grad=False)
+    return model.eval()

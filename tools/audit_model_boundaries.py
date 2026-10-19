@@ -44,7 +44,7 @@ def inventory(root: Path) -> list[dict]:
             if "/architectures/" in relative:
                 status = "terminal model or explicit checkpoint adapter"
             elif name == "PairformerBlock":
-                status = "reference only; loader replaces composition with team-gm"
+                status = "reference only; loader replaces composition with the engine"
             elif name in {"ConditionedTransitionBlock", "DiffusionTransition"}:
                 status = (
                     "conditioned instances converted to engine after strict loading"
@@ -60,12 +60,11 @@ def inventory(root: Path) -> list[dict]:
                     "msa_pair_update",
                     "msa_row_update",
                     "template_embedding_mean",
-                    "outer_product_projection",
                     "af3_outer_product_mean",
                 }
                 for n in ast.walk(node)
             ):
-                status = "team-gm composition; released signatures/layouts retained"
+                status = "engine composition; released signatures/layouts retained"
             elif any(
                 k in name
                 for k in [
@@ -93,7 +92,7 @@ def inventory(root: Path) -> list[dict]:
                         forward.returns is not None
                         and all(a.annotation is not None for a in args)
                     ),
-                    "imports_team_gm": any(v.startswith("team_gm") for v in imports),
+                    "imports_team_gm": False,
                     "imports_engine": any(
                         v.startswith("miniworld_engine") for v in imports
                     ),

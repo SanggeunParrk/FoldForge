@@ -6,8 +6,8 @@ the matching `.sbatch` wrapper.
 
 ## Environment and checks
 
-- `setup_env.sbatch`: install the pinned environment, including FA2/Quack/CuTe.
-- `activate_env.sh`: activate `.venv` and the required C++ runtime.
+- `setup_env.sbatch`: `pixi install --locked` (and FA2 on Ampere with `FOLDFORGE_FLASH2=1`).
+- `activate_env.sh`: activate the pixi environment (`.pixi/envs/default`) and the required C++ runtime.
 - `check_quality.sh`: Ruff lint/format and Pyright, as used by pre-commit.
 
 ## Inference

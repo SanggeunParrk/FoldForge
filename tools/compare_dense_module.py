@@ -12,7 +12,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from team_gm.modules.checkpoints.layers import skip_random_init
 
 from foldforge.models.checkpoints.haiku import import_jax_weights_
 from foldforge.modules.dense.spec import SPECS
@@ -32,15 +31,14 @@ def main() -> int:
     from foldforge.models.architectures.af3 import AlphaFold3
 
     if args.loaded:
-        # The full load path: precision conversion and the team-gm block wrappers.
+        # The full load path: precision conversion and the engine block wrappers.
         from foldforge.models import load
 
         model = load(
             args.loaded, args.blob, backend="pytorch", dtype=torch.float32, device="cpu"
         )
     else:
-        with skip_random_init():
-            model = AlphaFold3(spec=SPECS[args.family])
+        model = AlphaFold3(spec=SPECS[args.family])
         import_jax_weights_(model, args.blob)
         model = model.float().eval()
     data = {k: torch.from_numpy(v) for k, v in np.load(args.inputs).items()}
@@ -68,7 +66,7 @@ def main() -> int:
                 pair_mask=data["pair_mask"],
             )
         elif args.kind == "atom_transformer":
-            from foldforge.modules.dense import atom_layout
+            from foldforge.utils import atom_layout
 
             gather = atom_layout.GatherInfo(
                 gather_idxs=data["key_idxs"],

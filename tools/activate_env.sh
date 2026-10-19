@@ -2,15 +2,14 @@
 # Source from Bash before running Python directly; Slurm runners source this too.
 # Weights, databases, release envs and runs live outside the checkout.
 : "${FOLDFORGE_HOME:=$HOME/.cache/foldforge}"; export FOLDFORGE_HOME
-MINIWORLD_REPO_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-MINIWORLD_ENV_DIR=${FOLDFORGE_ENV:-$MINIWORLD_REPO_ROOT/.venv}
-source "$MINIWORLD_ENV_DIR/bin/activate"
-# The verified engine FA2 wheel was built with GCC 14's C++ runtime.
-MINIWORLD_CXX_RUNTIME=${MINIWORLD_CXX_RUNTIME:-/home/psk6950/.cache/miniworld-runtime/gcc14}
-if [[ -f "$MINIWORLD_CXX_RUNTIME/libstdc++.so.6" ]]; then
-    export LD_LIBRARY_PATH="$MINIWORLD_CXX_RUNTIME${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-fi
-# JIT compilation uses a CUDA-12.8-compatible host compiler on this cluster.
+FOLDFORGE_REPO_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+# The pixi environment (`pixi install` at the repository root): ${FOLDFORGE_ENV:-default}.
+FOLDFORGE_ENV_DIR=${FOLDFORGE_ENV_DIR:-$FOLDFORGE_REPO_ROOT/.pixi/envs/${FOLDFORGE_ENV:-default}}
+source "$FOLDFORGE_ENV_DIR/bin/activate" 2>/dev/null || export PATH="$FOLDFORGE_ENV_DIR/bin:$PATH"
+export CONDA_PREFIX=$FOLDFORGE_ENV_DIR
+# conda-forge's libstdc++ must come first for the engine's JIT-built extensions.
+export LD_LIBRARY_PATH="$FOLDFORGE_ENV_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# JIT compilation uses a CUDA-compatible host compiler on this cluster.
 if [[ -x /opt/ohpc/pub/compiler/gcc/12.4.0/bin/g++ ]]; then
     export CC=${CC:-/opt/ohpc/pub/compiler/gcc/12.4.0/bin/gcc}
     export CXX=${CXX:-/opt/ohpc/pub/compiler/gcc/12.4.0/bin/g++}

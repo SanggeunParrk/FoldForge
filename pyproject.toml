@@ -1,16 +1,20 @@
 [project]
 authors = [{ name = "Sanggeun Park", email = "psk6950@snu.ac.kr" }]
 name = "foldforge"
-description = "One environment for many structure predictors, built on team-gm"
+description = "One environment for many structure predictors, built on miniworld-engine"
 requires-python = ">=3.12,<3.13"
 version = "0.1.0"
 dependencies = [
-  "team-gm",
+  "torch==2.13.0",
+  "einops>=0.8,<1",
+  "jaxtyping>=0.3,<1",
+  "beartype>=0.21,<1",
+  "safetensors>=0.4,<1",
+  "ninja>=1.13,<2",
+  "cuequivariance-torch>=0.12,<0.13",
   "biomol>=1.0,<2",
   "lmdb>=1.7,<2",
   "biopython>=1.85,<2",
-  # Imported directly by the runtime config; team-gm pulls it transitively, but
-  # a direct import earns a direct declaration.
   "pydantic>=2,<3",
   "transformers==4.57.6",
   "esm==3.3.0",
@@ -26,14 +30,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Mutually exclusive CUDA backends, mirroring team-gm's — pick exactly one:
-#   uv sync --extra cu12   (torch from the pytorch-cu128 index)
-#   uv sync --extra cu13   (torch from the pytorch-cu130 index)
-# Forward CUDA selection to team-gm, which owns the torch version bounds and
-# CUDA indexes. Repeating those indexes here creates conflicting source rules.
-cu12 = ["team-gm[cu12]"]
-cu13 = ["team-gm[cu13]"]
-# Ampere/Ada (A100, A5000, A6000): select together with cu12.
+# Ampere/Ada (A100, A5000, A6000): FlashAttention-2 compiles against the installed torch.
 flash2 = ["flash-attn==2.8.3.post1"]
 
 [project.scripts]
@@ -46,43 +43,61 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/foldforge"]
 
-[tool.uv]
-# Replace esm's git Transformers requirement with the PyPI release it was built on.
-override-dependencies = ["transformers==4.57.6"]
-# Keep the engine-tested CuTe/Quack pair across every optional environment.
-constraint-dependencies = ["quack-kernels==0.5.0", "nvidia-cutlass-dsl==4.5.2"]
-conflicts = [
-  [{ extra = "cu12" }, { extra = "cu13" }],
-  [{ package = "team-gm", extra = "cu12" }, { package = "team-gm", extra = "cu13" }],
-]
+# One pixi project, the same layout as MiniWorld and miniworld-engine. `cu12` is torch 2.13.0+cu129
+# (the newest CUDA the cluster drivers run); `cu13` is the CUDA 13 build.
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
 
-[tool.uv.workspace]
-members = ["third_party/team-gm"]
+[tool.pixi.feature.cuda129.system-requirements]
+cuda = "12.9"
 
-[tool.uv.sources]
+[tool.pixi.feature.cuda129.pypi-dependencies]
+cuequivariance-ops-torch-cu12 = "==0.12.*"
+# FlashAttention-4 (CuTeDSL), pinned to what miniworld-engine unpacks.
+flash-attn-4 = { version = "==4.0.0b32", extras = ["cu12"] }
+
+[tool.pixi.feature.cuda129.pypi-options]
+extra-index-urls = ["https://download.pytorch.org/whl/cu129"]
+
+[tool.pixi.feature.cuda13.system-requirements]
+cuda = "13"
+
+[tool.pixi.feature.cuda13.pypi-dependencies]
+cuequivariance-ops-torch-cu13 = "==0.12.*"
+
+[tool.pixi.feature.cuda13.pypi-options]
+extra-index-urls = ["https://download.pytorch.org/whl/cu130"]
+
+[tool.pixi.environments]
+default = { features = ["cuda129"] }
+cu13 = { features = ["cuda13"] }
+
+[tool.pixi.dependencies]
+python = "~=3.12.0"
+pytest = ">=8.3,<9"
+ruff = ">=0.15,<0.16"
+pre-commit = ">=4.6,<5"
+nodejs = "*"
+
+[tool.pixi.pypi-options]
+# esm asks for a git Transformers; the release it was built on comes from PyPI.
+dependency-overrides = { transformers = "==4.57.6" }
+# The torch index also carries (older) cmake/ninja; pick the best version across indexes.
+index-strategy = "unsafe-best-match"
+
+[tool.pixi.pypi-dependencies]
+foldforge = { path = ".", editable = true }
 foldforge-af3-data = { path = "third_party/af3-data" }
 # Match the reference ESMFold2 input processor.
 esm = { git = "https://github.com/Biohub/esm.git", rev = "fba1e42a8a0f8df2b7e08611c88807aa32a25d9c" }
-# transformers comes from PyPI: the Biohub fork that carried ESM-C was taken
-# down, and team_gm.models.esmc now vendors its ESM-C verbatim.
-team-gm = { workspace = true }
-# The workspace uses this root engine source. Keep the same revision in
-# third_party/team-gm/pyproject.toml for its standalone installs.
-miniworld-engine = { git = "ssh://git@github.com/SanggeunParrk/miniworld-engine.git", rev = "d2266a035de11384c46f8cc980e6460f60925413" }
+miniworld-engine = { git = "ssh://git@github.com/SanggeunParrk/miniworld-engine.git", rev = "b468017961c414f86c33e1d47ada18c36783c26d" }
 
-[dependency-groups]
-dev = [
-  "pytest>=8.3,<9",
-  "pre-commit>=4.6,<5",
-  "ruff>=0.15,<0.16",
-  "pyright[nodejs]==1.1.408",
-  "pandas-stubs==2.3.3.260113",
-]
 
 [tool.ruff]
 line-length = 88
 target-version = "py312"
-extend-exclude = ["third_party", "tools/typings"]
+extend-exclude = ["third_party", "tools/typings", "src/foldforge/modules/esmc"]
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -121,24 +136,13 @@ known-third-party = ["wandb"]
   "PLR0915", # Too many statements
 ]
 
-# Paper-notation numerical code: the same exceptions as team-gm diffusion/SE(3),
-# with every file still checked. Chemical graph permutations, geometric crop
-# selection and tensor transforms follow the same policy.
-"src/foldforge/{modules,eval}/**" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-"src/foldforge/training/{loss,shape_complementarity}.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-"src/foldforge/utils/{geometry,dense_geometry,tensor}.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-"src/foldforge/data/cropping.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-"src/foldforge/data/ccd/substructure_perms.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-"src/foldforge/data/features/{featurizer,geometry,permutations,constraints,dense_protein}.py" = ["N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504"]
-
-# Ordered chemistry/MSA algorithms follow team-gm's numerical complexity policy.
-# Keep their stages together for reference comparison; type, import, error,
-# security and correctness checks remain enabled throughout these files.
-"src/foldforge/data/{parser,filter}.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
-"src/foldforge/data/features/atoms.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
-"src/foldforge/data/msa/featurizer.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
-"src/foldforge/data/inputs/{entities,features,serialize}.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
-"src/foldforge/data/template/{features,featurizer,parser}.py" = ["C901", "PLR0912", "PLR0915", "PLR2004"]
+# Paper-notation numerical code, the gather/geometry tables and the compile/graph glue:
+# single-letter names, untyped tensor helpers and long equations are idiomatic there.
+# Every file is still checked for imports, correctness and security.
+"src/foldforge/{modules,eval,guidance}/**" = ["E402", "PLC0414", "PLC0415", "RUF009", "S101", "B023", "SLF001", "A002", "ARG002", "SIM102", "B008", "BLE001", "E721", "N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504", "TRY003", "TRY004", "EM101", "EM102", "B905", "RUF005", "RUF013", "UP035", "B006", "C408", "SIM108", "RUF059", "TC003", "FURB171", "RUF046", "SIM201", "T201"]
+"src/foldforge/utils/{atom_layout,dense_geometry}.py" = ["E402", "PLC0414", "PLC0415", "RUF009", "S101", "B023", "SLF001", "A002", "ARG002", "SIM102", "B008", "BLE001", "E721", "N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504", "TRY003", "TRY004", "EM101", "EM102", "B905", "RUF005", "RUF013", "UP035", "B006", "C408", "SIM108", "RUF059", "TC003", "FURB171", "RUF046", "SIM201", "T201"]
+"src/foldforge/data/features/dense_protein.py" = ["E402", "PLC0414", "PLC0415", "RUF009", "S101", "B023", "SLF001", "A002", "ARG002", "SIM102", "B008", "BLE001", "E721", "N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504", "TRY003", "TRY004", "EM101", "EM102", "B905", "RUF005", "RUF013", "UP035", "B006", "C408", "SIM108", "RUF059", "TC003", "FURB171", "RUF046", "SIM201", "T201"]
+"src/foldforge/models/execution.py" = ["E402", "PLC0414", "PLC0415", "RUF009", "S101", "B023", "SLF001", "A002", "ARG002", "SIM102", "B008", "BLE001", "E721", "N802", "N803", "N806", "ANN", "ARG001", "D", "E501", "PLR2004", "PLR0912", "C901", "TC001", "TC002", "FBT001", "FBT002", "ERA001", "RET504", "TRY003", "TRY004", "EM101", "EM102", "B905", "RUF005", "RUF013", "UP035", "B006", "C408", "SIM108", "RUF059", "TC003", "FURB171", "RUF046", "SIM201", "T201"]
 
 [tool.pytest.ini_options]
 pythonpath = [".", "tests"]
@@ -148,14 +152,8 @@ testpaths = ["tests"]
 include = ["src/foldforge"]
 exclude = ["third_party"]
 stubPath = "tools/typings"
-venvPath = "."
-venv = ".venv"
+venvPath = ".pixi/envs"
+venv = "default"
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
 
-# Compile FA2 against the selected CUDA Torch build, including its ABI.
-[tool.uv.extra-build-dependencies]
-flash-attn = [
-  { requirement = "torch", match-runtime = true },
-  "packaging", "ninja", "psutil", "wheel",
-]

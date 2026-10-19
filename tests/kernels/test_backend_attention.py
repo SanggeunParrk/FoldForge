@@ -7,12 +7,14 @@ import copy
 
 import pytest
 import torch
-from team_gm.modules.checkpoints.af_family import configure_model
-from team_gm.modules.checkpoints.backend_attention import (
+from support import triton_ops_run
+from torch.profiler import ProfilerActivity, profile
+
+from foldforge.modules.engine.attention_ops import (
     engine_dense_attention,
     pair_bias_projection,
 )
-from torch.profiler import ProfilerActivity, profile
+from foldforge.modules.engine.configure import configure_model
 
 pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available(), reason="CUDA backend validation"
@@ -32,7 +34,7 @@ def compare(label, actual, expected):
 
 @pytest.mark.parametrize(
     "kind",
-    ["af3-start", "af3-end", "shared-start", "shared-end", "af3-token", "shared-token"],
+    ["af3-start", "af3-end", "af3-token"],
 )
 @pytest.mark.parametrize("mask_kind", ["mixed", "empty"])
 def test_module(kind, mask_kind):
@@ -53,22 +55,7 @@ def test_module(kind, mask_kind):
             )
         )
         kwargs = {"mask": mask}
-    elif kind.startswith("shared-") and kind != "shared-token":
-        from team_gm.modules.checkpoints.triangle import TriangleAttention
-
-        model = TriangleAttention(128, 32, 4, starting=kind.endswith("start"))
-        x = torch.randn(
-            2, chain_length, chain_length, 128, device="cuda", dtype=torch.bfloat16
-        )
-        mask = (
-            (torch.rand(2, chain_length, chain_length, device="cuda") > 0.2)
-            if mask_kind == "mixed"
-            else torch.zeros(
-                2, chain_length, chain_length, device="cuda", dtype=torch.bool
-            )
-        )
-        kwargs = {"mask": mask.float(), "chunk_size": 16}
-    elif kind == "af3-token":
+    else:
         from foldforge.modules.dense.diffusion_transformer import SelfAttention
 
         model = SelfAttention(192, 96, 4, use_single_cond=False)
@@ -84,23 +71,6 @@ def test_module(kind, mask_kind):
                 4, chain_length, chain_length, device="cuda", dtype=torch.bfloat16
             ),
         }
-    else:
-        from team_gm.modules.checkpoints.dense import Attention
-
-        model = Attention(192, 192, 192, 48, 4, zero_init=False)
-        x = torch.randn(2, chain_length, 192, device="cuda", dtype=torch.bfloat16)
-        mask = (
-            (torch.rand(2, chain_length, device="cuda") > 0.2)
-            if mask_kind == "mixed"
-            else torch.zeros(2, chain_length, device="cuda", dtype=torch.bool)
-        )
-        kwargs = {
-            "kv_x": x,
-            "attn_bias": torch.randn(
-                2, 4, chain_length, chain_length, device="cuda", dtype=torch.bfloat16
-            )
-            + (~mask[:, None, None, :]).float() * -1e9,
-        }
     with torch.no_grad():
         for name, param in model.named_parameters():
             param.normal_(
@@ -112,14 +82,17 @@ def test_module(kind, mask_kind):
         expected = ref(x, **kwargs)
         with profile(activities=[ProfilerActivity.CPU]) as prof:
             actual = model(x, **kwargs)
-    assert any(
+    ran = any(
         e.key == "miniworld_engine::augmented_attention_fwd"
         for e in prof.key_averages()
-    ), kind
+    )
+    assert ran == bool(triton_ops_run()), kind
     compare(kind + "-" + mask_kind, actual, expected)
 
 
 def test_compile_graph():
+    if not triton_ops_run():
+        pytest.skip("the engine's Triton attention op is never used on H100 / B200")
     torch.manual_seed(8)
     q, k, v = [
         torch.randn(2, 4, 128, 48, device="cuda", dtype=torch.bfloat16)
@@ -150,10 +123,8 @@ def test_compile_graph():
 
 
 def test_fused_pair_projection():
-    from team_gm.modules.checkpoints.layers import LayerNorm
-
     torch.manual_seed(7)
-    norm = LayerNorm(128, create_offset=False)
+    norm = torch.nn.LayerNorm(128, bias=False)
     linear = torch.nn.Linear(128, 16, bias=False)
     container = torch.nn.Sequential(norm, linear)
     ref = configure_model(copy.deepcopy(container), "pytorch", device="cuda")
@@ -163,42 +134,50 @@ def test_fused_pair_projection():
         expected = ref(x)
         with profile(activities=[ProfilerActivity.CPU]) as prof:
             actual = pair_bias_projection(model[0], model[1], x)
-    assert any("layernorm_linear_pair_bias_fwd" in e.key for e in prof.key_averages())
+    ran = any("layernorm_linear_pair_bias_fwd" in e.key for e in prof.key_averages())
+    assert ran == bool(triton_ops_run())
     compare("pair-ln-linear", actual, expected)
 
 
-def test_pytorch_no_custom_ops():
-    from team_gm.modules.checkpoints.dense import Attention
+def _token_attention(width: int, heads: int = 4) -> torch.nn.Module:
+    from foldforge.modules.dense.diffusion_transformer import SelfAttention
 
-    model = configure_model(
-        Attention(128, 128, 128, 32, 4, zero_init=False), "pytorch", device="cuda"
-    )
-    x = torch.randn(1, 128, 128, device="cuda", dtype=torch.bfloat16)
+    torch.manual_seed(5)
+    model = SelfAttention(width, 96, heads, use_single_cond=False)
+    with torch.no_grad():
+        for name, param in model.named_parameters():
+            param.normal_(
+                1.0 if "norm" in name and name.endswith("weight") else 0.0, 0.07
+            )
+    return model
+
+
+def test_pytorch_no_custom_ops():
+    model = configure_model(_token_attention(192), "pytorch", device="cuda")
+    x = torch.randn(128, 192, device="cuda", dtype=torch.bfloat16)
+    pair_logits = torch.randn(4, 128, 128, device="cuda", dtype=torch.bfloat16)
+    mask = torch.ones(128, device="cuda", dtype=torch.bool)
     with torch.no_grad(), profile(activities=[ProfilerActivity.CPU]) as prof:
-        model(x, x)
+        model(x, mask=mask, pair_logits=pair_logits)
     assert not any(
         e.key.startswith(("miniworld_engine::", "cuequivariance"))
         for e in prof.key_averages()
     )
 
 
-@pytest.mark.parametrize("case", ["rectangular", "head96", "fp32"])
+@pytest.mark.parametrize("case", ["head96", "fp32"])
 def test_unsupported_dense_preserves_reference(case):
-    from team_gm.modules.checkpoints.dense import Attention
-
-    dim = 96 if case == "head96" else 32
+    width = 384 if case == "head96" else 192
     dtype = torch.float32 if case == "fp32" else torch.bfloat16
-    torch.manual_seed(5)
-    source = Attention(128, 128, 128, dim, 4, zero_init=False)
+    source = _token_attention(width)
     ref = configure_model(copy.deepcopy(source), "pytorch", dtype=dtype, device="cuda")
     model = configure_model(source, "miniworld", dtype=dtype, device="cuda")
-    q = torch.randn(2, 32, 128, device="cuda", dtype=dtype)
-    k = torch.randn(
-        2, 128 if case == "rectangular" else 32, 128, device="cuda", dtype=dtype
-    )
+    x = torch.randn(128, width, device="cuda", dtype=dtype)
+    pair_logits = torch.randn(4, 128, 128, device="cuda", dtype=dtype)
+    mask = torch.ones(128, device="cuda", dtype=torch.bool)
     with torch.no_grad(), profile(activities=[ProfilerActivity.CPU]) as prof:
-        actual = model(q, k)
-        expected = ref(q, k)
+        actual = model(x, mask=mask, pair_logits=pair_logits)
+        expected = ref(x, mask=mask, pair_logits=pair_logits)
     assert not any(
         e.key == "miniworld_engine::augmented_attention_fwd"
         for e in prof.key_averages()
@@ -206,8 +185,8 @@ def test_unsupported_dense_preserves_reference(case):
     if case == "fp32":
         torch.testing.assert_close(actual, expected, atol=0, rtol=0)
     else:
-        # Rectangular/head96 attention stays reference; its compatible output
-        # gate+projection now uses the engine and has BF16 rounding differences.
+        # head96 attention stays reference; its compatible output gate+projection
+        # uses the engine and has BF16 rounding differences.
         compare("reference-core-fused-output-" + case, actual, expected)
 
 
@@ -215,25 +194,26 @@ def test_cueq_attention_without_pairformer():
     from unittest.mock import patch
 
     from cuequivariance_torch.primitives.triangle import triangle_attention
-    from team_gm.modules.checkpoints.triangle import TriangleAttention
+
+    from foldforge.modules.dense.attention import GridSelfAttention
 
     torch.manual_seed(17)
-    source = TriangleAttention(128, 32, 4, starting=False)
+    source = GridSelfAttention(128, 4, transpose=True)
     with torch.no_grad():
         for p in source.parameters():
             p.normal_(0, 0.07)
     ref = configure_model(copy.deepcopy(source), "pytorch", device="cuda")
     model = configure_model(source, "cuequivariance", device="cuda")
-    x = torch.randn(2, 128, 128, 128, device="cuda", dtype=torch.bfloat16)
-    mask = (torch.rand(2, 128, 128, device="cuda") > 0.2).float()
+    x = torch.randn(128, 128, 128, device="cuda", dtype=torch.bfloat16)
+    mask = torch.rand(128, 128, device="cuda") > 0.2
     with (
         torch.no_grad(),
         patch(
-            "cuequivariance_torch.primitives.triangle.triangle_attention",
+            "cuequivariance_torch.triangle_attention",
             wraps=triangle_attention,
         ) as call,
     ):
-        actual = model(x, mask, chunk_size=16)
+        actual = model(x, mask)
         assert call.call_count == 1
-        expected = ref(x, mask, chunk_size=16)
+        expected = ref(x, mask)
     compare("cueq-outside-pairformer", actual, expected)

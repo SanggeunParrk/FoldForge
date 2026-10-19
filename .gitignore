@@ -18,3 +18,7 @@ dist/
 slurm-*.out
 slurm-*.log
 slurm-*.err
+
+# pixi environments
+.pixi/
+.cutlass/

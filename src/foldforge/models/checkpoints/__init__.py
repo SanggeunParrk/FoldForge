@@ -1,8 +1,8 @@
 """Where the weights are — asked, never hardcoded.
 
-This resolver lives in FoldForge rather than team-gm on purpose: which
-checkpoints exist on which machine is an integration concern, and team-gm is the
-framework, which must not know that this cluster keeps ESMC-6B in one place and
+This resolver lives in FoldForge rather than the engine on purpose: which
+checkpoints exist on which machine is an integration concern, and the engine is
+the framework, which must not know that this cluster keeps ESMC-6B in one place and
 AF3 in another.
 
 Lookup order for ``<model>``:

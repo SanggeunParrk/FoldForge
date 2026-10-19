@@ -16,8 +16,8 @@ import sys
 from unittest.mock import patch
 
 import torch
-from team_gm.modules.execution import ExecutedCallable, _flatten, _map
 
+from foldforge.models.execution import ExecutedCallable, _flatten, _map
 from foldforge.models.inference import run
 
 MIN_COMPARE_ARGUMENTS = 2

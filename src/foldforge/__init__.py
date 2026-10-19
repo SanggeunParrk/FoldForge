@@ -1,11 +1,10 @@
 """FoldForge — many structure predictors, one environment.
 
-FoldForge is a *terminal* repo in the three-layer stack described by
-``libs/team-gm/docs/ARCHITECTURE.md``: fused ops come from miniworld-engine, the
-representative AF3 blocks come from team-gm, and the full models are assembled
+FoldForge is a *terminal* repo in a two-layer stack: miniworld-engine holds the
+fused ops and the representative AF3 blocks, diffusion and checkpoint-layout
+primitives (``miniworld_engine.architecture``); the full models are assembled
 here. Nothing in this package should define an op or a general-purpose block —
-if you are writing one, it belongs a layer down.
-
+if you are writing one, it belongs in the engine.
 The point of the repo is that AF3, Boltz-2, Chai-1, Protenix, ESMFold2 and
 OpenDDE run off *one* set of blocks and one set of kernels, so a change to a
 triangle multiplication is a change to all of them at once.

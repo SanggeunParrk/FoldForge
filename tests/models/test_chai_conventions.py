@@ -22,7 +22,7 @@ def test_install_keeps_a_block_with_its_own_schedule():
     every real fold while a harness that skipped the loader matched the
     release, and cost 18 pLDDT points on 5I28.
     """
-    from team_gm.modules.checkpoints.pairformer import install_pairformers
+    from foldforge.modules.engine.pairformer import install_pairformers
 
     kwargs = {"c_pair": 16, "c_single": 32, "n_heads": 2, "n_heads_pair": 2}
     parallel = _loaded(PairformerBlock(spec=SPECS["chai1"], **kwargs).eval())
@@ -32,9 +32,9 @@ def test_install_keeps_a_block_with_its_own_schedule():
     install_pairformers(sequential)
 
     assert type(parallel.block) is PairformerBlock
-    assert parallel.foldforge_load_report["team_gm_pairformer_blocks"] == 0
+    assert parallel.foldforge_load_report["engine_pairformer_blocks"] == 0
     assert type(sequential.block) is not PairformerBlock
-    assert sequential.foldforge_load_report["team_gm_pairformer_blocks"] == 1
+    assert sequential.foldforge_load_report["engine_pairformer_blocks"] == 1
 
 
 def test_relative_encoding_tells_chains_and_entities_apart():

@@ -15,7 +15,7 @@
     "strict": true,
     "source_records": 405,
     "mapped_records": 404,
-    "team_gm_pairformer_blocks": 54,
+    "engine_pairformer_blocks": 54,
     "engine_adaln": 75,
     "engine_conditioned_transition": 33,
     "backend": "pytorch",

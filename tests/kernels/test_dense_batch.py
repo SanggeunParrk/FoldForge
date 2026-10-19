@@ -7,13 +7,16 @@ from typing import Any
 
 import pytest
 import torch
-from team_gm.diffusion.augmentation import masked_dense_rigid_motion
-from team_gm.modules.checkpoints.af_family import configure_model
+from miniworld_engine.architecture.diffusion.augmentation import (
+    masked_dense_rigid_motion,
+)
+from support import triton_ops_run
 from torch import nn
 
 from foldforge.models.architectures.af3 import AlphaFold3
 from foldforge.modules.dense.diffusion_transformer import CrossAttention, SelfAttention
 from foldforge.modules.dense.spec import ALPHAFOLD3
+from foldforge.modules.engine.configure import configure_model
 
 
 def test_dense_augmentation_has_independent_sample_transforms():
@@ -78,7 +81,8 @@ def test_token_attention_batched_matches_separate_and_routes_aug(monkeypatch, ba
     with torch.inference_mode():
         actual = model(x, mask, bias, cond)
         if backend == "miniworld":
-            assert shapes == [((5, 1, 4, 128, 48), (1, 4, 128, 128))]
+            served = [((5, 1, 4, 128, 48), (1, 4, 128, 128))]
+            assert shapes == (served if triton_ops_run() else [])
         expected = torch.stack([model(sample, mask, bias, cond) for sample in x])
     torch.testing.assert_close(actual, expected, atol=0.01, rtol=0.03)
 

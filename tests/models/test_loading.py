@@ -120,7 +120,7 @@ def test_haiku_checkpoint_is_imported_before_precision(tmp_path, monkeypatch):
         model.norm.weight, torch.full((4,), 1.000123), atol=0, rtol=0
     )
     assert model.foldforge_load_report["strict"] is True
-    assert model.foldforge_load_report["team_gm_pairformer_blocks"] == 0
+    assert model.foldforge_load_report["engine_pairformer_blocks"] == 0
 
 
 def test_af3_default_keeps_released_mixed_parameters(tmp_path, monkeypatch):
@@ -253,7 +253,7 @@ def test_native_bf16_clears_a_projection_s_fp32_compute_override(dtype):
     in FP32 while the weights say otherwise. The rule is layout-independent, so
     it is asked directly rather than through whichever loader still exists.
     """
-    from team_gm.modules.precision import NativeLinear
+    from foldforge.modules.engine.native_linear import NativeLinear
 
     layer = NativeLinear(4, 4, bias=False)
     layer.compute_dtype = torch.float32

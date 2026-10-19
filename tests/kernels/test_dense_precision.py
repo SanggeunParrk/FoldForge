@@ -7,10 +7,10 @@ from typing import Any
 
 import pytest
 import torch
-from team_gm.modules.checkpoints.af_family import configure_model
 from torch.overrides import TorchFunctionMode
 
 from foldforge.modules.dense.diffusion_transformer import CrossAttention
+from foldforge.modules.engine.configure import configure_model
 
 pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available(), reason="CUDA precision validation"

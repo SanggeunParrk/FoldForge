@@ -84,9 +84,8 @@ def test_without_alignment_empties_the_statistics():
 
 
 def test_length_divided_triangle_equals_scaling_the_norm_epsilon():
-    from team_gm.modules.checkpoints.af_family import triangle_residual
-
     from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
+    from foldforge.modules.engine.routing import triangle_residual
 
     torch.manual_seed(0)
     plain = TriangleMultiplication(c_pair=8)

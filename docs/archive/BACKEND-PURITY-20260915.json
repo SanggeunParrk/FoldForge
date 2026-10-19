@@ -371,7 +371,7 @@
         "strict": true,
         "source_records": 405,
         "mapped_records": 404,
-        "team_gm_pairformer_blocks": 54,
+        "engine_pairformer_blocks": 54,
         "engine_adaln": 75,
         "engine_conditioned_transition": 33
       },
@@ -1157,7 +1157,7 @@
         "variant": "protenix_base_default_v1.0.0",
         "state_entries": 4174,
         "strict": true,
-        "team_gm_pairformer_blocks": 58,
+        "engine_pairformer_blocks": 58,
         "engine_adaln": 75,
         "engine_conditioned_transition": 33
       },
@@ -1576,7 +1576,7 @@
         "variant": "opendde_v1",
         "state_entries": 4482,
         "strict": true,
-        "team_gm_pairformer_blocks": 62,
+        "engine_pairformer_blocks": 62,
         "engine_adaln": 75,
         "engine_conditioned_transition": 33
       },

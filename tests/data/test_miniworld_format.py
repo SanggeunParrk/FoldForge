@@ -3,21 +3,26 @@
 from __future__ import annotations
 
 import ast
+import contextlib
 import importlib
 import importlib.util
 import json
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 import torch
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 from support import REFERENCE_ROOT, REPOSITORY_ROOT
-from team_gm.modules.blocks.attention_math import attention, outer_product_projection
 
 from foldforge import paths
 from foldforge.data.ccd import CCDDatabase
 from foldforge.data.inputs.build import load
+from foldforge.modules.reference.attention import attention
 
 REPOSITORY = REPOSITORY_ROOT
 REFERENCE = Path(
@@ -32,7 +37,7 @@ DATABASE = Path(os.environ.get("FOLDFORGE_TEST_CCD_DB", str(paths.ccd_db())))
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
 @pytest.mark.parametrize("family", ["protenix", "opendde"])
 def test_released_attention_equation(family, dtype, efficient):
-    module = importlib.import_module("team_gm.modules.checkpoints.dense")
+    module = importlib.import_module("foldforge.modules.reference.attention")
     original = json.loads((REFERENCE_ROOT / "attention_oracles.json").read_text())[
         family
     ]
@@ -43,7 +48,11 @@ def test_released_attention_equation(family, dtype, efficient):
         if isinstance(n, ast.FunctionDef) and n.name == "_attention"
     )
     namespace = dict(module.__dict__)
-    from team_gm.modules.checkpoints.device import disabled_autocast
+
+    @contextlib.contextmanager
+    def disabled_autocast(device_type: str = "cuda") -> Iterator[None]:
+        with torch.autocast(device_type=device_type, enabled=False):
+            yield
 
     namespace["disabled_autocast"] = disabled_autocast
     exec(  # noqa: S102 - versioned local numerical oracle
@@ -58,7 +67,9 @@ def test_released_attention_equation(family, dtype, efficient):
     k, v = torch.randn(2, 3, 11, 8, dtype=dtype), torch.randn(2, 3, 11, 8, dtype=dtype)
     bias = torch.randn(2, 3, 7, 11)
     expected = namespace["_attention"](q, k, v, bias, efficient)
-    actual = module._attention(q, k, v, bias, efficient)  # noqa: SLF001 - shared runtime integration hook
+    actual = module.attention(
+        q, k, v, bias=bias, logits_float32=True, efficient=efficient, scale=1.0
+    )
     torch.testing.assert_close(actual, expected, atol=0, rtol=0)
 
 
@@ -94,15 +105,8 @@ def test_attention_replacement_mask_and_backward():
         torch.testing.assert_close(a, b)
 
 
-def test_opm_projection_bias_and_leading_batch():
-    a, b = torch.randn(2, 3, 5, 7, 4), torch.randn(2, 3, 6, 7, 4)
-    proj = torch.nn.Linear(16, 8)
-    expected = proj(torch.einsum("...isc,...jse->...ijce", a, b).flatten(-2))
-    torch.testing.assert_close(outer_product_projection(a, b, project=proj), expected)
-
-
 def test_native_linear_conversion_is_idempotent():
-    from team_gm.modules.precision import NativeLinear
+    from foldforge.modules.engine.native_linear import NativeLinear
 
     layer = NativeLinear(4, 3)
     layer.compute_dtype = torch.float32
@@ -171,7 +175,7 @@ def test_empty_heavy_atom_record():
 
 
 def test_af3_opm_mask_normalization_and_bias():
-    from team_gm.modules.blocks.attention_math import af3_outer_product_mean
+    from foldforge.modules.reference.attention import af3_outer_product_mean
 
     left, right = torch.randn(7, 5, 3), torch.randn(7, 5, 3)
     mask = (torch.rand(7, 5, 1) > 0.2).float()
@@ -279,22 +283,3 @@ def test_serialization_is_readable_by_older_miniworld_biomol():
     header_len = int.from_bytes(payload[:8], "little")
     header = json.loads(payload[8 : 8 + header_len])
     assert "atoms" in header["template"]
-
-
-@pytest.mark.parametrize("family", ["protenix", "opendde"])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-def test_triangle_attention_bias_order_matches_frozen_source(family, dtype):
-    module = importlib.import_module("team_gm.modules.checkpoints.layers")
-    body = json.loads((REFERENCE_ROOT / "attention_oracles.json").read_text())[
-        family + "_triangle"
-    ]
-    namespace = dict(module.__dict__)
-    from team_gm.modules.checkpoints.device import disabled_autocast
-
-    namespace["disabled_autocast"] = disabled_autocast
-    exec(compile(body, "frozen triangle attention", "exec"), namespace)  # noqa: S102 - versioned local numerical oracle
-    q, k, v = [torch.randn(2, 3, 5, 8, dtype=dtype) for _ in range(3)]
-    biases = [torch.randn(2, 1, 1, 5), torch.randn(1, 3, 5, 5)]
-    expected = namespace["_attention"](q, k, v, biases)
-    actual = module._attention(q, k, v, biases)  # noqa: SLF001 - shared runtime integration hook
-    torch.testing.assert_close(actual, expected, atol=0, rtol=0)

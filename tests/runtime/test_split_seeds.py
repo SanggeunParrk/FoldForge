@@ -9,11 +9,11 @@ import numpy as np
 import pytest
 import torch
 from conftest import cli
-from team_gm.diffusion.edm.sampling import EulerSampler
-from team_gm.modules.execution import ExecutedCallable
+from miniworld_engine.architecture.diffusion.edm.sampling import EulerSampler
 from torch import nn
 
 from foldforge.models.config import Config, ExecutionConfig
+from foldforge.models.execution import ExecutedCallable
 from foldforge.models.io.cli import parse
 from foldforge.models.io.request import Request
 from foldforge.models.sampling import bind_sampling_seed

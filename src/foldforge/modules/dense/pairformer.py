@@ -12,19 +12,18 @@
 
 import torch
 import torch.nn as nn
-from team_gm.modules.blocks.composition import (
-    MSAUpdateConfig,
-    msa_pair_update,
-    msa_row_update,
-)
-from team_gm.modules.checkpoints.af_family import transition_residual, triangle_residual
 
-from foldforge.modules import ops as fastnn
 from foldforge.modules.dense.attention import GridSelfAttention, MSAAttention
 from foldforge.modules.dense.diffusion_transformer import SelfAttention
 from foldforge.modules.dense.primitives import OuterProductMean, Transition
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
+from foldforge.modules.engine.routing import transition_residual, triangle_residual
+from foldforge.modules.reference.composition import (
+    MSAUpdateConfig,
+    msa_pair_update,
+    msa_row_update,
+)
 
 
 class PairformerBlock(nn.Module):
@@ -38,7 +37,7 @@ class PairformerBlock(nn.Module):
         n_heads: int = 16,
         c_pair: int = 128,
         c_single: int = 384,
-        c_hidden_mul: int = 128,  # noqa: ARG002 - shared callback or fixture signature
+        c_hidden_mul: int = 128,
         n_heads_pair: int = 4,
         num_intermediate_factor: int = 4,
         single_intermediate_factor: int | None = None,
@@ -108,7 +107,7 @@ class PairformerBlock(nn.Module):
         #: running activation.
         self.parallel = spec.parallel_pairformer_block
         if self.with_single is True:
-            self.single_pair_logits_norm = fastnn.LayerNorm(c_pair)
+            self.single_pair_logits_norm = nn.LayerNorm(c_pair)
             self.single_pair_logits_projection = nn.Linear(c_pair, n_heads, bias=False)
             self.single_attention_ = SelfAttention(
                 c_x=c_single,
@@ -173,8 +172,8 @@ class PairformerBlock(nn.Module):
                 self.triangle_multiplication_incoming, pair, pair_mask
             )
             if self.with_pair_attention:
-                pair += self.pair_attention1(pair, mask=pair_mask)
-                pair += self.pair_attention2(pair, mask=pair_mask)
+                pair = self.pair_attention1.residual(pair, pair_mask)
+                pair = self.pair_attention2.residual(pair, pair_mask)
             pair = transition_residual(self.pair_transition, pair)
 
         if self.with_single is True:
@@ -285,7 +284,9 @@ class EvoformerBlock(nn.Module):
             return msa_row_update(
                 value,
                 updated_pair,
-                attention_delta=lambda m, z: self.msa_attention1(m, msa_mask, z),
+                attention_residual=lambda m, z: self.msa_attention1.residual(
+                    m, msa_mask, z
+                ),
                 transition_residual=lambda m: transition_residual(
                     self.msa_transition, m
                 ),
@@ -312,8 +313,8 @@ class EvoformerBlock(nn.Module):
                 self.triangle_multiplication_incoming, value, pair_mask
             )
             if self.with_pair_attention:
-                value = value + self.pair_attention1(value, mask=pair_mask)
-                value = value + self.pair_attention2(value, mask=pair_mask)
+                value = self.pair_attention1.residual(value, pair_mask)
+                value = self.pair_attention2.residual(value, pair_mask)
             return transition_residual(self.pair_transition, value)
 
         updated_msa, updated_pair = msa_pair_update(

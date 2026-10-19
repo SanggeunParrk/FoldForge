@@ -18,21 +18,23 @@ import einops
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from team_gm.modules.blocks.composition import conditioned_residual
-from team_gm.modules.checkpoints.af_family import (
-    reference_adaln,
-    reference_conditioned_transition,
-)
-from team_gm.modules.checkpoints.backend_attention import (
+
+from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
+from foldforge.modules.engine.attention_ops import (
     engine_attention_supported,
     engine_dense_attention,
     gated_projection,
     pair_bias_projection,
 )
-
-from foldforge.modules import ops as fastnn
-from foldforge.modules.dense import atom_layout
-from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
+from foldforge.modules.engine.modules import engine_of
+from foldforge.modules.engine.routing import (
+    enabled,
+    reference_adaln,
+    reference_conditioned_transition,
+)
+from foldforge.modules.reference.attention import dot_product_attention
+from foldforge.modules.reference.composition import conditioned_residual
+from foldforge.utils import atom_layout
 
 
 def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
@@ -48,6 +50,9 @@ def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.T
     a, b = torch.split(x[..., :width], width // 2, dim=-1)
     rotated = torch.concatenate([-b, a], dim=-1)
     return torch.concatenate([x[..., :width] * c + rotated * s, x[..., width:]], dim=-1)
+
+
+_UNBATCHED_TOKEN_RANK = 2
 
 
 class RMSNorm(nn.Module):
@@ -99,12 +104,12 @@ class AdaptiveLayerNorm(nn.Module):
             self.layer_norm = (
                 RMSNorm()
                 if rms_norm
-                else fastnn.LayerNorm(
+                else nn.LayerNorm(
                     self.c_x, eps=eps, elementwise_affine=False, bias=False
                 )
             )
             if not identity_scale:
-                self.single_cond_layer_norm = fastnn.LayerNorm(
+                self.single_cond_layer_norm = nn.LayerNorm(
                     self.c_single_cond, bias=False
                 )
             self.single_cond_scale = nn.Linear(
@@ -112,7 +117,7 @@ class AdaptiveLayerNorm(nn.Module):
             )
             self.single_cond_bias = nn.Linear(self.c_single_cond, self.c_x, bias=False)
         else:
-            self.layer_norm = fastnn.LayerNorm(self.c_x, eps=eps)
+            self.layer_norm = nn.LayerNorm(self.c_x, eps=eps)
 
     def forward(
         self, x: torch.Tensor, single_cond: torch.Tensor | None = None
@@ -298,8 +303,8 @@ class SelfAttention(nn.Module):
         # not commute with a linear map.
         self.gate_bias = gate_bias
         if kq_norm:
-            self.query_layer_norm = fastnn.LayerNorm(c_x)
-            self.key_layer_norm = fastnn.LayerNorm(c_x)
+            self.query_layer_norm = nn.LayerNorm(c_x)
+            self.key_layer_norm = nn.LayerNorm(c_x)
 
         self.c_x = c_x
         self.c_single_cond = c_single_cond
@@ -372,9 +377,7 @@ class SelfAttention(nn.Module):
                 q, k, v, pair_logits, mask, num_aug=x.shape[0] if x.ndim == 3 else 1
             )
         else:
-            weighted_avg = fastnn.dot_product_attention(
-                q, k, v, mask=mask, bias=pair_logits
-            )
+            weighted_avg = dot_product_attention(q, k, v, mask=mask, bias=pair_logits)
 
         if x.ndim == 2:
             weighted_avg = weighted_avg.squeeze(0)
@@ -419,7 +422,7 @@ class DiffusionTransformer(nn.Module):
             # One pair norm and one projection per block, as the vendor trained it.
             self.pair_input_layer_norm = nn.ModuleList(
                 [
-                    fastnn.LayerNorm(
+                    nn.LayerNorm(
                         self.c_pair_cond,
                         bias="pair_input_layer_norm" in spec.affine_norms,
                     )
@@ -433,7 +436,7 @@ class DiffusionTransformer(nn.Module):
                 ]
             )
         else:
-            self.pair_input_layer_norm = fastnn.LayerNorm(
+            self.pair_input_layer_norm = nn.LayerNorm(
                 self.c_pair_cond,
                 bias="pair_input_layer_norm" in spec.affine_norms,
             )
@@ -490,6 +493,14 @@ class DiffusionTransformer(nn.Module):
         its expander states the token relationships the pair itself cannot,
         having just been built rather than trained on this token set.
         """
+        blocks = engine_of(self)
+        if (
+            blocks is not None
+            and extra_pair_bias is None
+            and enabled(self, act)
+            and not torch.is_inference_mode_enabled()
+        ):
+            return self._engine_forward(blocks, act, mask, single_cond, pair_cond)
         if self.per_block_pair:
             for idx in range(self.num_blocks):
                 pair_logits = self.pair_logits_projection[idx](
@@ -542,6 +553,30 @@ class DiffusionTransformer(nn.Module):
 
         return act
 
+    def _engine_forward(
+        self,
+        blocks: list[nn.Module],
+        act: torch.Tensor,
+        mask: torch.Tensor,
+        single_cond: torch.Tensor,
+        pair_cond: torch.Tensor,
+    ) -> torch.Tensor:
+        """The engine's token DiT blocks: attention + conditioned transition, residuals included.
+
+        The engine caches the pair bias across solver steps by tensor version, which only a
+        ``no_grad`` (not ``inference_mode``) tensor has.
+        """
+        unbatched = act.ndim == _UNBATCHED_TOKEN_RANK
+        cond = single_cond.expand(*act.shape[:-1], single_cond.shape[-1])
+        if unbatched:
+            x, cond = act[None, None], cond[None, None]
+        else:
+            x, cond = act[:, None], cond[:, None]
+        pair, key_mask = pair_cond[None], (mask > 0)[None]
+        for block in blocks:
+            x = block(x, cond, pair, key_mask)
+        return x[0, 0] if unbatched else x[:, 0]
+
 
 class CrossAttention(nn.Module):
     """Represent cross attention."""
@@ -567,8 +602,8 @@ class CrossAttention(nn.Module):
         self.key_masked = key_masked
         self.use_gating_query = gating_query
         if kq_norm:
-            self.query_layer_norm = fastnn.LayerNorm(key_dim)
-            self.key_layer_norm = fastnn.LayerNorm(key_dim)
+            self.query_layer_norm = nn.LayerNorm(key_dim)
+            self.key_layer_norm = nn.LayerNorm(key_dim)
         self.key_dim = key_dim
         self.value_dim = value_dim
         self.c_single_cond = c_single_cond
@@ -727,10 +762,12 @@ class DiffusionCrossAttTransformer(nn.Module):
         self.per_block_pair = spec.per_block_atom_pair_layer_norm
         self.parallel = spec.parallel_attention_transition
         self.chained_key_norm = spec.chained_atom_key_norm
+        self.key_window = spec.atom_key_window
+        self.keys_subset = spec.atom_keys_subset
         if self.per_block_pair:
             self.pair_input_layer_norm = nn.ModuleList(
                 [
-                    fastnn.LayerNorm(
+                    nn.LayerNorm(
                         self.c_pair_cond,
                         bias="pair_input_layer_norm" in spec.affine_norms,
                     )
@@ -744,7 +781,7 @@ class DiffusionCrossAttTransformer(nn.Module):
                 ]
             )
         else:
-            self.pair_input_layer_norm = fastnn.LayerNorm(
+            self.pair_input_layer_norm = nn.LayerNorm(
                 self.c_pair_cond,
                 bias="pair_input_layer_norm" in spec.affine_norms,
             )
@@ -789,6 +826,31 @@ class DiffusionCrossAttTransformer(nn.Module):
             ]
         )
 
+    def _engine_forward(
+        self,
+        blocks: list[nn.Module],
+        queries_act: torch.Tensor,
+        queries_mask: torch.Tensor,
+        queries_single_cond: torch.Tensor,
+        pair_cond: torch.Tensor,
+    ) -> torch.Tensor:
+        """The engine's AF3 atom blocks: the atoms of the query subsets are one flat run of windows.
+
+        Subset ``w`` holds atoms ``32 w .. 32 w + 31``, its keys are the AF3 slid window, so the
+        dense ``pair_cond`` is the engine's trunked pair as it is. The real atoms come first.
+        """
+        subsets, queries, channels = queries_act.shape[-3:]
+        samples = queries_act.shape[:-3]
+        x = queries_act.reshape(-1, 1, subsets * queries, channels)
+        cond = queries_single_cond.reshape(1, 1, subsets * queries, channels).expand(
+            x.shape[0], 1, -1, -1
+        )
+        pair = pair_cond.reshape(1, subsets, queries, -1, pair_cond.shape[-1])
+        key_mask = (queries_mask > 0).reshape(1, subsets * queries)
+        for block in blocks:
+            x = block(x, cond, pair, key_mask)
+        return x.reshape(*samples, subsets, queries, channels)
+
     def forward(
         self,
         queries_act: torch.Tensor,  # (num_subsets, num_queries, ch)
@@ -803,6 +865,17 @@ class DiffusionCrossAttTransformer(nn.Module):
         rope_k: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         """Compute the module output."""
+        blocks = engine_of(self)
+        if (
+            blocks is not None
+            and rope_q is None
+            and rope_k is None
+            and pair_mask is None
+            and not torch.is_inference_mode_enabled()
+        ):
+            return self._engine_forward(
+                blocks, queries_act, queries_mask, queries_single_cond, pair_cond
+            )
         if self.per_block_pair:
             pair_logits = [
                 projection(norm(pair_cond)).permute(0, 3, 1, 2)

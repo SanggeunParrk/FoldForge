@@ -2,7 +2,8 @@
 
 import pytest
 import torch
-from team_gm.modules.bucketing import (
+
+from foldforge.models.bucketing import (
     ATOM_SHAPES,
     MSA_SHAPES,
     TOKEN_SHAPES,
@@ -54,7 +55,7 @@ def test_policy_keeps_atom_msa_edges_and_uses_128_step_tokens():
 
     assert ENGINE_ATOMS == ATOM_SHAPES
     assert MSA_SHAPES == (1024, 2048, 4096, 8192, 16384)
-    from team_gm.modules.bucketing import ATOM_BUCKETS
+    from foldforge.models.bucketing import ATOM_BUCKETS
 
     assert ATOM_BUCKETS[: len(ATOM_SHAPES)] == ATOM_SHAPES
     assert ATOM_BUCKETS[len(ATOM_SHAPES) :] == (16384, 32768)
@@ -109,10 +110,10 @@ def test_af3_featurizer_uses_same_token_policy():
 )
 @pytest.mark.parametrize("lengths", [(129, 177), (1025, 1140)])
 def test_same_bucket_reuses_graph_with_different_valid_lengths(lengths):
-    from team_gm.modules.execution import ExecutedCallable
     from torch._dynamo.utils import counters
 
     from foldforge.models.config import ExecutionConfig
+    from foldforge.models.execution import ExecutedCallable
 
     before = counters["stats"]["unique_graphs"]
     fn = ExecutedCallable(

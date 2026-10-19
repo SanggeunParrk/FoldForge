@@ -8,8 +8,8 @@ from typing import Any, Union
 
 import pytest
 import torch
+from miniworld_engine.architecture import tensor_layout as layout
 from support import REFERENCE_ROOT, REPOSITORY_ROOT
-from team_gm.modules import tensor_layout as layout
 from torch import nn
 
 from foldforge.models.config import ExecutionConfig
@@ -137,7 +137,7 @@ def test_full_model_graph_rejects_host_sampling():
 
 
 def test_af3_atom_layout_shape_contract():
-    from foldforge.modules.dense.atom_layout import GatherInfo, convert
+    from foldforge.utils.atom_layout import GatherInfo, convert
 
     info = GatherInfo(torch.tensor([0, 3]), torch.tensor([True, False]), (2, 2))
     x = torch.arange(4.0).reshape(2, 2)
@@ -200,7 +200,7 @@ def test_shared_layout_imports_are_live(family):
     )
     for relative, name in records:
         relative.removesuffix(".py").replace("/", ".")
-        actual = importlib.import_module("team_gm.modules.tensor_layout")
+        actual = importlib.import_module("miniworld_engine.architecture.tensor_layout")
         assert getattr(actual, name) is getattr(layout, name), (family, name)
 
 

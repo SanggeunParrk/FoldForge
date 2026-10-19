@@ -277,4 +277,6 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
                 else logits[:n_tokens, :n_tokens],
             )
 
-        yield Case(lambda tensors=tensors: model(tensors), decode)
+        # no_grad, not inference_mode: the engine caches its pair bias across solver
+        # steps by tensor version, which an inference tensor does not have.
+        yield Case(lambda tensors=tensors: model(tensors), decode, inference_mode=False)

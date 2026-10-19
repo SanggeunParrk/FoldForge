@@ -8,7 +8,7 @@
 | MiniWorld input specs, FASTA and LMDB resources (MSA, templates), validation | `data/inputs/` |
 | JSON, pickle and structure serialization helpers | `data/io.py` |
 | Judging FoldForge against the released implementations | `eval/references.py` |
-| Confidence decoding (pLDDT, PAE, PDE) | `eval/dense_confidence.py` |
+| Confidence decoding (pLDDT, PAE, PDE) | `modules/dense/confidence.py` |
 | Structure reading and comparison helpers | `eval/structure.py` |
 
 Featurization is AF3's (`alphafold3` from `third_party/af3-data`), applied once for

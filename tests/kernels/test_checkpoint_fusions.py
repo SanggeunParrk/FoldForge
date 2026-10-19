@@ -8,9 +8,11 @@ from unittest.mock import patch
 import pytest
 import torch
 from miniworld_engine import ops, settings
-from team_gm.modules.checkpoints.af_family import configure_model
-from team_gm.modules.exceptions import ImplementationType
+from miniworld_engine.architecture.exceptions import ImplementationType
+from support import triton_ops_run
 from torch.nn import functional as F
+
+from foldforge.modules.engine.configure import configure_model
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA validation")
 
@@ -101,10 +103,11 @@ def test_layernorm_optional_affine(affine, bias):
 
 
 def test_af3_atom_pair_projection():
-    from team_gm.modules.checkpoints.backend_attention import pair_bias_projection
-
     from foldforge.modules.dense.diffusion_transformer import (
         DiffusionCrossAttTransformer,
+    )
+    from foldforge.modules.engine.attention_ops import (
+        pair_bias_projection,
     )
 
     source = DiffusionCrossAttTransformer()
@@ -117,7 +120,7 @@ def test_af3_atom_pair_projection():
     ):
         a = pair_bias_projection(norm, linear, x)
         b = linear(norm(x))
-        assert called.call_count == 1
+        assert called.call_count == triton_ops_run()
         compare(a, b)
     compile_replay(lambda x: pair_bias_projection(norm, linear, x), (x,))
 
@@ -135,22 +138,15 @@ def test_af3_unconditioned_transition(width):
         patch.object(ops, "swiglu_ffn", wraps=ops.swiglu_ffn) as called,
     ):
         compare(model(x), ref(x))
-        assert called.call_count == 1
+        assert called.call_count == triton_ops_run()
     compile_replay(model, (x,))
 
 
-@pytest.mark.parametrize("native", [False, True])
-def test_msa_projection(native):
-    if native:
-        from team_gm.modules.layers.msa_pair_weighted_averaging import (
-            MSAPairWeightedAveraging,
-        )
+def test_msa_projection():
+    from foldforge.modules.dense.attention import MSAAttention
 
-        model = MSAPairWeightedAveraging(128, 256)
-    else:
-        from team_gm.modules.checkpoints.stacks import MSAPairWeightedAveraging
-
-        model = MSAPairWeightedAveraging(c_m=128, c_z=384)
+    torch.manual_seed(11)
+    model = MSAAttention(c_msa=128, c_pair=384, num_head=8)
     with torch.no_grad():
         for name, p in model.named_parameters():
             p.normal_(1.0 if "norm" in name and name.endswith("weight") else 0.0, 0.05)
@@ -158,16 +154,15 @@ def test_msa_projection(native):
     ref = copy.deepcopy(model)
     for child in ref.modules():
         child.foldforge_implementation = ImplementationType.PYTORCH
-    x = torch.randn(1, 16, 128, 128, device="cuda", dtype=torch.bfloat16)
-    z = torch.randn(
-        1, 128, 128, 256 if native else 384, device="cuda", dtype=torch.bfloat16
-    )
+    x = torch.randn(16, 128, 128, device="cuda", dtype=torch.bfloat16)
+    mask = torch.ones(16, 128, device="cuda", dtype=torch.bfloat16)
+    z = torch.randn(128, 128, 384, device="cuda", dtype=torch.bfloat16)
     with (
         torch.no_grad(),
         patch.object(ops, "gated_linear", wraps=ops.gated_linear) as called,
     ):
-        compare(model(x, z), ref(x, z))
-        assert called.call_count == 1
+        compare(model(x, mask, z), ref(x, mask, z))
+        assert called.call_count == triton_ops_run()
 
 
 def test_rms_modulation_equation_and_graph():

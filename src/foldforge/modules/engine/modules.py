@@ -51,7 +51,9 @@ _ENGINE_HAS_BIAS_ORIENTATION = (
     "transposed_bias" in inspect.signature(TriangleAttention.__init__).parameters
 )
 #: The engine's ``LocalDiTBlock`` takes AlphaFold 3's K/V norm and key window (``kv_norm`` / ``key_window``).
-_ENGINE_HAS_ATOM_VARIANT = "kv_norm" in inspect.signature(LocalDiTBlock.__init__).parameters
+_ENGINE_HAS_ATOM_VARIANT = (
+    "kv_norm" in inspect.signature(LocalDiTBlock.__init__).parameters
+)
 _ATTR = "_engine_module"
 _DEFAULT_EPS = 1e-5
 _ATOM_WIDTH, _ATOM_PAIR, _ATOM_KEYS = 128, 16, 128
@@ -265,10 +267,8 @@ def diffusion_blocks(module: nn.Module, like: torch.Tensor) -> list[nn.Module] |
         if per_block
         else [module.pair_input_layer_norm] * module.num_blocks
     )
-    eps_values = {
-        first.adaptive_layernorm.layer_norm.eps,
-        first.adaptive_layernorm.single_cond_layer_norm.eps,
-        *(norm.eps for norm in norms),
+    eps_values = _eps_of(first.adaptive_layernorm) | {
+        getattr(norm, "eps", None) for norm in norms
     }
     plain = (
         not module.parallel
@@ -346,6 +346,14 @@ def diffusion_blocks(module: nn.Module, like: torch.Tensor) -> list[nn.Module] |
     return blocks
 
 
+def _eps_of(adaptive_norm: nn.Module) -> set[float | None]:
+    """The epsilons of an AdaLN's norms; a form without them (RMS conditioning) gives ``None``, which is not the default."""
+    return {
+        getattr(getattr(adaptive_norm, name, None), "eps", None)
+        for name in ("layer_norm", "single_cond_layer_norm")
+    }
+
+
 def atom_blocks(module: nn.Module, like: torch.Tensor) -> list[nn.Module] | None:
     """One engine ``LocalDiTBlock`` per block of a dense ``DiffusionCrossAttTransformer`` in AlphaFold 3's form.
 
@@ -364,13 +372,11 @@ def atom_blocks(module: nn.Module, like: torch.Tensor) -> list[nn.Module] | None
         if per_block
         else [module.pair_input_layer_norm] * module.num_blocks
     )
-    eps_values = {
-        first.q_adaptive_layernorm.layer_norm.eps,
-        first.q_adaptive_layernorm.single_cond_layer_norm.eps,
-        first.k_adaptive_layernorm.layer_norm.eps,
-        first.k_adaptive_layernorm.single_cond_layer_norm.eps,
-        *(norm.eps for norm in norms),
-    }
+    eps_values = (
+        _eps_of(first.q_adaptive_layernorm)
+        | _eps_of(first.k_adaptive_layernorm)
+        | {getattr(norm, "eps", None) for norm in norms}
+    )
     plain = (
         not module.parallel
         and not module.chained_key_norm

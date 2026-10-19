@@ -240,10 +240,8 @@ def test_installer_covers_the_released_graph():
     )
     names = {type(m).__name__ for m in model.modules()}
     assert {"GridSelfAttention", "MSAAttention", "OuterProductMean"} <= names
-    # 48 trunk + 4 confidence + 2 template pairformer blocks and 4 MSA blocks, each with
-    # with AF3 bias orientation (released code) converts only on an engine with the
-    # with AF3 bias orientation (released code) converts only on an engine that has the
-    # orientation option.
+    # 48 trunk + 4 confidence + 2 template pairformer blocks and 4 MSA blocks. AF3's
+    # bias orientation (released code) converts only on an engine that has the option.
     blocks = 48 + 4 + 2 + 4
     assert counts["engine_trimul"] == 2 * blocks
     assert counts["engine_triangle_attention"] == (
@@ -252,6 +250,9 @@ def test_installer_covers_the_released_graph():
     assert counts["engine_msa_pwa"] == 4
     assert counts["engine_opm"] == 4
     assert counts["engine_dit_blocks"] == 24
+    assert counts["engine_atom_blocks"] == (
+        9 if _ENGINE_HAS_ATOM_VARIANT else 0
+    )  # 3 atom transformers of 3 blocks
 
 
 def test_pairformer_single_attention():
@@ -292,7 +293,7 @@ def test_pairformer_single_attention():
 
 
 def af3_gather(real: int, padded: int):
-    """AF3's ``AtomCrossAtt.compute_features`` key windows as a query -> key GatherInfo."""
+    """AF3's ``AtomCrossAtt.compute_features`` key windows as a query->key gather."""
     from foldforge.utils import atom_layout
 
     subsets = padded // 32
@@ -341,7 +342,7 @@ def test_atom_transformer(real, samples):
 
     keys_mask = atom_layout.convert(gather, atoms, layout_axes=(-2, -1))
 
-    def run(module, dtype):
+    def run(module: torch.nn.Module, dtype: torch.dtype) -> torch.Tensor:
         keys_cond = atom_layout.convert(gather, cond.to(dtype), layout_axes=(-3, -2))
         return module(
             queries_act=act.to(dtype).clone(),
@@ -361,3 +362,21 @@ def test_atom_transformer(real, samples):
     assert rms_error(actual[..., atoms, :], expected[..., atoms, :]) <= (
         rms_error(reference[..., atoms, :], expected[..., atoms, :]) + BF16_ROUNDING
     )
+
+
+@pytest.mark.parametrize(
+    "family", ["chai1", "esmfold2", "esmfold2-fast", "rosettafold3", "boltz2"]
+)
+def test_installer_leaves_other_families_alone(family):
+    """A family whose blocks differ from AF3's keeps its reference modules."""
+    from foldforge.models.architectures.af3 import AlphaFold3
+    from foldforge.modules.dense.spec import SPECS
+
+    model = AlphaFold3(
+        num_recycles=1, num_samples=1, diffusion_steps=2, spec=SPECS[family]
+    )
+    model = configure_model(model, "miniworld", torch.bfloat16, "cuda")
+    counts = install_engine_modules(
+        model, torch.empty(0, dtype=torch.bfloat16, device="cuda")
+    )
+    assert counts["engine_atom_blocks"] == 0

@@ -80,13 +80,24 @@ def _copy(
     engine_module: nn.Module,
     sources: dict[str, torch.Tensor],
     like: torch.Tensor,
+    *,
+    keep_master: bool = False,
 ) -> nn.Module:
-    """Fill ``engine_module`` from named tensors: norms stay FP32, matrices take ``like.dtype``."""
+    """Fill ``engine_module`` from named tensors: norms stay FP32, matrices take ``like.dtype``.
+
+    ``keep_master``: a matrix that is FP32 in the loaded model stays FP32 (the engine's DiT blocks
+    take FP32 master weights under BF16 activations), so the diffusion transformers see the released
+    values instead of a BF16 rounding of them.
+    """
     with torch.no_grad():
         for name, parameter in engine_module.named_parameters():
             source = sources[name].detach()
             norm = "ln_" in name
-            dtype = torch.float32 if norm else like.dtype
+            dtype = (
+                torch.float32
+                if norm or (keep_master and source.dtype == torch.float32)
+                else like.dtype
+            )
             parameter.data = source.to(device=like.device, dtype=dtype).contiguous()
     return engine_module.to(like.device).eval().requires_grad_(requires_grad=False)
 
@@ -341,6 +352,7 @@ def diffusion_blocks(module: nn.Module, like: torch.Tensor) -> list[nn.Module] |
                 "transition.to_scale.bias": trans.adaptive_zero_init.adaptive_zero_cond.bias,
             },
             like,
+            keep_master=True,
         )
         blocks.append(block)
     return blocks
@@ -355,12 +367,12 @@ def _eps_of(adaptive_norm: nn.Module) -> set[float | None]:
 
 
 def atom_blocks(module: nn.Module, like: torch.Tensor) -> list[nn.Module] | None:
-    """One engine ``LocalDiTBlock`` per block of a dense ``DiffusionCrossAttTransformer`` in AlphaFold 3's form.
+    """One engine ``LocalDiTBlock`` per block of a dense ``DiffusionCrossAttTransformer``.
 
-    AF3 normalises the keys and values with a second AdaLN of the raw atoms (``kv_norm="parallel"``)
-    and slides each 128-key window inside the real atoms (``key_window="slide"``), so the keys are
-    never padding and the AND / OR mask forms agree. Anything else (chained key norm, key-masked
-    families, rotary, kq-norm, parallel schedule, other widths) keeps the reference path.
+    The K/V AdaLN reads the raw atoms (AF3, ``kv_norm="parallel"``) or the first AdaLN's output
+    (Protenix, OpenDDE: ``"chained"``); the 128-key window is AF3's slid one or the clipped, OR-masked
+    one. Anything else (rotary, kq-norm, parallel schedule, RMS conditioning, other widths, other
+    transitions) keeps the reference path.
     """
     if not _ENGINE_HAS_ATOM_VARIANT:
         return None
@@ -377,10 +389,14 @@ def atom_blocks(module: nn.Module, like: torch.Tensor) -> list[nn.Module] | None
         | _eps_of(first.k_adaptive_layernorm)
         | {getattr(norm, "eps", None) for norm in norms}
     )
+    # AF3 slides each window inside the real atoms (a padded key never exists, so the AND and OR
+    # mask forms agree); the pad window of the OpenFold lineage clips it and masks with the OR form.
+    window = {("slide", False): "slide", ("pad", True): "pad"}.get(
+        (module.key_window, first.key_masked)
+    )
     plain = (
         not module.parallel
-        and not module.chained_key_norm
-        and module.key_window == "slide"
+        and window is not None
         and module.keys_subset == _ATOM_KEYS
         and module.c_query == _ATOM_WIDTH
         and module.c_single_cond == _ATOM_WIDTH
@@ -388,7 +404,7 @@ def atom_blocks(module: nn.Module, like: torch.Tensor) -> list[nn.Module] | None
         and eps_values == {_DEFAULT_EPS}
         and all(
             not block.kq_norm
-            and not block.key_masked
+            and block.key_masked == first.key_masked
             and block.use_gating_query
             and block.q_projection.bias is not None
             and not any(
@@ -408,6 +424,7 @@ def atom_blocks(module: nn.Module, like: torch.Tensor) -> list[nn.Module] | None
     if not plain:
         return None
     heads = module.num_head
+    kv_norm = "chained" if module.chained_key_norm else "parallel"
     blocks = []
     for index, (attn, trans) in enumerate(
         zip(attention, module.transition_block, strict=True)
@@ -427,8 +444,8 @@ def atom_blocks(module: nn.Module, like: torch.Tensor) -> list[nn.Module] | None
             heads,
             expand_a.shape[0] // _ATOM_WIDTH,
             cross_attention=True,
-            kv_norm="parallel",
-            key_window="slide",
+            kv_norm=kv_norm,
+            key_window=window,
             implementation=_ENGINE,
         )
         q_ln, k_ln, t_ln = (
@@ -468,6 +485,7 @@ def atom_blocks(module: nn.Module, like: torch.Tensor) -> list[nn.Module] | None
                 "transition.to_scale.bias": trans.adaptive_zero_init.adaptive_zero_cond.bias,
             },
             like,
+            keep_master=True,
         )
         blocks.append(block)
     return blocks

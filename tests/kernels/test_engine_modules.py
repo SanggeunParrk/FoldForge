@@ -309,17 +309,19 @@ def af3_gather(real: int, padded: int):
     )
 
 
+@pytest.mark.parametrize("family", ["alphafold3", "protenix1"])
 @pytest.mark.parametrize("real", [512, 301, 140])
 @pytest.mark.parametrize("samples", [None, 3])
-def test_atom_transformer(real, samples):
+def test_atom_transformer(family, real, samples):
     from foldforge.modules.dense.diffusion_transformer import (
         DiffusionCrossAttTransformer,
     )
+    from foldforge.modules.dense.spec import SPECS
 
     if not _ENGINE_HAS_ATOM_VARIANT:
         pytest.skip("this engine has no AF3 atom attention variant")
     torch.manual_seed(7)
-    layer = DiffusionCrossAttTransformer(spec=ALPHAFOLD3)
+    layer = DiffusionCrossAttTransformer(spec=SPECS[family])
     with torch.no_grad():
         for name, p in layer.named_parameters():
             if p.ndim > 1:
@@ -380,3 +382,45 @@ def test_installer_leaves_other_families_alone(family):
         model, torch.empty(0, dtype=torch.bfloat16, device="cuda")
     )
     assert counts["engine_atom_blocks"] == 0
+
+
+def loaded_model(family: str = "alphafold3", *, diffusion_master: bool = False):
+    """A model after the loader's installs (``diffusion_master``: FP32 diffusion)."""
+    from foldforge.models.architectures.af3 import AlphaFold3
+    from foldforge.modules.dense.spec import SPECS
+    from foldforge.modules.engine.install import install_engine
+
+    model = AlphaFold3(
+        num_recycles=1, num_samples=1, diffusion_steps=2, spec=SPECS[family]
+    )
+    model.foldforge_load_report = {}
+    model = configure_model(model, "miniworld", torch.bfloat16, "cuda")
+    if diffusion_master:
+        for name, p in model.named_parameters():
+            if name.startswith("diffusion_head") and p.ndim > 1:
+                p.data = p.data.float()
+    return install_engine(model, torch.bfloat16, "cuda", modules=True)
+
+
+def test_the_loader_order_keeps_the_diffusion_blocks_on_the_engine():
+    """The conditioning pass renames the released transitions; read them before."""
+    model = loaded_model()
+    report = model.foldforge_load_report
+    assert report["engine_dit_blocks"] == 24
+    assert report["engine_atom_blocks"] == (9 if _ENGINE_HAS_ATOM_VARIANT else 0)
+
+
+def test_fp32_master_weights_stay_fp32_in_the_diffusion_blocks():
+    model = loaded_model(diffusion_master=True)
+    blocks = next(
+        engine_of(m)
+        for m in model.modules()
+        if type(m).__name__ == "DiffusionTransformer" and engine_of(m)
+    )
+    assert blocks[0].attention.to_query.weight.dtype == torch.float32
+    trunk = next(
+        engine_of(m)
+        for m in model.modules()
+        if type(m).__name__ == "TriangleMultiplication" and engine_of(m)
+    )
+    assert trunk.to_out.weight.dtype == torch.bfloat16

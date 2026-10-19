@@ -156,9 +156,8 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         report["esm_nucleic_columns"] = reorder_esm_nucleic_columns(model)
 
     setattr(model, "foldforge_load_report", report)  # noqa: B010 - runtime metadata
-    from foldforge.modules.engine.conditioning import install_conditioning
     from foldforge.modules.engine.configure import configure_model
-    from foldforge.modules.engine.pairformer import install_pairformers
+    from foldforge.modules.engine.install import install_engine
 
     source = model.get_submodule("diffusion_head.fourier_embeddings")
     fourier_fp32 = (source.weight.float().clone(), source.bias.float().clone())
@@ -180,17 +179,16 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     from foldforge.modules.engine.modules import clear_engine_weight_caches
 
     clear_engine_weight_caches()
-    model = install_conditioning(install_pairformers(model))
-    if (
-        backend == "miniworld"
-        and dtype == torch.bfloat16
-        and torch.device(device).type == "cuda"
-    ):
-        from foldforge.modules.engine.modules import install_engine_modules
-
-        model.foldforge_load_report.update(
-            install_engine_modules(model, torch.empty(0, dtype=dtype, device=device))
-        )
+    model = install_engine(
+        model,
+        dtype,
+        device,
+        modules=(
+            backend == "miniworld"
+            and dtype == torch.bfloat16
+            and torch.device(device).type == "cuda"
+        ),
+    )
     if dtype == torch.bfloat16 and precision_policy != "af3_default":
         clear_native_compute_override(model, dtype)
     report.update(

@@ -34,6 +34,17 @@ from foldforge.modules.reference.fourier import fourier_features
 # https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md
 
 
+def _plus_transition(transition: nn.Module, x: torch.Tensor) -> torch.Tensor:
+    """``x + transition(x)``.
+
+    An engine-served transition (``engine.conditioning.ReleasedTransition``)
+    returns the sum itself, the residual folded into its kernel: adding its
+    delta back would round twice in bf16.
+    """
+    residual = getattr(transition, "residual", None)
+    return residual(x) if residual is not None else x + transition(x)
+
+
 # Carefully measured by averaging multimer training set.
 SIGMA_DATA = 16.0
 
@@ -220,8 +231,8 @@ class DiffusionHead(nn.Module):
             self.pair_cond_initial_norm, self.pair_cond_initial_projection, features_2d
         )
 
-        pair_cond += self.pair_transition_0(pair_cond)
-        pair_cond += self.pair_transition_1(pair_cond)
+        pair_cond = _plus_transition(self.pair_transition_0, pair_cond)
+        pair_cond = _plus_transition(self.pair_transition_1, pair_cond)
         if self.cond_final_norm:
             pair_cond = self.pair_cond_final_norm(pair_cond)
 
@@ -265,8 +276,8 @@ class DiffusionHead(nn.Module):
             noise_embedding,
         )
 
-        single_cond += self.single_transition_0(single_cond)
-        single_cond += self.single_transition_1(single_cond)
+        single_cond = _plus_transition(self.single_transition_0, single_cond)
+        single_cond = _plus_transition(self.single_transition_1, single_cond)
         if self.cond_final_norm:
             single_cond = self.single_cond_final_norm(single_cond)
 

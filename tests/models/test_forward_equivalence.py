@@ -247,3 +247,62 @@ def test_template_aggregation_and_masked_pair_stack(count):
         expected = old(z.clone(), copy.deepcopy(feature), mask, same_chain)
     torch.testing.assert_close(actual, expected, rtol=0.02, atol=0.02)
     assert actual.shape == z.shape
+
+
+@pytest.mark.parametrize("backend", ["pytorch", "miniworld"])
+@pytest.mark.parametrize("width", [128, 384])
+@pytest.mark.parametrize("activation_dtype", [torch.bfloat16, torch.float32])
+@GPU_PARITY
+def test_unconditioned_transition_runs_the_engine_transition(
+    backend, width, activation_dtype
+):
+    """The diffusion head's conditioning transitions (no single conditioning) are
+    the engine's plain Transition; ``residual`` is ``x + transition(x)``."""
+    from miniworld_engine.architecture.exceptions import ImplementationType
+
+    from foldforge.modules.engine.conditioning import ReleasedTransition
+
+    torch.manual_seed(11)
+    mod = original_module("af3", "nn/diffusion_transformer.py")
+    source = mod.DiffusionTransition(width, None, use_single_cond=False)
+    source = configure_model(randomize(source), "pytorch")
+    with torch.no_grad():
+        source.adaptive_layernorm.layer_norm.weight.normal_(1.0, 0.1)
+        source.adaptive_layernorm.layer_norm.bias.normal_(0.0, 0.1)
+    converted_source = copy.deepcopy(source)
+    for m in converted_source.modules():
+        m.foldforge_implementation = (
+            ImplementationType.MINIWORLD_ENGINE
+            if backend == "miniworld"
+            else ImplementationType.PYTORCH
+        )
+    converted = ReleasedTransition(converted_source)
+    rows = (48, 48) if width == 128 else (48,)  # a pair [L, L, 128] / a single [L, 384]
+    a = torch.randn(*rows, width, device="cuda", dtype=activation_dtype)
+    with torch.inference_mode():
+        expected = a + source(a)
+        actual = converted.residual(a)
+        delta = converted(a)
+    torch.testing.assert_close(actual, expected, rtol=0.04, atol=0.03)
+    torch.testing.assert_close(delta, source(a), rtol=0.04, atol=0.03)
+    assert not any(p.is_meta for p in converted.parameters())
+
+
+@GPU_PARITY
+def test_install_conditioning_converts_the_unconditioned_transitions():
+    """Unconditioned transitions are replaced, conditioned ones keep their own path."""
+    mod = original_module("af3", "nn/diffusion_transformer.py")
+    model = torch.nn.Module()
+    model.pair_transition_0 = mod.DiffusionTransition(128, None, use_single_cond=False)
+    model.single_transition_0 = mod.DiffusionTransition(
+        384, None, use_single_cond=False
+    )
+    model.foldforge_load_report = {}
+    for m in model.modules():
+        m.foldforge_implementation = None
+    install_conditioning(model)
+    from foldforge.modules.engine.conditioning import ReleasedTransition
+
+    assert isinstance(model.pair_transition_0, ReleasedTransition)
+    assert isinstance(model.single_transition_0, ReleasedTransition)
+    assert model.foldforge_load_report["engine_transition"] == 2

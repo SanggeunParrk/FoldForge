@@ -66,8 +66,8 @@ Small blocks; lowest priority.
 
 ## 6. Not kernel work
 
-- The 4 diffusion-head conditioning transitions of the AF3 family have `use_single_cond=False`; the plain `Transition`
-  kernel can serve them (wiring in `engine/conditioning.py`).
+- DONE (2026-10-21): the 4 diffusion-head conditioning transitions (`use_single_cond=False`) run the engine's plain `Transition`
+  (`engine.conditioning.ReleasedTransition`; every family 4/4).
 - DONE in 2.3.3 (engine `909d7257`): the slide window's real-atom count is device-side, so the AF3 atom blocks run inside a CUDA graph capture
   and below 128 real atoms.
 

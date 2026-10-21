@@ -145,6 +145,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/78/f9/b6831508960d559581c448532ba4df312217072975486dbf2b24fcc5b76f/contourpy-1.4.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/httpcore-1.0.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/80/cd/c607b6337ddcf55cc0249527819b727ef28481d7c56ace54cca69400c2b9/biotraj-1.2.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/80/e5/5eddda1d54c215a8bf87479cd0fc89a1d5d54b8a5d4b2f1cb6549d31050a/miniworld_engine-2.3.6-cp312-cp312-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/83/eb/1d55c679cee9a54e552480d308535753c72e2250cf720d7aa777bff2a4fe/dm_tree-0.1.10-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/84/21/a35af28dcc61f37ed850a2d64c65c701321dfbf25085e469d5559360cbbf/pillow-12.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/88/39/799be3f2f0f38cc727ee3b4f1445fe6d5e4133064ec2e4115069418a5bb6/cloudpickle-3.1.2-py3-none-any.whl
@@ -191,7 +192,6 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/e0/bf/e386c4bbfda3fb326a01594cc46c8ac90cdeeeacee4c553d9e3848f75893/jaxlib-0.8.2-cp312-cp312-manylinux_2_27_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/e5/63/cd7d615331b328e287d8233ba9fdf191a9c2d11b6af0c7a59cfcec23de68/pandas-2.3.3-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/e7/05/c19819d5e3d95294a6f5947fb9b9629efb316b96de511b418c53d245aae6/cycler-0.12.1-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/e9/07/af67ba02272ed6ae21e655266920467cb323872c7d779cb1be4befabac96/miniworld_engine-2.3.5-cp312-cp312-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ee/b8/2dc7a763b6c1678b76c92671ffdb0cc9c0d664593320944faec3d993be0c/lmdb-1.8.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/f1/7b/ce1eafaf1a76852e2ec9b22edecf1daa58175c090266e9f6c64afcd81d91/stack_data-0.6.3-py3-none-any.whl
@@ -345,6 +345,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/78/f9/b6831508960d559581c448532ba4df312217072975486dbf2b24fcc5b76f/contourpy-1.4.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/httpcore-1.0.9-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/80/cd/c607b6337ddcf55cc0249527819b727ef28481d7c56ace54cca69400c2b9/biotraj-1.2.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/80/e5/5eddda1d54c215a8bf87479cd0fc89a1d5d54b8a5d4b2f1cb6549d31050a/miniworld_engine-2.3.6-cp312-cp312-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/83/eb/1d55c679cee9a54e552480d308535753c72e2250cf720d7aa777bff2a4fe/dm_tree-0.1.10-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/84/21/a35af28dcc61f37ed850a2d64c65c701321dfbf25085e469d5559360cbbf/pillow-12.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/85/ad/cea0d0211de48fedc365e364a8d0d173f04b1c831adcffb55a990ec45ef0/cuequivariance_ops_torch_cu12-0.12.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
@@ -397,7 +398,6 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/e2/79/a914539b4785f3e44f891aa012a886edb8bc10fe081c440981c57543ce21/torch_c_dlpack_ext-0.1.5-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/e5/63/cd7d615331b328e287d8233ba9fdf191a9c2d11b6af0c7a59cfcec23de68/pandas-2.3.3-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/e7/05/c19819d5e3d95294a6f5947fb9b9629efb316b96de511b418c53d245aae6/cycler-0.12.1-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/e9/07/af67ba02272ed6ae21e655266920467cb323872c7d779cb1be4befabac96/miniworld_engine-2.3.5-cp312-cp312-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/ee/b8/2dc7a763b6c1678b76c92671ffdb0cc9c0d664593320944faec3d993be0c/lmdb-1.8.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/f1/7b/ce1eafaf1a76852e2ec9b22edecf1daa58175c090266e9f6c64afcd81d91/stack_data-0.6.3-py3-none-any.whl
@@ -2653,6 +2653,30 @@ packages:
   - psutil ; extra == 'test'
   - netcdf4>=1.7.1 ; extra == 'test'
   requires_python: '>=3.10'
+- pypi: https://files.pythonhosted.org/packages/80/e5/5eddda1d54c215a8bf87479cd0fc89a1d5d54b8a5d4b2f1cb6549d31050a/miniworld_engine-2.3.6-cp312-cp312-manylinux_2_28_x86_64.whl
+  name: miniworld-engine
+  version: 2.3.6
+  sha256: a17ce05dca6d0edeca4c945ac4fa69f5e36a74697415d934e085422528a84148
+  requires_dist:
+  - torch==2.13.*
+  - triton>=3.3
+  - einops
+  - jaxtyping
+  - numpy
+  - scipy
+  - pydantic
+  - cuequivariance-torch>=0.12,<0.13 ; extra == 'baselines'
+  - hydra-core ; extra == 'bench'
+  - lightning ; extra == 'bench'
+  - omegaconf ; extra == 'bench'
+  - pydantic ; extra == 'bench'
+  - matplotlib ; extra == 'bench'
+  - pytest ; extra == 'dev'
+  - ruff==0.16.9 ; extra == 'dev'
+  - ty==0.0.84 ; extra == 'dev'
+  - flash-attn-4 ; extra == 'flash'
+  - flash-attn>=2.8,<3 ; extra == 'flash2'
+  requires_python: '>=3.10'
 - pypi: https://files.pythonhosted.org/packages/83/eb/1d55c679cee9a54e552480d308535753c72e2250cf720d7aa777bff2a4fe/dm_tree-0.1.10-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
   name: dm-tree
   version: 0.1.10
@@ -3672,30 +3696,6 @@ packages:
   - pytest-cov ; extra == 'tests'
   - pytest-xdist ; extra == 'tests'
   requires_python: '>=3.8'
-- pypi: https://files.pythonhosted.org/packages/e9/07/af67ba02272ed6ae21e655266920467cb323872c7d779cb1be4befabac96/miniworld_engine-2.3.5-cp312-cp312-manylinux_2_28_x86_64.whl
-  name: miniworld-engine
-  version: 2.3.5
-  sha256: 4450fc931af5ae0175c536617632982b6d3cc2c783d341be82f9b596ebf86e97
-  requires_dist:
-  - torch==2.13.*
-  - triton>=3.3
-  - einops
-  - jaxtyping
-  - numpy
-  - scipy
-  - pydantic
-  - cuequivariance-torch>=0.12,<0.13 ; extra == 'baselines'
-  - hydra-core ; extra == 'bench'
-  - lightning ; extra == 'bench'
-  - omegaconf ; extra == 'bench'
-  - pydantic ; extra == 'bench'
-  - matplotlib ; extra == 'bench'
-  - pytest ; extra == 'dev'
-  - ruff==0.16.9 ; extra == 'dev'
-  - ty==0.0.84 ; extra == 'dev'
-  - flash-attn-4 ; extra == 'flash'
-  - flash-attn>=2.8,<3 ; extra == 'flash2'
-  requires_python: '>=3.10'
 - pypi: https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl
   name: python-dateutil
   version: 2.9.0.post0

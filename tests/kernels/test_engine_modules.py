@@ -339,13 +339,13 @@ def test_pairformer_single_attention():
     )
 
 
-def af3_gather(real: int, padded: int):
+def af3_gather(real: int, padded: int, keys: int = 128):
     """AF3's ``AtomCrossAtt.compute_features`` key windows as a query->key gather."""
     from foldforge.utils import atom_layout
 
     subsets = padded // 32
     centers = torch.arange(16, padded, 32, device="cuda")
-    index = centers[:, None] + torch.arange(-64, 64, device="cuda")[None]
+    index = centers[:, None] + torch.arange(-keys // 2, keys // 2, device="cuda")[None]
     first = index[:, :1]
     index = torch.where(first < 0, index - first, index)
     last = index[:, -1:]
@@ -413,8 +413,79 @@ def test_atom_transformer(family, real, samples):
     )
 
 
+@pytest.mark.parametrize("real", [512, 301, 200])
+@pytest.mark.parametrize("samples", [None, 3])
+def test_esmfold2_atom_transformer(real, samples):
+    """ESMFold2's atom stack on the engine: RMS / SiLU AdaLN, raw gates, rotary q / k,
+    32 queries x 192 keys under the rank-based +/- 64 window."""
+    from foldforge.modules.dense.atom_cross_attention import (
+        build_atom_rope,
+        sliding_window_mask,
+    )
+    from foldforge.modules.dense.diffusion_transformer import (
+        DiffusionCrossAttTransformer,
+    )
+    from foldforge.modules.dense.spec import SPECS
+    from foldforge.utils import atom_layout
+
+    spec = SPECS["esmfold2"]
+    torch.manual_seed(8)
+    layer = DiffusionCrossAttTransformer(spec=spec)
+    with torch.no_grad():
+        for name, p in layer.named_parameters():
+            if p.ndim > 1:
+                p.normal_(0, 0.08)
+            elif "weight" in name:
+                p.fill_(1.0)
+            else:
+                p.normal_(0, 0.05)
+    truth, ref, engine, counts = install(layer)
+    assert counts["engine_atom_blocks"] == 3
+    padded = 512
+    subsets = padded // 32
+    shape = (samples,) if samples else ()
+    act = torch.randn(*shape, subsets, 32, 128, device="cuda", dtype=torch.bfloat16)
+    cond = torch.randn(subsets, 32, 128, device="cuda", dtype=torch.bfloat16)
+    pair = torch.randn(subsets, 32, 192, 16, device="cuda", dtype=torch.bfloat16)
+    atoms = torch.arange(padded, device="cuda").view(subsets, 32) < real
+    gather = af3_gather(real, padded, keys=192)
+
+    def keys(t: torch.Tensor, axes: tuple[int, int] = (-3, -2)) -> torch.Tensor:
+        return atom_layout.convert(gather, t, layout_axes=axes)
+
+    keys_mask = keys(atoms, (-2, -1))
+    pos = 5 * torch.randn(subsets, 32, 3, device="cuda")
+    uid = torch.arange(padded, device="cuda").view(subsets, 32) // 9
+    rope_q = build_atom_rope(pos, uid, 32, spec.atom_rope)
+    rope_k = build_atom_rope(keys(pos), keys(uid, (-2, -1)), 32, spec.atom_rope)
+    pair_mask = sliding_window_mask(atoms, keys_mask, gather, spec.atom_window_half)
+
+    def run(module: torch.nn.Module, dtype: torch.dtype) -> torch.Tensor:
+        return module(
+            queries_act=act.to(dtype).clone(),
+            queries_mask=atoms,
+            queries_to_keys=gather,
+            keys_mask=keys_mask,
+            queries_single_cond=cond.to(dtype),
+            keys_single_cond=keys(cond.to(dtype)),
+            pair_cond=pair.to(dtype),
+            pair_mask=pair_mask,
+            rope_q=rope_q,
+            rope_k=rope_k,
+        )
+
+    with torch.no_grad(), engine_calls(engine) as calls:
+        expected = run(truth, torch.float32)
+        reference = run(ref, torch.bfloat16)
+        actual = run(engine, torch.bfloat16)
+    assert calls[0] == 3
+    assert rms_error(actual[..., atoms, :], expected[..., atoms, :]) <= (
+        rms_error(reference[..., atoms, :], expected[..., atoms, :]) + BF16_ROUNDING
+    )
+
+
 @pytest.mark.parametrize(
-    "family", ["chai1", "esmfold2", "esmfold2-fast", "rosettafold3", "boltz2"]
+    "family", ["chai1", "rosettafold3", "boltz2"]
 )
 def test_installer_leaves_other_families_alone(family):
     """A family whose blocks differ from AF3's keeps its reference modules."""

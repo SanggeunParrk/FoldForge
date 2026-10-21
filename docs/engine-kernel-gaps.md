@@ -50,20 +50,22 @@ AF3 only in this transition and `atom_features_bias`.
 Chai's `PairformerBlock` is not converted by `install_pairformers`, so its single attention (pair-bias attention with
 `single_attention_gate_bias=1.0`) never reaches the engine's `AttentionPairBias`.
 
-## 4. ESMFold2 / ESMFold2-fast atom DiT (0/3)
+## 4. ESMFold2 / ESMFold2-fast atom DiT -- WIRED 2026-10-21 (3/3, inference)
 
-All four differ from the engine's 32x128 LayerNorm-AdaLN block:
+miniworld-engine 2.3.6 has the block (`LocalDiTBlock(**modules.local_dit.ESMFOLD2)`, H100 kernels for inference, bf16 and
+fp32/TF32; fp32 parity with this dense module 3e-7, trained weights included); `engine.modules._esmfold2_atom_blocks` builds it and
+`DiffusionCrossAttTransformer._engine_forward` hands it the rotary tables (the window is the engine's). A call with grad keeps the
+dense path (no engine backward). What it differs in from the AF3 block:
 RMS-norm + SiLU conditioned AdaLN with raw (ungated) output gate; identity-centred scale and no zero bias;
 q/k RMS-normalised then rotary (`atom_rope`: 2 spatial axes + 10 uid axes, bases 20 / 10000);
 192 keys per 32 queries with a +-64 window mask (`atom_keys_subset=192`, `atom_window_half=64`).
-Conditioned transitions 12/25: 9 of the 13 unwired are the atom blocks' (same RMS / identity form), 4 are the diffusion-head ones of item 6.
+The atom blocks' 9 conditioned transitions run inside the engine blocks; the diffusion-head ones are item 6 (done).
 
 ## 5. Template pair stacks (width 64 with 4x32 heads) -- WIRED 2026-10-21
 
 The builders pass the hidden width as the engine's `d_hidden` (it was never tied in the engine, only here): Protenix1
 TriMul and TriAttn 116/116, Boltz2 TriAttn 156/156 (RF3 / Chai template TriAttn stay on their own other gaps).
-TriAttn pair 64 / 4 x 32 heads runs the H100 CUDA kernels already; TriMul pair 64 / hidden 128 runs the engine's PyTorch
-path on H100 until the engine ports B200's hidden = 2 x pair kernels (engine branch feat/trimul-h100-hidden2x, in progress).
+TriAttn pair 64 / 4 x 32 heads and (miniworld-engine 2.3.6) TriMul pair 64 / hidden 128 run the H100 CUDA kernels.
 
 ## 6. Not kernel work
 

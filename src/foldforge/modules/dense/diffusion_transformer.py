@@ -764,6 +764,10 @@ class DiffusionCrossAttTransformer(nn.Module):
         self.chained_key_norm = spec.chained_atom_key_norm
         self.key_window = spec.atom_key_window
         self.keys_subset = spec.atom_keys_subset
+        #: ESMFold2: the rank-based sliding window (the only pair_mask it builds) and the
+        #: rotary q / k; the engine block reproduces both (``engine.modules.atom_blocks``).
+        self.window_half = spec.atom_window_half
+        self.rope = spec.atom_rope is not None
         if self.per_block_pair:
             self.pair_input_layer_norm = nn.ModuleList(
                 [
@@ -833,22 +837,31 @@ class DiffusionCrossAttTransformer(nn.Module):
         queries_mask: torch.Tensor,
         queries_single_cond: torch.Tensor,
         pair_cond: torch.Tensor,
+        rope_q: tuple[torch.Tensor, torch.Tensor] | None = None,
     ) -> torch.Tensor:
         """The engine's AF3 atom blocks: the atoms of the query subsets are one flat run of windows.
 
         Subset ``w`` holds atoms ``32 w .. 32 w + 31``, its keys are the AF3 slid window, so the
         dense ``pair_cond`` is the engine's trunked pair as it is. The real atoms come first.
+        ESMFold2's blocks take the query rotary tables per atom (the keys are rotated by
+        their own atom's row, the gather the engine does itself).
         """
         subsets, queries, channels = queries_act.shape[-3:]
         samples = queries_act.shape[:-3]
-        x = queries_act.reshape(-1, 1, subsets * queries, channels)
-        cond = queries_single_cond.reshape(1, 1, subsets * queries, channels).expand(
+        atoms = subsets * queries
+        x = queries_act.reshape(-1, 1, atoms, channels)
+        cond = queries_single_cond.reshape(1, 1, atoms, channels).expand(
             x.shape[0], 1, -1, -1
         )
         pair = pair_cond.reshape(1, subsets, queries, -1, pair_cond.shape[-1])
-        key_mask = (queries_mask > 0).reshape(1, subsets * queries)
+        key_mask = (queries_mask > 0).reshape(1, atoms)
+        rope = (
+            {"rope": tuple(t.reshape(1, atoms, t.shape[-1]) for t in rope_q)}
+            if rope_q is not None
+            else {}
+        )
         for block in blocks:
-            x = block(x, cond, pair, key_mask)
+            x = block(x, cond, pair, key_mask, **rope)
         return x.reshape(*samples, subsets, queries, channels)
 
     def forward(
@@ -866,15 +879,23 @@ class DiffusionCrossAttTransformer(nn.Module):
     ) -> torch.Tensor:
         """Compute the module output."""
         blocks = engine_of(self)
+        # ESMFold2's blocks rotate q / k themselves and build its sliding window (the only
+        # pair_mask that family has, from ``window_half``); AF3's take neither.
+        rotary = blocks is not None and getattr(blocks[0], "rope", False)
         if (
             blocks is not None
-            and rope_q is None
-            and rope_k is None
-            and pair_mask is None
+            and (rope_q is not None) == rotary
+            and (rope_k is not None) == rotary
+            and (pair_mask is None or (rotary and self.window_half is not None))
             and not torch.is_inference_mode_enabled()
         ):
             return self._engine_forward(
-                blocks, queries_act, queries_mask, queries_single_cond, pair_cond
+                blocks,
+                queries_act,
+                queries_mask,
+                queries_single_cond,
+                pair_cond,
+                rope_q if rotary else None,
             )
         if self.per_block_pair:
             pair_logits = [

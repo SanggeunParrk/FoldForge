@@ -57,6 +57,11 @@ _ENGINE_HAS_ATOM_VARIANT = (
 _ATTR = "_engine_module"
 _DEFAULT_EPS = 1e-5
 _ATOM_WIDTH, _ATOM_PAIR, _ATOM_KEYS = 128, 16, 128
+_ATOM_ROPE_PAIRS = 16  # rotary pairs per 32-channel atom head (3 x 2 spatial + 10 uid)
+try:  # the engine's ESMFold2 atom block options (RMS / SiLU AdaLN, rotary q / k, 192-key window)
+    from miniworld_engine.modules.local_dit import ESMFOLD2 as _ENGINE_ESMFOLD2
+except ImportError:
+    _ENGINE_ESMFOLD2 = None
 
 
 def attach(module: nn.Module, engine_module: object) -> None:
@@ -369,6 +374,120 @@ def _eps_of(adaptive_norm: nn.Module) -> set[float | None]:
     }
 
 
+def _rms_adaln(norm: nn.Module) -> bool:
+    """ESMFold2's AdaLN: affine-free RMSNorm, SiLU conditioning, (s + 1) scale, no biases."""
+    return bool(
+        norm.identity_scale
+        and getattr(norm, "rms_norm", False)
+        and getattr(norm, "activate_cond", False)
+        and norm.single_cond_scale.bias is None
+    )
+
+
+def _raw_gate(zero_init: nn.Module) -> bool:
+    """ESMFold2's output gate: raw (no sigmoid), no bias, with the output projection."""
+    return bool(
+        zero_init.raw_gate
+        and zero_init.project
+        and zero_init.adaptive_zero_cond.bias is None
+    )
+
+
+def _esmfold2_atom_blocks(module: nn.Module, like: torch.Tensor) -> list[nn.Module] | None:
+    """ESMFold2's atom stack: one engine ``LocalDiTBlock(**ESMFOLD2)`` per block.
+
+    AF3's block (parallel K/V AdaLN, slid window, atom pair bias, gating query, q bias) with the
+    RMS / SiLU AdaLN, raw gates, per-head RMSNorm + rotary q / k and 32 queries x 192 keys under
+    the rank-based +/- 64 window. Matches the dense module to fp32 rounding (engine
+    ``tests/cpu/compile/test_local_dit_esmfold2_variant.py``).
+    """
+    if _ENGINE_ESMFOLD2 is None:
+        return None
+    attention = module.cross_attention
+    heads = module.num_head
+    if not (
+        module.window_half == _ENGINE_ESMFOLD2["window_half"]
+        and module.keys_subset == _ENGINE_ESMFOLD2["keys"]
+        and module.key_window == "slide"
+        and not module.chained_key_norm
+        and not module.parallel
+        and not module.per_block_pair
+        and module.c_query == _ATOM_WIDTH
+        and module.c_single_cond == _ATOM_WIDTH
+        and module.c_pair_cond == _ATOM_PAIR
+        and module.pair_input_layer_norm.bias is None
+        and module.key_dim_per_head == 2 * _ATOM_ROPE_PAIRS
+        and all(
+            not block.kq_norm
+            and not block.key_masked
+            and block.use_gating_query
+            and block.q_projection.bias is not None
+            and _rms_adaln(block.q_adaptive_layernorm)
+            and _rms_adaln(block.k_adaptive_layernorm)
+            and _raw_gate(block.adaptive_zero_init)
+            for block in attention
+        )
+        and all(
+            type(block).__name__ == "DiffusionTransition"
+            and _rms_adaln(block.adaptive_layernorm)
+            and _raw_gate(block.adaptive_zero_init)
+            for block in module.transition_block
+        )
+    ):
+        return None
+    blocks = []
+    for index, (attn, trans) in enumerate(
+        zip(attention, module.transition_block, strict=True)
+    ):
+        rows = module.pair_logits_projection.weight[index * heads : (index + 1) * heads]
+        expand_a, expand_b = trans.transition1.weight.chunk(2, dim=0)
+        block = LocalDiTBlock(
+            _ATOM_WIDTH,
+            _ATOM_WIDTH,
+            _ATOM_PAIR,
+            heads,
+            expand_a.shape[0] // _ATOM_WIDTH,
+            implementation=_ENGINE,
+            **_ENGINE_ESMFOLD2,
+        )
+        q_ln, k_ln, t_ln = (
+            attn.q_adaptive_layernorm,
+            attn.k_adaptive_layernorm,
+            trans.adaptive_layernorm,
+        )
+        ones = torch.ones(module.key_dim_per_head)  # the q / k RMSNorm is affine-free
+        _copy(
+            block,
+            {
+                "attention.ada_ln_in.to_scale.weight": q_ln.single_cond_scale.weight,
+                "attention.ada_ln_in.to_bias.weight": q_ln.single_cond_bias.weight,
+                "attention.ada_ln_kv.to_scale.weight": k_ln.single_cond_scale.weight,
+                "attention.ada_ln_kv.to_bias.weight": k_ln.single_cond_bias.weight,
+                "attention.to_query.weight": attn.q_projection.weight,
+                "attention.to_query.bias": attn.q_projection.bias,
+                "attention.to_key.weight": attn.k_projection.weight,
+                "attention.to_value.weight": attn.v_projection.weight,
+                "attention.norm_query.weight": ones,
+                "attention.norm_key.weight": ones,
+                "attention.ln_pair.weight": module.pair_input_layer_norm.weight,
+                "attention.to_bias.weight": rows,
+                "attention.to_gate.weight": attn.gating_query.weight,
+                "attention.to_out.weight": attn.adaptive_zero_init.transition2.weight,
+                "attention.to_scale.weight": attn.adaptive_zero_init.adaptive_zero_cond.weight,
+                "transition.ada_ln_in.to_scale.weight": t_ln.single_cond_scale.weight,
+                "transition.ada_ln_in.to_bias.weight": t_ln.single_cond_bias.weight,
+                "transition.expand_a.weight": expand_a,
+                "transition.expand_b.weight": expand_b,
+                "transition.squeeze.weight": trans.adaptive_zero_init.transition2.weight,
+                "transition.to_scale.weight": trans.adaptive_zero_init.adaptive_zero_cond.weight,
+            },
+            like,
+            keep_master=True,
+        )
+        blocks.append(block)
+    return blocks
+
+
 def atom_blocks(module: nn.Module, like: torch.Tensor) -> list[nn.Module] | None:
     """One engine ``LocalDiTBlock`` per block of a dense ``DiffusionCrossAttTransformer``.
 
@@ -377,6 +496,8 @@ def atom_blocks(module: nn.Module, like: torch.Tensor) -> list[nn.Module] | None
     one. Anything else (rotary, kq-norm, parallel schedule, RMS conditioning, other widths, other
     transitions) keeps the reference path.
     """
+    if getattr(module, "rope", False):
+        return _esmfold2_atom_blocks(module, like)
     if not _ENGINE_HAS_ATOM_VARIANT:
         return None
     attention = module.cross_attention

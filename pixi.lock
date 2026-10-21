@@ -87,7 +87,6 @@ environments:
       - pypi: ./
       - pypi: ./third_party/af3-data
       - pypi: git+https://github.com/Biohub/esm.git?rev=fba1e42a8a0f8df2b7e08611c88807aa32a25d9c#fba1e42a8a0f8df2b7e08611c88807aa32a25d9c
-      - pypi: git+ssh://git@github.com/SanggeunParrk/miniworld-engine.git?rev=b468017961c414f86c33e1d47ada18c36783c26d#b468017961c414f86c33e1d47ada18c36783c26d
       - pypi: https://download-r2.pytorch.org/whl/cu130/torch-2.13.0%2Bcu130-cp312-cp312-manylinux_2_28_x86_64.whl
       - pypi: https://download-r2.pytorch.org/whl/triton-3.7.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://download.pytorch.org/whl/certifi-2022.12.7-py3-none-any.whl
@@ -155,6 +154,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/8e/57/a50162f3d29feb979ab6347c6debda506dfb525bcff3c50dd17606651c7e/scikit_learn-1.9.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/8e/5a/7fd1b784a87e96e0078f49a0a13a98b4c5f644ba5597a4a3b70a2ba3e613/py3dmol-2.5.5-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/90/24/48cd98388e4ac2c08d0800af36d15413db15e20387f1038123a2c86cb2f6/pydantic_core-2.50.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/90/2d/490d4e3efdbc04fc99fc791689c61fcd4df84c8b8a362d3ec42e159c5811/miniworld_engine-2.3.3-cp312-cp312-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/94/21/1e5995a1c920cce14e4bffae20c665ec10e7ed03ab25e006cd741092b718/tzdata-2026.5-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/97/aa/c333f1be2afab2d033d51a66cb105f4bfc885b0c546e1168fb889a416b9d/cloudpathlib-0.26.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/99/5d/8268b644392ee874ee82a635cd0df1773de230bde356c38de28e298392cc/parso-0.8.7-py2.py3-none-any.whl
@@ -284,7 +284,6 @@ environments:
       - pypi: ./
       - pypi: ./third_party/af3-data
       - pypi: git+https://github.com/Biohub/esm.git?rev=fba1e42a8a0f8df2b7e08611c88807aa32a25d9c#fba1e42a8a0f8df2b7e08611c88807aa32a25d9c
-      - pypi: git+ssh://git@github.com/SanggeunParrk/miniworld-engine.git?rev=b468017961c414f86c33e1d47ada18c36783c26d#b468017961c414f86c33e1d47ada18c36783c26d
       - pypi: https://download-r2.pytorch.org/whl/cu129/torch-2.13.0%2Bcu129-cp312-cp312-manylinux_2_28_x86_64.whl
       - pypi: https://download-r2.pytorch.org/whl/triton-3.7.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://download.pytorch.org/whl/certifi-2022.12.7-py3-none-any.whl
@@ -356,6 +355,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/8e/57/a50162f3d29feb979ab6347c6debda506dfb525bcff3c50dd17606651c7e/scikit_learn-1.9.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/8e/5a/7fd1b784a87e96e0078f49a0a13a98b4c5f644ba5597a4a3b70a2ba3e613/py3dmol-2.5.5-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/90/24/48cd98388e4ac2c08d0800af36d15413db15e20387f1038123a2c86cb2f6/pydantic_core-2.50.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/90/2d/490d4e3efdbc04fc99fc791689c61fcd4df84c8b8a362d3ec42e159c5811/miniworld_engine-2.3.3-cp312-cp312-manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/91/97/e3c6e58ece26a053419ba0a18444b5443cfc64451bbf37f84e8143b8bdca/cuda_bindings-12.9.7-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/94/21/1e5995a1c920cce14e4bffae20c665ec10e7ed03ab25e006cd741092b718/tzdata-2026.5-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/96/27/66cf0a6af9c109c3587d7e75014552c5e6e1c7970d1888a70157f6cb8581/cuequivariance_ops_cu12-0.12.0-py3-none-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
@@ -1360,28 +1360,6 @@ packages:
   - dna-features-viewer
   - accelerate
   requires_python: '>=3.12,<3.13'
-- pypi: git+ssh://git@github.com/SanggeunParrk/miniworld-engine.git?rev=b468017961c414f86c33e1d47ada18c36783c26d#b468017961c414f86c33e1d47ada18c36783c26d
-  name: miniworld-engine
-  version: 2.2.0
-  requires_dist:
-  - torch>=2.8
-  - triton>=3.3
-  - einops
-  - jaxtyping
-  - numpy
-  - scipy
-  - cuequivariance-torch>=0.12,<0.13 ; extra == 'baselines'
-  - hydra-core ; extra == 'bench'
-  - lightning ; extra == 'bench'
-  - omegaconf ; extra == 'bench'
-  - pydantic ; extra == 'bench'
-  - matplotlib ; extra == 'bench'
-  - pytest ; extra == 'dev'
-  - ruff==0.16.9 ; extra == 'dev'
-  - ty==0.0.84 ; extra == 'dev'
-  - flash-attn-4 ; extra == 'flash'
-  - flash-attn>=2.8,<3 ; extra == 'flash2'
-  requires_python: '>=3.10'
 - pypi: https://download-r2.pytorch.org/whl/cu129/torch-2.13.0%2Bcu129-cp312-cp312-manylinux_2_28_x86_64.whl
   name: torch
   version: 2.13.0+cu129
@@ -2869,6 +2847,30 @@ packages:
   sha256: 93ba4e9d8210d941c200431a56b2c0400b131865947903937ed3ec5404307d2e
   requires_dist:
   - typing-extensions>=4.16.0
+  requires_python: '>=3.10'
+- pypi: https://files.pythonhosted.org/packages/90/2d/490d4e3efdbc04fc99fc791689c61fcd4df84c8b8a362d3ec42e159c5811/miniworld_engine-2.3.3-cp312-cp312-manylinux_2_28_x86_64.whl
+  name: miniworld-engine
+  version: 2.3.3
+  sha256: 3fc469eb3ab1e8b0cb9f20707fd8b2daede49cb885b4fd94eee51b56ecccf622
+  requires_dist:
+  - torch==2.13.*
+  - triton>=3.3
+  - einops
+  - jaxtyping
+  - numpy
+  - scipy
+  - pydantic
+  - cuequivariance-torch>=0.12,<0.13 ; extra == 'baselines'
+  - hydra-core ; extra == 'bench'
+  - lightning ; extra == 'bench'
+  - omegaconf ; extra == 'bench'
+  - pydantic ; extra == 'bench'
+  - matplotlib ; extra == 'bench'
+  - pytest ; extra == 'dev'
+  - ruff==0.16.9 ; extra == 'dev'
+  - ty==0.0.84 ; extra == 'dev'
+  - flash-attn-4 ; extra == 'flash'
+  - flash-attn>=2.8,<3 ; extra == 'flash2'
   requires_python: '>=3.10'
 - pypi: https://files.pythonhosted.org/packages/91/97/e3c6e58ece26a053419ba0a18444b5443cfc64451bbf37f84e8143b8bdca/cuda_bindings-12.9.7-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
   name: cuda-bindings

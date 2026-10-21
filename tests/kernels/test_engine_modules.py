@@ -424,3 +424,19 @@ def test_fp32_master_weights_stay_fp32_in_the_diffusion_blocks():
         if type(m).__name__ == "TriangleMultiplication" and engine_of(m)
     )
     assert trunk.to_out.weight.dtype == torch.bfloat16
+
+
+def test_engine_initialiser_is_skipped_only_while_installing():
+    """The engine's SciPy initialiser is off while installing, and back after."""
+    from miniworld_engine.modules import primitives
+
+    from foldforge.modules.engine.install import skip_engine_init
+
+    original = primitives.InitType.apply
+    with skip_engine_init():
+        assert primitives.InitType.apply is not original
+    assert primitives.InitType.apply is original
+    message = "boom"
+    with pytest.raises(RuntimeError, match=message), skip_engine_init():
+        raise RuntimeError(message)
+    assert primitives.InitType.apply is original

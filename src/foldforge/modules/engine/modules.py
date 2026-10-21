@@ -111,20 +111,21 @@ def _set_eps(engine_module: nn.Module, eps: float) -> None:
 def triangle_multiplication(module: nn.Module, like: torch.Tensor) -> nn.Module | None:
     """Engine TriMul from a dense ``TriangleMultiplication`` (None when it cannot serve it)."""
     d = module.c_pair
-    if (
-        module.center_norm.weight.shape[0] != d
-        or getattr(module, "divide_by_length", False)
-        or module.left_norm_input.eps != module.center_norm.eps
+    # The hidden width may differ from the pair width (template stacks: pair 64,
+    # hidden 128); the engine takes it as d_hidden.
+    h = module.center_norm.weight.shape[0]
+    if getattr(module, "divide_by_length", False) or (
+        module.left_norm_input.eps != module.center_norm.eps
     ):
         return None
     outgoing = module.equation == "cik,cjk->cij"
     # The released projection interleaves a,b per hidden channel; the engine takes them as two
     # matrices. Incoming contracts b[k,i] * a[k,j] where the engine contracts a[k,i] * b[k,j].
-    projection = module.projection.weight.reshape(d, 2, d).transpose(0, 1)
-    gate = module.gate.weight.reshape(d, 2, d).transpose(0, 1)
+    projection = module.projection.weight.reshape(h, 2, d).transpose(0, 1)
+    gate = module.gate.weight.reshape(h, 2, d).transpose(0, 1)
     left, right = (0, 1) if outgoing else (1, 0)
     built = TriangleMultiplication(
-        d, outgoing=outgoing, implementation=_ENGINE, p_drop=0.0
+        d, d_hidden=h, outgoing=outgoing, implementation=_ENGINE, p_drop=0.0
     )
     _copy(
         built,
@@ -160,16 +161,18 @@ def triangle_attention(module: nn.Module, like: torch.Tensor) -> nn.Module | Non
         or module.untransposed_output
         or module.gating_query.bias is not None
         or module.output_projection.bias is not None
-        or hidden != module.c_pair
         or (ending_as_is and not _ENGINE_HAS_BIAS_ORIENTATION)
     ):
         return None
     orientation = (
         {"transposed_bias": not ending_as_is} if _ENGINE_HAS_BIAS_ORIENTATION else {}
     )
+    # The heads may span more than the pair width (template stacks: pair 64,
+    # 4 x 32 heads); the engine takes it as d_hidden.
     built = TriangleAttention(
         module.c_pair,
         module.num_head,
+        d_hidden=hidden,
         starting=not module.transpose,
         implementation=_ENGINE,
         p_drop=0.0,

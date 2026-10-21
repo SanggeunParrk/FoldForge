@@ -100,6 +100,53 @@ def test_triangle_multiplication(length, outgoing):
     )
 
 
+@pytest.mark.parametrize("outgoing", [True, False])
+def test_template_triangle_multiplication(outgoing):
+    """Template stacks: pair 64, hidden 128 (the engine's d_hidden)."""
+    from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
+    from foldforge.modules.engine.routing import triangle_residual
+
+    torch.manual_seed(5)
+    layer = randomize(TriangleMultiplication(64, _outgoing=outgoing, hidden_dim=128))
+    truth, ref, engine, counts = install(layer)
+    assert counts["engine_trimul"] == 1
+    x = torch.randn(256, 256, 64, device="cuda", dtype=torch.bfloat16)
+    residues, mask = residue_and_pair_mask(256)
+    real = residues[:, None] & residues[None, :]
+    with torch.no_grad(), engine_calls(engine) as calls:
+        expected = triangle_residual(truth, x.float(), mask)
+        reference = triangle_residual(ref, x.clone(), mask)
+        actual = triangle_residual(engine, x.clone(), mask)
+    assert calls[0] == 1
+    assert rms_error(actual[real], expected[real]) <= (
+        rms_error(reference[real], expected[real]) + BF16_ROUNDING
+    )
+
+
+@pytest.mark.parametrize("ending", [False, True])
+def test_template_triangle_attention(ending):
+    """Template stacks: pair 64, 4 x 32 heads (the engine's d_hidden)."""
+    from foldforge.modules.dense.attention import GridSelfAttention
+
+    torch.manual_seed(6)
+    layer = randomize(
+        GridSelfAttention(64, 4, transpose=ending, qkv_dim=32), 0.07
+    )
+    truth, ref, engine, counts = install(layer)
+    assert counts["engine_triangle_attention"] == 1
+    x = torch.randn(256, 256, 64, device="cuda", dtype=torch.bfloat16)
+    residues, mask = residue_and_pair_mask(256)
+    real = residues[:, None] & residues[None, :]
+    with torch.no_grad(), engine_calls(engine) as calls:
+        expected = truth.residual(x.float(), mask)
+        reference = ref.residual(x.clone(), mask)
+        actual = engine.residual(x.clone(), mask)
+    assert calls[0] == 1
+    assert rms_error(actual[real], expected[real]) <= (
+        rms_error(reference[real], expected[real]) + BF16_ROUNDING
+    )
+
+
 @pytest.mark.parametrize("ending", [False, True])
 @pytest.mark.parametrize("transposed_column_pair_bias", [True, False])
 def test_triangle_attention(ending, transposed_column_pair_bias):

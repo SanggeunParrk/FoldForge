@@ -58,11 +58,12 @@ q/k RMS-normalised then rotary (`atom_rope`: 2 spatial axes + 10 uid axes, bases
 192 keys per 32 queries with a +-64 window mask (`atom_keys_subset=192`, `atom_window_half=64`).
 Conditioned transitions 12/25: 9 of the 13 unwired are the atom blocks' (same RMS / identity form), 4 are the diffusion-head ones of item 6.
 
-## 5. Template pair stacks (width 64 with 4x32 heads)
+## 5. Template pair stacks (width 64 with 4x32 heads) -- WIRED 2026-10-21
 
-`GridSelfAttention` hidden = 128 != c_pair = 64 and `TriangleMultiplication` hidden 128 (Protenix1) are rejected by
-the builders (the engine ties the hidden width to the pair width). Protenix1: 8 modules, Boltz2: 4, RF3: 4, Chai: 4.
-Small blocks; lowest priority.
+The builders pass the hidden width as the engine's `d_hidden` (it was never tied in the engine, only here): Protenix1
+TriMul and TriAttn 116/116, Boltz2 TriAttn 156/156 (RF3 / Chai template TriAttn stay on their own other gaps).
+TriAttn pair 64 / 4 x 32 heads runs the H100 CUDA kernels already; TriMul pair 64 / hidden 128 runs the engine's PyTorch
+path on H100 until the engine ports B200's hidden = 2 x pair kernels (engine branch feat/trimul-h100-hidden2x, in progress).
 
 ## 6. Not kernel work
 

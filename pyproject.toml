@@ -92,7 +92,7 @@ foldforge-af3-data = { path = "third_party/af3-data" }
 # Match the reference ESMFold2 input processor.
 esm = { git = "https://github.com/Biohub/esm.git", rev = "fba1e42a8a0f8df2b7e08611c88807aa32a25d9c" }
 # The engine release on PyPI: its wheel ships the H100 (sm_90) kernels prebuilt for CUDA 12.9 and 13.0.
-miniworld-engine = "==2.3.6"
+miniworld-engine = "==2.3.7"
 
 
 [tool.ruff]

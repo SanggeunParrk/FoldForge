@@ -354,6 +354,49 @@ def test_trimul_on_each_backend(backend, outgoing):
 
 
 @needs_cuda
+@pytest.mark.parametrize(
+    "backend", ["miniworld", pytest.param("anthropic", marks=needs_anthropic)]
+)
+def test_length_divided_trimul_on_each_backend(backend):
+    """RoseTTAFold3 divides the contraction by the real length: the engine scales the left projection, any kernel runs."""
+    from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
+    from foldforge.modules.engine.routing import triangle_residual
+
+    x, mask, real = pair_case()
+
+    def run(layer, *, float_input=False) -> torch.Tensor:
+        return triangle_residual(layer, (x.float() if float_input else x).clone(), mask)
+
+    parity(
+        lambda: TriangleMultiplication(128, _outgoing=True, divide_by_length=True),
+        run,
+        backend,
+        "trimul",
+        real=real,
+    )
+
+
+@needs_cuda
+def test_length_divided_trimul_is_a_stated_reference_on_cuequivariance(caplog):
+    from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
+    from foldforge.modules.engine.configure import configure_model
+    from foldforge.modules.engine.routing import triangle_residual
+
+    torch.manual_seed(4)
+    layer = randomize(TriangleMultiplication(128, _outgoing=True, divide_by_length=True))
+    x, mask, _ = pair_case(128)
+    reference = configure_model(copy.deepcopy(layer), "pytorch")
+    built = install(copy.deepcopy(layer), "cuequivariance")
+    backends.forget_logged_refusals()
+    with torch.no_grad(), caplog.at_level(logging.WARNING, logger=LOGGER):
+        out = triangle_residual(built, x.clone(), mask)
+        triangle_residual(built, x.clone(), mask)
+        expected = triangle_residual(reference, x.clone(), mask)
+    assert len([r for r in caplog.records if "refuses a trimul call" in r.getMessage()]) == 1
+    assert torch.equal(out, expected)
+
+
+@needs_cuda
 @pytest.mark.parametrize("transpose", [False, True])
 @pytest.mark.parametrize(
     "backend",

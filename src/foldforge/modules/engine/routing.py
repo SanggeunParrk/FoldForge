@@ -113,6 +113,13 @@ def cueq_refused(module: nn.Module, op: str, x: torch.Tensor) -> bool:
     return call_refusal(getattr(module, "foldforge_unsupported", "fallback"), op, "cuequivariance", reason)
 
 
+def cueq_declined(module: nn.Module, reason: str) -> None:
+    """A trimul call the vendor op cannot express runs the PyTorch reference: say so once (or raise)."""
+    from foldforge.modules.engine.backends import call_refusal
+
+    call_refusal(getattr(module, "foldforge_unsupported", "fallback"), "trimul", "cuequivariance", reason)
+
+
 def cueq_single_attention(
     wrapper: nn.Module, single: torch.Tensor, pair: torch.Tensor, mask: torch.Tensor | None
 ) -> torch.Tensor | None:
@@ -279,12 +286,16 @@ def triangle_residual(
     if getattr(module, "divide_by_length", False):
         if built is not None and x.ndim == _UNBATCHED_PAIR_RANK:
             return _length_divided_engine(built, x, mask)
+        if cueq:
+            cueq_declined(module, "the contraction is divided by the real sequence length (RoseTTAFold3); the vendor op has no such form")
         return x + _length_divided_triangle(module, x, mask)
     if built is not None and x.ndim == _UNBATCHED_PAIR_RANK:
         # The engine module owns the residual and reaches the hand-CUDA legs.
         return built(x[None], residue_mask(mask))[0]
     # The engine op needs the contraction width to equal the pair width; a stack
     # that widens only its projections (``tri_hidden_dim``) keeps the equation.
+    if cueq and module.center_norm.weight.shape[0] != x.shape[-1]:
+        cueq_declined(module, "the contraction is wider than the pair; the vendor op has one width")
     if (
         not (enabled(module, x) or cueq)
         or module.center_norm.weight.shape[0] != x.shape[-1]

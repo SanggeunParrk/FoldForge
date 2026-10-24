@@ -6,7 +6,7 @@ A key left out has its default, and the defaults are the behaviour without any o
 run (`model.config.json`) records every key.
 
 ```yaml
-backend: miniworld          # miniworld | pytorch | cuequivariance
+backend: miniworld          # miniworld | cuequivariance | anthropic | pytorch   (BACKENDS.md)
 precision: bf16             # bf16 | fp32 | af3_default | model_default
 mode: fast                  # fast | exact
 trunk: {recycles: null, msa_depth: null}
@@ -18,9 +18,18 @@ execution:
   confidence_sample_chunk: null   # samples per confidence-head call; null = the head's rule, 1 = sequential
 engine:
   skip: []                  # parts left dense, see below
+  ops: {}                   # {op: backend}: single ops on another backend than `backend`, e.g. {trimul: anthropic}
+  unsupported: fallback     # fallback | error: an op the backend has no kernel for
 debug:
   dense_spec_override: null # DenseSpec fields to replace, e.g. {confidence_reembed_pair: true}
 ```
+
+## `backend`, `engine.ops`, `engine.unsupported`
+
+`backend` is the kernel source of every op of the model; `engine.ops` pins single ops to another one;
+`engine.unsupported` says what an op does that its backend has no kernel for (the PyTorch reference after one log
+line, or an error). The ops, what each backend serves and how to compare backends: [BACKENDS.md](BACKENDS.md).
+With no override the model runs on `miniworld` exactly as before.
 
 ## `engine.skip`
 
@@ -39,7 +48,8 @@ measure it. A field that changes a parameter shape makes the strict weight load 
 
 Locations and the machine, not behaviour: `FOLDFORGE_HOME`, `FOLDFORGE_CHECKPOINT_DIR`, `FOLDFORGE_CCD_DB`,
 `FOLDFORGE_RUNS`, `FOLDFORGE_RELEASE_ROOT`, `FOLDFORGE_BENCHMARKS`; `CUDA_VISIBLE_DEVICES`, `SLURM_*`, `XDG_CACHE_HOME`,
-`TORCH_EXTENSIONS_DIR`, `CUTLASS_PATH`; `CUBLAS_WORKSPACE_CONFIG` (set by `utils.seed` for deterministic cuBLAS); the
+`TORCH_EXTENSIONS_DIR`, `CUTLASS_PATH`; the Anthropic payloads of the `anthropic` backend `MINIWORLD_ANTHROPIC_ROOT`,
+`OPT_CORE_DIR` and `TRIMUL_NATIVE_BUILD_DIR` (BACKENDS.md); `CUBLAS_WORKSPACE_CONFIG` (set by `utils.seed` for deterministic cuBLAS); the
 test inputs `FOLDFORGE_TEST_CCD_DB` and `MINIWORLD_TEST_SOURCE`.
 
 ## Removed variables

@@ -894,7 +894,8 @@ class AlphaFold3(nn.Module):
                     align=realign if self.spec.realign_sampler else None,
                     coordinate_dims=2,
                     scopes=scope,
-                    rigid_mask=mask,
+                    # the engine's fused rigid-motion glue is miniworld's (`backends.SERVES["sampler_ops"]`)
+                    rigid_mask=mask if getattr(self, "foldforge_sampler_ops", True) else None,
                     conditioning=lambda levels: self.diffusion_head.conditioning_table(
                         batch, embeddings, levels
                     ),

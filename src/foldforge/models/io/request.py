@@ -15,6 +15,7 @@ from foldforge.models.config import (
 )
 from foldforge.models.io.paths import run_directory
 from foldforge.models.msa_policy import PREPARED_ROWS
+from foldforge.modules.engine.backends import BACKENDS
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -55,7 +56,7 @@ class Request:
         if self.model not in registered_models():
             msg = f"Unsupported checkpoint adapter: {self.model}"
             raise ValueError(msg)
-        if self.backend not in {"miniworld", "pytorch", "cuequivariance"}:
+        if self.backend not in BACKENDS:
             msg = f"Unsupported backend: {self.backend}"
             raise ValueError(msg)
         if self.precision not in {"bf16", "fp32", "af3_default", "model_default"}:

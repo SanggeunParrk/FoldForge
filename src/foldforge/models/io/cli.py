@@ -10,6 +10,7 @@ from pathlib import Path
 from foldforge.data.ccd import default_path
 from foldforge.models.config import ExecutionConfig, OutputConfig
 from foldforge.models.io.request import Request
+from foldforge.modules.engine.backends import BACKENDS
 
 
 def parse(model: str, argv: list[str] | None = None) -> Request:
@@ -52,7 +53,7 @@ def parse(model: str, argv: list[str] | None = None) -> Request:
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument(
         "--backend",
-        choices=("miniworld", "pytorch", "cuequivariance"),
+        choices=BACKENDS,
         default="miniworld",
     )
     parser.add_argument(

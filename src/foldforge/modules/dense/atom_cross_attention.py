@@ -754,8 +754,12 @@ class AtomCrossAttEncoder(nn.Module):
 
         queries_act = self.project_atom_features_for_aggr(queries_act)
 
-        token_act = _pool_engine(
-            queries_act, batch.atom_cross_att.queries_to_token_atoms, token_atoms_mask
+        token_act = (
+            _pool_engine(
+                queries_act, batch.atom_cross_att.queries_to_token_atoms, token_atoms_mask
+            )
+            if getattr(self, "foldforge_sampler_ops", True)
+            else None
         )
         if token_act is None:
             token_atoms_act = atom_layout.convert(

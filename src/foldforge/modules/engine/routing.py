@@ -25,6 +25,9 @@ from foldforge.modules.reference.triangle import TriangleConfig, triangle_update
 
 _UNBATCHED_TOKEN_RANK = 2
 _UNBATCHED_PAIR_RANK = 3
+_BATCHED_PAIR_RANK = 4
+#: The cuequivariance triangle kernels take channel widths that are multiples of 32.
+_CUEQ_CHANNELS = 32
 
 
 def enabled(module: nn.Module, x: torch.Tensor) -> bool:
@@ -72,11 +75,145 @@ def served_by(module: nn.Module, x: torch.Tensor) -> object | None:
     (and its residual, where it has one) when this returns it.
     """
     built = engine_of(module)
-    return built if built is not None and enabled(module, x) else None
+    if built is None:
+        return None
+    if getattr(module, "foldforge_implementation", None) == ANTHROPIC:
+        return built if not anthropic_refused(module, built, x) else None
+    return built if enabled(module, x) else None
+
+
+#: ``foldforge_implementation`` of a module on the Anthropic backend (the engine's enum has no member for it).
+ANTHROPIC = "anthropic"
+
+
+def anthropic_refused(module: nn.Module, built: object, x: torch.Tensor) -> bool:
+    """Whether the Anthropic kernel behind ``built`` cannot take this call (it then runs the PyTorch reference).
+
+    Asks the engine's own non-raising ``refusal`` predicate for the call; ``engine.unsupported`` decides between
+    ONE log line per reason (the default) and an error. A batch of pair planes is not a refusal: the pairformer
+    adapters send those through one plane at a time.
+    """
+    from foldforge.modules.engine.backends import call_refusal
+
+    if x.ndim == _BATCHED_PAIR_RANK and x.shape[0] > 1 and hasattr(built, "foldforge_plane_only"):
+        return True
+    refuses = getattr(built, "foldforge_refuses", None)
+    if refuses is None:
+        return False
+    return call_refusal(
+        getattr(module, "foldforge_unsupported", "fallback"), built.foldforge_op, ANTHROPIC, refuses(x)
+    )
+
+
+def cueq_refused(module: nn.Module, op: str, x: torch.Tensor) -> bool:
+    """Whether the cuequivariance kernel cannot take this call (it then runs the PyTorch reference, logged once)."""
+    from foldforge.modules.engine.backends import call_refusal
+
+    reason = None if x.shape[-1] % _CUEQ_CHANNELS == 0 else f"the channel width {x.shape[-1]} is not a multiple of 32"
+    return call_refusal(getattr(module, "foldforge_unsupported", "fallback"), op, "cuequivariance", reason)
+
+
+def cueq_single_attention(
+    wrapper: nn.Module, single: torch.Tensor, pair: torch.Tensor, mask: torch.Tensor | None
+) -> torch.Tensor | None:
+    """``single + attention_pair_bias(single, pair)`` on cuequivariance's fused op, None where it cannot take the call.
+
+    The Pairformer's single attention is AF3's: LayerNorm, q (with bias) / k / v / gate projections of the
+    normalised single, a pair-bias projection of the normalised pair, a gated output projection. The vendor op
+    adds no residual and has no gate bias, so a stack with one (Chai-1) keeps the reference.
+    """
+    from foldforge.modules.engine.backends import call_refusal
+
+    attention = wrapper.attention
+    if (
+        attention.use_single_cond
+        or attention.kq_norm
+        or not attention.use_gating_query
+        or attention.gate_bias
+        or attention.q_projection.bias is None
+        or attention.qkv_dim * attention.num_head != attention.c_x
+    ):
+        why = "the vendor op is AF3's single attention (no single conditioning, k/q norm or gate bias)"
+    elif single.dtype != torch.bfloat16 or not single.is_cuda:
+        why = f"bf16 on CUDA only, got {single.dtype} on {single.device.type}"
+    else:
+        why = None
+    if call_refusal(getattr(wrapper, "foldforge_unsupported", "fallback"), "single_attention", "cuequivariance", why):
+        return None
+    from cuequivariance_torch import attention_pair_bias
+
+    layer_norm = attention.adaptive_layernorm.layer_norm
+    out = attention_pair_bias(
+        single,
+        pair,
+        None if mask is None else mask > 0,
+        attention.num_head,
+        layer_norm.weight,
+        layer_norm.bias,
+        attention.q_projection.weight,
+        attention.q_projection.bias,
+        attention.k_projection.weight,
+        attention.v_projection.weight,
+        attention.gating_query.weight,
+        attention.adaptive_zero_init.transition2.weight,
+        wrapper.projection.weight,
+        None,
+        None,
+        wrapper.norm.weight,
+        wrapper.norm.bias,
+        eps=layer_norm.eps,
+    )
+    return single + (out[0] if isinstance(out, tuple) else out)
+
+
+def anthropic_transition(module: nn.Module, x: torch.Tensor) -> torch.Tensor | None:
+    """``x + transition(x)`` from the release's Transition kernel (word ``v2``), None where it cannot take the call.
+
+    The release's selection raises ``Refusal`` by name for a shape it has no cell for; that is the reason logged.
+    """
+    from foldforge.modules.engine.backends import call_refusal
+
+    policy = getattr(module, "foldforge_unsupported", "fallback")
+    if not x.is_cuda or x.dtype != torch.bfloat16:
+        why = f"the release's kernels are bf16 on CUDA, got {x.dtype} on {x.device.type}"
+    elif torch.is_grad_enabled():
+        why = "the release's calls are inference-only (grad is enabled)"
+    else:
+        why = None
+    if call_refusal(policy, "transition", ANTHROPIC, why):
+        return None
+    from miniworld_engine.integrations import anthropic
+
+    norm = module.input_layer_norm
+    wa, wb = module.transition1.weight.chunk(2, dim=0)
+    parts = (wa, wb, module.transition2.weight, norm.weight, norm.bias)
+    key = (norm.eps, *((id(t), t._version, t.dtype, tuple(t.shape)) for t in parts))
+    cached = module.__dict__.get("_anthropic_transition")
+    if cached is None or cached[0] != key:
+        packed = anthropic.pack_transition(
+            w_a=wa.contiguous(), w_b=wb.contiguous(), w_o=module.transition2.weight,
+            ln_w=norm.weight, ln_b=norm.bias, eps=norm.eps,
+        )
+        cached = (key, packed)
+        object.__setattr__(module, "_anthropic_transition", cached)
+    unbatched = x.ndim < _BATCHED_PAIR_RANK
+    value = x.reshape(1, -1, x.shape[-1]) if unbatched else x
+    try:
+        out, _selection = anthropic.transition(value, cached[1], row="v2")
+    except Exception as error:  # the release refuses by name (opt_core ``Refusal``)
+        if type(error).__name__ != "Refusal":
+            raise
+        call_refusal(policy, "transition", ANTHROPIC, str(error))
+        return None
+    return out.reshape(x.shape) if unbatched else out
 
 
 def transition_residual(module: nn.Module, x: torch.Tensor) -> torch.Tensor:
     """Return the complete transition including its single residual."""
+    if getattr(module, "foldforge_implementation", None) == ANTHROPIC:
+        served = anthropic_transition(module, x)
+        if served is not None:
+            return served
     if not (enabled(module, x) or enabled_fp32(module, x)):
         return x + module(x)
     norm = module.input_layer_norm
@@ -136,7 +273,7 @@ def triangle_residual(
         getattr(module, "foldforge_implementation", None)
         == ImplementationType.CUEQUIVARIANCE
         and x.is_cuda
-        and x.shape[-1] % 32 == 0
+        and not cueq_refused(module, "trimul", x)
     )
     built = served_by(module, x)
     if getattr(module, "divide_by_length", False):

@@ -18,6 +18,7 @@ import torch
 from foldforge.models import entry
 from foldforge.models.checkpoints import DEFAULT_FILES, resolve
 from foldforge.models.msa_policy import RECORD
+from foldforge.modules.engine.backends import BACKENDS, BackendPlan
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
@@ -95,12 +96,16 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     precision_policy: str | None = None,
     mode: str = "fast",
     engine_skip: Collection[str] = (),
+    engine_ops: Mapping[str, str] | None = None,
+    unsupported: str = "fallback",
     dense_spec_override: Mapping[str, Any] | None = None,
 ) -> torch.nn.Module:
     """Strictly load weights, then apply the same declared inference contract.
 
     ``engine_skip`` (``engine.skip``) and ``dense_spec_override`` (``debug.dense_spec_override``) are the
-    config's debugging aids; both default to nothing.
+    config's debugging aids; both default to nothing. ``backend`` is the backend of every op, ``engine_ops``
+    (``engine.ops``) pins single ops to another one, and ``unsupported`` (``engine.unsupported``) says what an op
+    its backend has no kernel for does: ``fallback`` (the PyTorch reference, one log line) or ``error``.
     """
     from foldforge.models.config.runtime import reject_removed_environment
 
@@ -109,7 +114,7 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         backend = getattr(implementation, "value", implementation)
     if backend == "miniworld_engine":
         backend = "miniworld"
-    if backend not in {"miniworld", "pytorch", "cuequivariance"}:
+    if backend not in BACKENDS:
         message = f"Unknown backend: {backend}"
         raise ValueError(message)
     if precision_policy == "model_default":
@@ -123,6 +128,7 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         message = "af3_default requires a BF16 trunk"
         raise ValueError(message)
 
+    plan = BackendPlan.make(backend, engine_ops, unsupported).resolve(torch.device(device))
     spec = entry(name)
     if spec.architecture is None:
         raise NotImplementedError(name)
@@ -194,8 +200,9 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         model,
         dtype,
         device,
-        modules=backend == "miniworld" and torch.device(device).type == "cuda",
+        modules=plan.uses("miniworld", "anthropic") and torch.device(device).type == "cuda",
         skip=engine_skip,
+        plan=plan,
     )
     # The engine's FP32 kernels run on TF32 tensor cores: the diffusion head of af3_default takes them as its
     # atom blocks always have; everything else waits for ``execution.tf32`` (models.execution.Execution).
@@ -204,6 +211,7 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         clear_native_compute_override(model, dtype)
     report.update(
         backend=backend,
+        backends=plan.report(),
         parameter_dtype=str(dtype),
         device=str(device),
         msa_policy=RECORD,

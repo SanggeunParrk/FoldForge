@@ -132,6 +132,8 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         steps=args.steps,
         mode=args.mode,
         engine_skip=args.engine.skip,
+        engine_ops=args.engine.ops,
+        unsupported=args.engine.unsupported,
         dense_spec_override=args.debug.dense_spec_override,
     )
 

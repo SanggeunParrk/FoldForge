@@ -15,10 +15,24 @@ from miniworld_engine.modules.dispatch import restricted_card
 from torch import nn
 from torch.nn import functional as F
 
+from foldforge.modules.engine.backends import BACKENDS
 from foldforge.modules.engine.native_linear import NativeLinear
 from foldforge.modules.engine.routing import enabled
 
 _UNBATCHED_TOKEN_RANK = 2
+
+
+def implementation_of(backend: str) -> object:
+    """The ``foldforge_implementation`` a module carries for a backend name.
+
+    The engine's enum has no member for ``anthropic`` (its kernels are reached through adapters, never the
+    ``miniworld_engine.ops`` entry points that ``enabled`` guards), so that backend's name stays a string.
+    """
+    if backend == "miniworld":
+        return ImplementationType.MINIWORLD_ENGINE
+    if backend == "anthropic":
+        return backend
+    return ImplementationType(backend)
 
 
 class NativeLayerNorm(nn.Module):
@@ -38,11 +52,7 @@ class NativeLayerNorm(nn.Module):
         self.register_buffer(
             "zero_bias", torch.zeros(self.normalized_shape), persistent=False
         )
-        self.foldforge_implementation = (
-            ImplementationType.MINIWORLD_ENGINE
-            if backend == "miniworld"
-            else ImplementationType(backend)
-        )
+        self.foldforge_implementation = implementation_of(backend)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Normalize in FP32 and return the original activation dtype."""
@@ -86,7 +96,7 @@ def configure_model(
     device: str | torch.device = "cuda",
 ) -> nn.Module:
     """Set native parameter precision, preserving the exact norm values."""
-    if backend not in {"miniworld", "pytorch", "cuequivariance"}:
+    if backend not in BACKENDS:
         msg = f"Unknown backend: {backend}"
         raise ValueError(msg)
     if backend == "cuequivariance" and torch.device(device).type == "cuda":
@@ -137,11 +147,7 @@ def configure_model(
         if b is not None:
             n.bias.data = b.to(device)
     for module in model.modules():
-        module.foldforge_implementation = (
-            ImplementationType.MINIWORLD_ENGINE
-            if backend == "miniworld"
-            else ImplementationType(backend)
-        )
+        module.foldforge_implementation = implementation_of(backend)
     model.eval().requires_grad_(requires_grad=False)
     norm_ids = {id(p) for n in norms for p in n.parameters(recurse=False)}
     for name, param in model.named_parameters():

@@ -62,6 +62,43 @@ def _row_chunked_attention(
     return torch.concatenate(parts, dim=0)
 
 
+def anthropic_attention(module, q, k, v, bias, mask):
+    """The attention core on the Anthropic release's triangle-attention row ``k2b`` (the cuequivariance calling convention).
+
+    None when the release refuses the call (it raises ``Refusal`` by name, or the call needs a gradient): the caller then runs
+    the PyTorch reference, after one log line (``engine.unsupported: error`` raises instead).
+    """
+    from foldforge.modules.engine.backends import call_refusal
+
+    policy = getattr(module, "foldforge_unsupported", "fallback")
+    if call_refusal(
+        policy,
+        "triangle_attention",
+        "anthropic",
+        "the release's calls are inference-only (grad is enabled)" if torch.is_grad_enabled() else None,
+    ):
+        return None
+    from miniworld_engine.integrations import anthropic
+
+    vendor_mask = None if mask is None else mask[None, :, None, None, :].bool()
+    try:
+        out = anthropic.triangle_attention(
+            q[None].contiguous(),
+            k[None].contiguous(),
+            v[None].contiguous(),
+            bias[None, None].float().contiguous(),
+            vendor_mask,
+            module.qkv_dim**-0.5,
+            row="k2b",
+        )
+    except Exception as error:  # the release refuses by name (opt_core ``Refusal``)
+        if type(error).__name__ != "Refusal":
+            raise
+        call_refusal(policy, "triangle_attention", "anthropic", str(error))
+        return None
+    return out.squeeze(0)
+
+
 class GridSelfAttention(nn.Module):
     """Represent grid self attention."""
 
@@ -142,7 +179,11 @@ class GridSelfAttention(nn.Module):
                 raise TypeError(message)
             weighted_avg = vendor_output.squeeze(0)
         else:
-            weighted_avg = _row_chunked_attention(q, k, v, mask=mask, bias=bias)
+            weighted_avg = None
+            if getattr(self, "foldforge_implementation", None) == "anthropic" and q.is_cuda:
+                weighted_avg = anthropic_attention(self, q, k, v, bias, mask)
+            if weighted_avg is None:
+                weighted_avg = _row_chunked_attention(q, k, v, mask=mask, bias=bias)
 
         weighted_avg = einops.rearrange(weighted_avg, "b h n d -> b n (h d)")
 

@@ -5,10 +5,17 @@ from __future__ import annotations
 import os
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from foldforge.data.inputs.validation import validate_inference_seed
-
+from foldforge.modules.engine.backends import BACKENDS, validate_ops
 
 #: Environment variables that used to steer behaviour and are now config keys (or gone). Setting one is an
 #: error, not a silent no-op: the run would otherwise differ from what its environment says.
@@ -46,11 +53,21 @@ ENGINE_SKIP_KEYS = (
 
 
 class EngineConfig(BaseModel):
-    """What the miniworld-engine install touches (debugging aid; the default installs everything)."""
+    """What the engine install touches: the debugging ``skip`` and the per-op backend choice."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     #: Parts left dense (PyTorch) instead of engine-served; each is one of ``ENGINE_SKIP_KEYS``.
     skip: tuple[Literal[ENGINE_SKIP_KEYS], ...] = ()  # type: ignore[valid-type]
+    #: Ops that take another backend than ``Config.backend``: ``{op: backend}``, ops from ``backends.OPS``.
+    ops: dict[str, str] = Field(default_factory=dict)
+    #: An op the backend has no kernel for: ``fallback`` runs the PyTorch reference and logs one line, ``error`` raises.
+    unsupported: Literal["fallback", "error"] = "fallback"
+
+    @field_validator("ops")
+    @classmethod
+    def known_ops(cls, ops: dict[str, str]) -> dict[str, str]:
+        """Only known ops and backends."""
+        return validate_ops(ops)
 
 
 class DebugConfig(BaseModel):
@@ -140,7 +157,7 @@ class Config(BaseModel):
     """Execution policy is separate from target data and released weight layout."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    backend: Literal["miniworld", "pytorch", "cuequivariance"] = "miniworld"
+    backend: Literal[BACKENDS] = "miniworld"  # type: ignore[valid-type]
     precision: Literal["bf16", "fp32", "af3_default", "model_default"] = "bf16"
     trunk_seed: Annotated[int, BeforeValidator(validate_inference_seed)] = 0
     diffusion_seed: Annotated[int, BeforeValidator(validate_inference_seed)] = 0

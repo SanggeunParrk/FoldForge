@@ -12,10 +12,12 @@ from typing import Any
 
 import torch
 from miniworld_engine.architecture.blocks.pairformer import PairformerBlock
+from miniworld_engine.architecture.exceptions import ImplementationType
 from torch import nn
 
 from foldforge.modules.engine.modules import engine_of
 from foldforge.modules.engine.routing import (
+    cueq_single_attention,
     enabled,
     served_by,
     transition_residual,
@@ -103,6 +105,13 @@ class _SingleAttention(nn.Module):
         if built is not None and bias is None and enabled(self.attention, single):
             # The engine module owns the residual and reaches the hand-CUDA legs.
             return built(single, pair, None if mask is None else mask > 0)
+        if (
+            bias is None
+            and getattr(self.attention, "foldforge_implementation", None) == ImplementationType.CUEQUIVARIANCE
+        ):
+            served = cueq_single_attention(self, single, pair, mask)
+            if served is not None:
+                return served
         if single.shape[0] > 1:
             # B samples (the confidence head's diffusion samples) without an engine module.
             return torch.stack(

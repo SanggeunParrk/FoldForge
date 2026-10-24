@@ -138,7 +138,9 @@ def _set_eps(engine_module: nn.Module, eps: float) -> None:
             sub.eps = eps
 
 
-def triangle_multiplication(module: nn.Module, like: torch.Tensor) -> nn.Module | None:
+def triangle_multiplication(
+    module: nn.Module, like: torch.Tensor, implementation: ImplementationType = _ENGINE
+) -> nn.Module | None:
     """Engine TriMul from a dense ``TriangleMultiplication`` (None when it cannot serve it)."""
     d = module.c_pair
     # The hidden width may differ from the pair width (template stacks: pair 64,
@@ -153,7 +155,7 @@ def triangle_multiplication(module: nn.Module, like: torch.Tensor) -> nn.Module 
     gate = module.gate.weight.reshape(h, 2, d).transpose(0, 1)
     left, right = (0, 1) if outgoing else (1, 0)
     built = TriangleMultiplication(
-        d, d_hidden=h, outgoing=outgoing, implementation=_ENGINE, p_drop=0.0
+        d, d_hidden=h, outgoing=outgoing, implementation=implementation, p_drop=0.0
     )
     _copy(
         built,
@@ -237,7 +239,9 @@ def triangle_attention(module: nn.Module, like: torch.Tensor) -> nn.Module | Non
     return built
 
 
-def pair_weighted_averaging(module: nn.Module, like: torch.Tensor) -> nn.Module:
+def pair_weighted_averaging(
+    module: nn.Module, like: torch.Tensor, implementation: ImplementationType = _ENGINE
+) -> nn.Module:
     """Engine MSAPairWeightedAveraging from a dense ``MSAAttention``.
 
     The engine drops the pair LayerNorm offset: it adds one constant to every key's logit of a
@@ -248,7 +252,7 @@ def pair_weighted_averaging(module: nn.Module, like: torch.Tensor) -> nn.Module:
         module.c_pair,
         module.num_head,
         module.value_dim,
-        implementation=_ENGINE,
+        implementation=implementation,
         p_drop=0.0,
     )
     _copy(
@@ -269,7 +273,9 @@ def pair_weighted_averaging(module: nn.Module, like: torch.Tensor) -> nn.Module:
     return built
 
 
-def outer_product_mean(module: nn.Module, like: torch.Tensor) -> nn.Module | None:
+def outer_product_mean(
+    module: nn.Module, like: torch.Tensor, implementation: ImplementationType = _ENGINE
+) -> nn.Module | None:
     """Engine OuterProductMean from a dense ``OuterProductMean``.
 
     The engine always divides by ``clamp(count, 1)``; the released form divides by ``count + 1e-3``.
@@ -294,7 +300,7 @@ def outer_product_mean(module: nn.Module, like: torch.Tensor) -> nn.Module | Non
         module.num_output_channel,
         groups * channels,
         normalize_before_proj=module.bias_after_norm,
-        implementation=_ENGINE,
+        implementation=implementation,
         **variant,
     )
     sources = {
@@ -1016,13 +1022,67 @@ def single_attention(
     return built
 
 
-def install_engine_modules(
-    model: nn.Module, like: torch.Tensor, skip: Collection[str] = ()
+#: The ops whose engine module can run the Anthropic payload (``implementation="anthropic"``).
+_ANTHROPIC_MODULES = ("trimul", "opm", "msa_pwa")
+
+
+def gate_anthropic(built: nn.Module, op: str) -> None:
+    """Give an engine module built for the Anthropic payload the predicate that says whether a call fits it.
+
+    ``foldforge_refuses(x)`` is the engine's own non-raising ``refusal`` for the call (None when the payload serves it);
+    ``routing.served_by`` asks it before every call, so a shape the payload does not take runs the PyTorch reference
+    (one log line, or an error under ``engine.unsupported: error``) instead of raising inside the engine module.
+    """
+    from miniworld_engine.integrations import anthropic_msa, anthropic_trimul
+
+    built.foldforge_op = op
+    grad = torch.is_grad_enabled
+    if op == "trimul":
+        h = built.d_hidden
+        built.foldforge_plane_only = True
+
+        def refuses(x: torch.Tensor) -> str | None:
+            return anthropic_trimul.refusal(
+                x if x.ndim == _PAIR_BATCHED_RANK else x[None], x.shape[-1], h, grad=grad(), dropout=False
+            )
+
+    elif op == "opm":
+        dims = (built.to_left.weight.shape[0], built.to_out.weight.shape[0])
+
+        def refuses(x: torch.Tensor) -> str | None:
+            if not built.normalize_before_proj:
+                return "the release's epilogue adds the output bias after the division by the pair count; this stack adds it before"
+            return anthropic_msa.opm_refusal(x[None], *dims, grad=grad(), interchain=False)
+
+    else:
+        dims = (
+            built.to_value.weight.shape[1],
+            built.to_bias.weight.shape[1],
+            built.n_head,
+            built.to_value.weight.shape[0] // built.n_head,
+        )
+
+        def refuses(x: torch.Tensor) -> str | None:
+            return anthropic_msa.pwa_refusal(x[None], *dims, grad=grad(), dropout=False)
+
+    built.foldforge_refuses = refuses
+
+
+_PAIR_BATCHED_RANK = 4
+
+
+def install_engine_modules(  # noqa: PLR0915 - one flat table of module classes
+    model: nn.Module,
+    like: torch.Tensor,
+    skip: Collection[str] = (),
+    plan: object | None = None,
 ) -> dict[str, int]:
     """Attach an engine module to every dense module that has an exact one; return the counts.
 
     ``like`` carries the model's dtype and device; ``skip`` (``engine.skip`` of the config) names the ``engine_*`` count keys
-    whose modules stay dense. An FP32 model (``precision: fp32``) gets the diffusion
+    whose modules stay dense. ``plan`` (``backends.BackendPlan``) says which backend each op runs on: an op whose backend
+    is neither ``miniworld`` nor, for the ops with an Anthropic engine module, ``anthropic`` gets no engine module and
+    keeps the dense reference path (``None``: every op on ``miniworld``, the default). An FP32 model (``precision: fp32``) gets the diffusion
     transformers only: they are the modules with an FP32 engine kernel (TF32 tensor cores) on H100. The
     pair stack's modules (TriMul, triangle attention, outer product mean, pair weighted averaging, pair
     bias attention) have BF16 kernels only, and the variant stacks serve BF16; attaching them to an FP32
@@ -1041,6 +1101,16 @@ def install_engine_modules(
         "engine_atom_variant_blocks": 0,
     }
     skip = set(skip)
+
+    def implementation(op: str) -> ImplementationType | None:
+        """The engine implementation that builds ``op``'s module, None when the op's backend has none."""
+        backend = "miniworld" if plan is None else plan.of(op)
+        if backend == "miniworld":
+            return _ENGINE
+        if backend == "anthropic" and op in _ANTHROPIC_MODULES:
+            return ImplementationType.ANTHROPIC
+        return None
+
     for module in model.modules():
         name = type(module).__name__
         built: object | None = None
@@ -1048,19 +1118,31 @@ def install_engine_modules(
         if fp32_model and name not in _FP32_ENGINE_CLASSES:
             continue
         if name == "TriangleMultiplication":
-            built, key = triangle_multiplication(module, like), "engine_trimul"
+            impl = implementation("trimul")
+            built = None if impl is None else triangle_multiplication(module, like, impl)
+            key = "engine_trimul"
         elif name == "GridSelfAttention":
-            built, key = triangle_attention(module, like), "engine_triangle_attention"
+            miniworld = implementation("triangle_attention") is not None
+            built = triangle_attention(module, like) if miniworld else None
+            key = "engine_triangle_attention"
         elif name == "MSAAttention":
-            built, key = pair_weighted_averaging(module, like), "engine_msa_pwa"
+            impl = implementation("msa_pwa")
+            built = None if impl is None else pair_weighted_averaging(module, like, impl)
+            key = "engine_msa_pwa"
         elif name == "OuterProductMean" and hasattr(module, "left_projection"):
-            built, key = outer_product_mean(module, like), "engine_opm"
+            impl = implementation("opm")
+            built = None if impl is None else outer_product_mean(module, like, impl)
+            key = "engine_opm"
         elif name == "_SingleAttention":
-            built = single_attention(
-                module.attention, module.norm, module.projection, like
+            built = (
+                single_attention(module.attention, module.norm, module.projection, like)
+                if implementation("single_attention") is not None
+                else None
             )
             key = "engine_single_attention"
         elif name == "DiffusionCrossAttTransformer":
+            if implementation("atom_blocks") is None:
+                continue
             built = atom_blocks(module, like)
             key = "engine_atom_blocks"
             if built is None and not fp32_model:
@@ -1077,6 +1159,8 @@ def install_engine_modules(
                     )
             continue
         elif name == "DiffusionTransformer":
+            if implementation("dit_blocks") is None:
+                continue
             # the per-block engine DiTBlock serves a 384-wide conditioning only (ESMFold2's is 768, Boltz-2's too)
             built = (
                 diffusion_blocks(module, like)
@@ -1101,6 +1185,8 @@ def install_engine_modules(
         if built is not None and key not in skip:
             attach(module, built)
             counts[key] += 1
+            if getattr(built, "implementation", None) == ImplementationType.ANTHROPIC:
+                gate_anthropic(built, {"engine_trimul": "trimul", "engine_opm": "opm"}.get(key, "msa_pwa"))
     return counts
 
 

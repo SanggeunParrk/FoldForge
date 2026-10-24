@@ -715,15 +715,21 @@ def atom_variant_stack(module: nn.Module, like: torch.Tensor) -> nn.Module | Non
 
 
 def variant_serves(stack: nn.Module, *inputs: torch.Tensor | None) -> bool:
-    """Whether the engine's H100 inference kernels take this call; if not, the caller keeps the dense path."""
+    """Whether the engine takes this call (its H100 inference kernels, else its portable path); if not, the caller keeps the dense path.
+
+    The two questions are the engine's: ``interface.serves`` is the H100 CUDA path, ``serves_portable`` the one every
+    other card the engine has records for runs (it is False on H100 / B200 and, with an unrecorded card, after the
+    engine's own warning). The stack routes itself at the call, in the same order.
+    """
     from miniworld_engine.kernels.dit_variants import interface
+    from miniworld_engine.modules.dit_variant import serves_portable
 
     serves = (
         interface.atom_serves
         if isinstance(stack, AtomDiTVariantStack)
         else interface.serves
     )
-    return bool(serves(stack, *inputs))
+    return bool(serves(stack, *inputs) or serves_portable(stack, *inputs))
 
 
 def _eps_of(adaptive_norm: nn.Module) -> set[float | None]:

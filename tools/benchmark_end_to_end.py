@@ -20,6 +20,7 @@ import yaml
 
 from foldforge import paths
 from foldforge.models.io.paths import run_directory
+from foldforge.modules.engine.backends import BACKENDS
 
 MODES = {
     "pytorch_eager_fp32": ("pytorch", False, False, "fp32"),
@@ -59,7 +60,7 @@ def main() -> int:  # noqa: PLR0912 - complete benchmark scenario matrix
     execution.add_argument(
         "--backends",
         nargs="+",
-        choices=["pytorch", "miniworld", "cuequivariance"],
+        choices=BACKENDS,
         help="Legacy comparison: compile and CUDA graph enabled for every backend",
     )
     parser.add_argument("--targets", nargs="+", default=["3ptb", "4yx2"])

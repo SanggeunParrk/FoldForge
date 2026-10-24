@@ -13,12 +13,14 @@ from foldforge.modules.engine.configure import configure_model
 from foldforge.modules.engine.routing import triangle_residual
 
 
-@pytest.mark.parametrize("backend", ["pytorch", "cuequivariance", "miniworld"])
+@pytest.mark.parametrize("backend", ["pytorch", "cuequivariance", "miniworld", "anthropic"])
 def test_backend_reaches_the_executed_operator(backend):
     """The requested backend reaches the layer, not only the config object."""
     expected = (
         ImplementationType.MINIWORLD_ENGINE
         if backend == "miniworld"
+        else backend  # the engine's enum has no member for anthropic: its name stays a string
+        if backend == "anthropic"
         else ImplementationType(backend)
     )
     assert Config(backend=backend).backend == backend

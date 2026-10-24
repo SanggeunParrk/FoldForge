@@ -34,6 +34,9 @@ from foldforge import load
 model = load("protenix2", backend="miniworld", dtype=torch.bfloat16, device="cuda")
 ```
 
+`backend` is `miniworld` (the default), `cuequivariance`, `anthropic` or `pytorch`; single ops can be pinned to another
+one with `engine.ops`. What each backend serves and how to compare them: [docs/guides/BACKENDS.md](docs/guides/BACKENDS.md).
+
 ## Where this sits
 
 FoldForge is a **terminal** repo on top of one dependency, miniworld-engine

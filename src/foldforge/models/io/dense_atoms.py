@@ -131,6 +131,8 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         samples=args.samples,
         steps=args.steps,
         mode=args.mode,
+        engine_skip=args.engine.skip,
+        dense_spec_override=args.debug.dense_spec_override,
     )
 
     runtime.bind(model)

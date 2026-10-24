@@ -2,7 +2,9 @@
 
 from foldforge.models.config.runtime import (
     Config,
+    DebugConfig,
     DiffusionConfig,
+    EngineConfig,
     ExecutionConfig,
     OutputConfig,
     TrunkConfig,
@@ -10,7 +12,9 @@ from foldforge.models.config.runtime import (
 
 __all__ = [
     "Config",
+    "DebugConfig",
     "DiffusionConfig",
+    "EngineConfig",
     "ExecutionConfig",
     "OutputConfig",
     "TrunkConfig",

@@ -2,11 +2,64 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+import os
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 from foldforge.data.inputs.validation import validate_inference_seed
+
+
+#: Environment variables that used to steer behaviour and are now config keys (or gone). Setting one is an
+#: error, not a silent no-op: the run would otherwise differ from what its environment says.
+REMOVED_ENVIRONMENT = {
+    "FF_ENGINE_SKIP": "set `engine.skip` in the config (docs/guides/CONFIG.md)",
+    "FF_TRUNK_BF16": "removed: the experiment is concluded (af3_default keeps the released dtypes)",
+    "FOLDFORGE_DENSE_SPEC_OVERRIDE": "set `debug.dense_spec_override` in the config (docs/guides/CONFIG.md)",
+    "FOLDFORGE_CONFIDENCE_SAMPLE_CHUNK": "set `execution.confidence_sample_chunk` in the config (docs/guides/CONFIG.md)",
+}
+
+
+def reject_removed_environment() -> None:
+    """Raise when an environment variable that used to change behaviour is still set."""
+    stale = {name: hint for name, hint in REMOVED_ENVIRONMENT.items() if name in os.environ}
+    if stale:
+        lines = "; ".join(f"{name}: {hint}" for name, hint in stale.items())
+        message = f"environment variables no longer read -- {lines}"
+        raise RuntimeError(message)
+
+
+#: Parts of the engine install that ``engine.skip`` can leave dense (the keys of the load report's counts).
+ENGINE_SKIP_KEYS = (
+    "pairformers",
+    "conditioning",
+    "engine_trimul",
+    "engine_triangle_attention",
+    "engine_msa_pwa",
+    "engine_opm",
+    "engine_dit_blocks",
+    "engine_single_attention",
+    "engine_atom_blocks",
+    "engine_dit_variant_blocks",
+    "engine_atom_variant_blocks",
+)
+
+
+class EngineConfig(BaseModel):
+    """What the miniworld-engine install touches (debugging aid; the default installs everything)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    #: Parts left dense (PyTorch) instead of engine-served; each is one of ``ENGINE_SKIP_KEYS``.
+    skip: tuple[Literal[ENGINE_SKIP_KEYS], ...] = ()  # type: ignore[valid-type]
+
+
+class DebugConfig(BaseModel):
+    """Porting aids; empty by default."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    #: ``DenseSpec`` fields replaced after the family's spec is chosen, to price one forward
+    #: convention at a time. Fields that change a parameter shape make the strict load fail loudly.
+    dense_spec_override: dict[str, Any] | None = None
 
 
 class TrunkConfig(BaseModel):
@@ -49,6 +102,9 @@ class ExecutionConfig(BaseModel):
         "distogram_head",
     )
     benchmark_repeats: int = Field(default=0, ge=0, le=20)
+    # Samples per confidence-head call; None = the head's own rule (all while their pair stream is small,
+    # one per call at large token counts; ConfidenceHead.sample_chunk). 1 is the sequential path.
+    confidence_sample_chunk: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def graph_boundary(self) -> ExecutionConfig:
@@ -92,6 +148,8 @@ class Config(BaseModel):
     diffusion: DiffusionConfig = Field(default_factory=DiffusionConfig)
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
+    engine: EngineConfig = Field(default_factory=EngineConfig)
+    debug: DebugConfig = Field(default_factory=DebugConfig)
     #: "fast" folds with AF3's computation wherever a release's own folds the
     #: same; "exact" keeps every release convention (DenseSpec.EXACT_CONVENTIONS).
     mode: Literal["fast", "exact"] = "fast"
@@ -100,6 +158,7 @@ class Config(BaseModel):
     @classmethod
     def legacy_seed(cls, values: object) -> object:
         """Translate old seed-only configs without ambiguous mixed policies."""
+        reject_removed_environment()
         if isinstance(values, dict) and "variant" in values:
             message = (
                 "`variant` is gone: each release is its own model "

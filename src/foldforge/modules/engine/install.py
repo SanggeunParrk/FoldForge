@@ -17,6 +17,8 @@ from foldforge.modules.engine.modules import install_engine_modules
 from foldforge.modules.engine.pairformer import install_pairformers
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
+
     from torch import nn
 
 
@@ -39,19 +41,26 @@ def skip_engine_init():
 
 
 def install_engine(
-    model: nn.Module, dtype: torch.dtype, device: str | torch.device, *, modules: bool
+    model: nn.Module,
+    dtype: torch.dtype,
+    device: str | torch.device,
+    *,
+    modules: bool,
+    skip: Collection[str] = (),
 ) -> nn.Module:
-    """Wrap the pairformers, attach the engine modules (``modules``), convert the conditioning blocks."""
-    import os  # FF_ENGINE_SKIP (debugging): comma list of pairformers, conditioning and engine_* module keys left dense
+    """Wrap the pairformers, attach the engine modules (``modules``), convert the conditioning blocks.
 
-    skip = set(filter(None, os.environ.get("FF_ENGINE_SKIP", "").split(",")))
+    ``skip`` (``engine.skip`` of the config, a debugging aid) lists the parts left dense: ``pairformers``,
+    ``conditioning`` and the ``engine_*`` module keys.
+    """
+    skip = set(skip)
     with skip_engine_init():
         if "pairformers" not in skip:
             model = install_pairformers(model)
         if modules:
             model.foldforge_load_report.update(
                 install_engine_modules(
-                    model, torch.empty(0, dtype=dtype, device=device)
+                    model, torch.empty(0, dtype=dtype, device=device), skip
                 )
             )
         return model if "conditioning" in skip else install_conditioning(model)

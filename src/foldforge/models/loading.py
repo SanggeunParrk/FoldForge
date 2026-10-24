@@ -9,16 +9,18 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import os
 from importlib import import_module
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import torch
 
 from foldforge.models import entry
 from foldforge.models.checkpoints import DEFAULT_FILES, resolve
 from foldforge.models.msa_policy import RECORD
+
+if TYPE_CHECKING:
+    from collections.abc import Collection, Mapping
 
 
 def clear_native_compute_override(model: Any, dtype: Any) -> None:
@@ -92,8 +94,17 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     implementation: str | None = None,
     precision_policy: str | None = None,
     mode: str = "fast",
+    engine_skip: Collection[str] = (),
+    dense_spec_override: Mapping[str, Any] | None = None,
 ) -> torch.nn.Module:
-    """Strictly load weights, then apply the same declared inference contract."""
+    """Strictly load weights, then apply the same declared inference contract.
+
+    ``engine_skip`` (``engine.skip``) and ``dense_spec_override`` (``debug.dense_spec_override``) are the
+    config's debugging aids; both default to nothing.
+    """
+    from foldforge.models.config.runtime import reject_removed_environment
+
+    reject_removed_environment()
     if implementation is not None:
         backend = getattr(implementation, "value", implementation)
     if backend == "miniworld_engine":
@@ -133,12 +144,11 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     from foldforge.modules.dense.spec import spec_for
 
     dense_spec = spec_for(family or "alphafold3", mode)
-    override = os.environ.get("FOLDFORGE_DENSE_SPEC_OVERRIDE")
-    if override:
+    if dense_spec_override:
         # Porting aid: flip forward conventions of a family to price each one.
         # Fields that change a parameter shape make the strict load fail loudly.
-        dense_spec = dataclasses.replace(dense_spec, **json.loads(override))
-        report["dense_spec_override"] = override
+        dense_spec = dataclasses.replace(dense_spec, **dense_spec_override)
+        report["dense_spec_override"] = json.dumps(dense_spec_override)
     model = architecture(
         num_recycles=recycles,
         num_samples=samples,
@@ -171,23 +181,6 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         model = configure_model(model, backend, torch.float32, device)
         for parameter in model.parameters():
             parameter.data = parameter.data.to(released_dtypes[id(parameter)])
-        if os.environ.get("FF_TRUNK_BF16") == "1":
-            # Experiment: AF3's mixed policy on a release that is fp32 throughout -- every parameter outside the
-            # diffusion head (norm weights aside) in bf16, so the engine serves the trunk; the diffusion head keeps fp32.
-            diffusion = {id(p) for p in model.diffusion_head.parameters()}
-            norms = {
-                id(p)
-                for m in model.modules()
-                if "LayerNorm" in type(m).__name__
-                for p in m.parameters(recurse=False)
-            }
-            for parameter in model.parameters():
-                if (
-                    id(parameter) not in diffusion
-                    and id(parameter) not in norms
-                    and parameter.dtype == torch.float32
-                ):
-                    parameter.data = parameter.data.to(torch.bfloat16)
     else:
         model = configure_model(model, backend, dtype, device)
     # Noise Fourier features stay FP32 whatever the parameter dtype.
@@ -202,6 +195,7 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         dtype,
         device,
         modules=backend == "miniworld" and torch.device(device).type == "cuda",
+        skip=engine_skip,
     )
     # The engine's FP32 kernels run on TF32 tensor cores: the diffusion head of af3_default takes them as its
     # atom blocks always have; everything else waits for ``execution.tf32`` (models.execution.Execution).

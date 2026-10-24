@@ -338,6 +338,9 @@ class Execution:
             diffusion_tf32=bool(getattr(model, "reference_precision", False)),
         )
         self.autocast_scopes = getattr(model, "reference_autocast_scopes", [])
+        head = getattr(model, "confidence_head", None)
+        if head is not None and hasattr(head, "sample_chunk_override"):
+            head.sample_chunk_override = config.confidence_sample_chunk
         self.config = config
         self.wrappers = []
         self.sampler_scope = None

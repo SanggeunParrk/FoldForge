@@ -100,6 +100,22 @@ def test_triangle_multiplication(length, outgoing):
     )
 
 
+def test_engine_skip_leaves_the_module_dense():
+    """``engine.skip`` of the config: the named engine_* key counts its module but attaches nothing."""
+    from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
+
+    torch.manual_seed(1)
+    layer = randomize(TriangleMultiplication(128, _outgoing=True))
+    engine = configure_model(copy.deepcopy(layer), "miniworld")
+    like = torch.empty(0, dtype=torch.bfloat16, device="cuda")
+    skipped = install_engine_modules(engine, like, skip=("engine_trimul",))
+    assert skipped["engine_trimul"] == 0
+    assert engine_of(engine) is None
+    served = install_engine_modules(engine, like)
+    assert served["engine_trimul"] == 1
+    assert engine_of(engine) is not None
+
+
 @pytest.mark.parametrize("outgoing", [True, False])
 def test_template_triangle_multiplication(outgoing):
     """Template stacks: pair 64, hidden 128 (the engine's d_hidden)."""

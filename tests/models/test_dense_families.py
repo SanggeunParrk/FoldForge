@@ -300,14 +300,13 @@ def test_chiral_gradient_is_the_dihedral_error_s_derivative():
     assert SPECS["rosettafold3"].atom_chiral_features
 
 
-def test_confidence_head_sample_chunk_rule(monkeypatch):
+def test_confidence_head_sample_chunk_rule():
     """Samples per head call: all while their pair stream is small, one at large token counts."""
     import torch
 
     from foldforge.modules.dense.head import ConfidenceHead
     from foldforge.modules.dense.spec import SPECS
 
-    monkeypatch.delenv("FOLDFORGE_CONFIDENCE_SAMPLE_CHUNK", raising=False)
     head = ConfidenceHead(n_pairformer_layers=1).to(torch.bfloat16)
     assert [head.sample_chunk(5, n) for n in (128, 512, 768, 1024, 2048)] == [
         5,
@@ -317,12 +316,12 @@ def test_confidence_head_sample_chunk_rule(monkeypatch):
         1,
     ]
     assert head.sample_chunk(1, 128) == 1
-    monkeypatch.setenv("FOLDFORGE_CONFIDENCE_SAMPLE_CHUNK", "1")  # the sequential path
+    head.sample_chunk_override = 1  # the sequential path (execution.confidence_sample_chunk)
     assert head.sample_chunk(5, 128) == 1
-    monkeypatch.setenv("FOLDFORGE_CONFIDENCE_SAMPLE_CHUNK", "3")
+    head.sample_chunk_override = 3
     assert head.sample_chunk(5, 2048) == 3
     assert head.sample_chunk(2, 2048) == 2
-    monkeypatch.delenv("FOLDFORGE_CONFIDENCE_SAMPLE_CHUNK")
+    head.sample_chunk_override = None
     # A head that re-embeds the pair from the inputs stays on one sample per call.
     boltz = ConfidenceHead(
         c_single=SPECS["boltz2"].seq_channel,

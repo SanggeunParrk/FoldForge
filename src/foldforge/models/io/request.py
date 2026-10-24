@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING
 
 from foldforge.data.inputs.validation import validate_inference_seed
 from foldforge.models import is_dense, registered_models
-from foldforge.models.config import ExecutionConfig, OutputConfig
+from foldforge.models.config import (
+    DebugConfig,
+    EngineConfig,
+    ExecutionConfig,
+    OutputConfig,
+)
 from foldforge.models.io.paths import run_directory
 from foldforge.models.msa_policy import PREPARED_ROWS
 
@@ -38,6 +43,8 @@ class Request:
     guidance: bool | None = None
     mode: str = "fast"
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
+    engine: EngineConfig = field(default_factory=EngineConfig)
+    debug: DebugConfig = field(default_factory=DebugConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     target: str = "1ubq"
 

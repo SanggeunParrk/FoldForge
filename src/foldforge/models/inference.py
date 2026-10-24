@@ -152,5 +152,7 @@ def run(model: str, argv: list[str]) -> int:
             mode=config.mode,
             execution=config.execution,
             output=config.output,
+            engine=config.engine,
+            debug=config.debug,
         )
     )

@@ -44,6 +44,8 @@ from miniworld_engine.modules.exceptions import ImplementationType
 from miniworld_engine.modules.local_dit import LocalDiTBlock
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
+
     from torch import nn
 
 _ENGINE = ImplementationType.MINIWORLD
@@ -1014,10 +1016,13 @@ def single_attention(
     return built
 
 
-def install_engine_modules(model: nn.Module, like: torch.Tensor) -> dict[str, int]:
+def install_engine_modules(
+    model: nn.Module, like: torch.Tensor, skip: Collection[str] = ()
+) -> dict[str, int]:
     """Attach an engine module to every dense module that has an exact one; return the counts.
 
-    ``like`` carries the model's dtype and device. An FP32 model (``precision: fp32``) gets the diffusion
+    ``like`` carries the model's dtype and device; ``skip`` (``engine.skip`` of the config) names the ``engine_*`` count keys
+    whose modules stay dense. An FP32 model (``precision: fp32``) gets the diffusion
     transformers only: they are the modules with an FP32 engine kernel (TF32 tensor cores) on H100. The
     pair stack's modules (TriMul, triangle attention, outer product mean, pair weighted averaging, pair
     bias attention) have BF16 kernels only, and the variant stacks serve BF16; attaching them to an FP32
@@ -1035,9 +1040,7 @@ def install_engine_modules(model: nn.Module, like: torch.Tensor) -> dict[str, in
         "engine_dit_variant_blocks": 0,
         "engine_atom_variant_blocks": 0,
     }
-    import os  # FF_ENGINE_SKIP (debugging): engine_* keys whose modules stay dense
-
-    skip = set(filter(None, os.environ.get("FF_ENGINE_SKIP", "").split(",")))
+    skip = set(skip)
     for module in model.modules():
         name = type(module).__name__
         built: object | None = None

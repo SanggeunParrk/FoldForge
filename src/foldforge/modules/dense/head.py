@@ -10,7 +10,6 @@
 # https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md
 
 
-import os
 
 import einops
 import torch
@@ -274,6 +273,8 @@ class ConfidenceHead(nn.Module):
         #: they norm their input are stated separately: ESMFold2 takes this
         #: embedding and does neither.
         self.reembed_pair = spec.confidence_reembed_pair
+        #: ``execution.confidence_sample_chunk`` of the config: samples per call, None = the rule below
+        self.sample_chunk_override: int | None = None
         self.split_heads = spec.confidence_split_heads
         self.pde_symmetrise = spec.pde_symmetrise
 
@@ -588,9 +589,8 @@ class ConfidenceHead(nn.Module):
         A function of the token count only, so it is deterministic. ``1`` is the sequential
         path; a head that re-embeds its pair or pools its single from the pair stays on it.
         """
-        override = os.environ.get("FOLDFORGE_CONFIDENCE_SAMPLE_CHUNK")
-        if override:
-            return max(1, min(num_samples, int(override)))
+        if self.sample_chunk_override is not None:
+            return max(1, min(num_samples, self.sample_chunk_override))
         if self.reembed_pair or self.row_pool_attn is not None:
             return 1
         itemsize = self.left_half_distance_logits.weight.element_size()

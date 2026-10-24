@@ -683,3 +683,14 @@ def test_converted_esmfold2_columns_are_reordered_onto_their_bases():
     nucleic = _ESM_CLASS_OF_AF3[22:]
     assert model.evoformer.left_single.weight[0, 22:31].tolist() == nucleic
     assert model.evoformer.msa_activations.weight[0, 22:31].tolist() == nucleic
+
+
+def test_nucleic_order_is_sliced_not_indexed():
+    """The runs spell the same order as the tuple (a list index is a host copy)."""
+    from foldforge.modules.dense.featurization import (
+        _NUCLEIC_RUNS,
+        AF3_NUCLEIC_IN_ESM_ORDER,
+    )
+
+    flat = tuple(i for start, stop in _NUCLEIC_RUNS for i in range(start, stop))
+    assert flat == AF3_NUCLEIC_IN_ESM_ORDER

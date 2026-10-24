@@ -36,7 +36,7 @@ foldforge checkpoints verify
 
 | `--model` | release file (sha256, first 12) | output under `$FOLDFORGE_HOME/checkpoints/` | reproduces |
 |---|---|---|---|
-| `esmfold2` | `biohub/ESMFold2` `model.safetensors` (HF) | `esmfold2/esmfold2.bin.zst` + `.lm.npz` | bit-identical |
+| `esmfold2` | `biohub/ESMFold2` `model.safetensors` (HF), **revision `8fc3ff4710`** (sha256 `138fd435...`, 939,505,228 bytes) | `esmfold2/esmfold2.bin.zst` + `.lm.npz` | bit-identical |
 | `esmfold2_fast` | `biohub/ESMFold2-Fast` `model.safetensors` (`60ca19f28981`) | `esmfold2-fast/esmfold2_fast.bin.zst` + `.lm.npz` | bit-identical |
 | `opendde` | `opendde.pt` from the OpenDDE release bucket (`7b826620390a`) | `opendde/opendde.bin.zst` | bit-identical |
 | `rosettafold3` | `rf3_foundry_01_24_latest_remapped.ckpt` (`364ef592fd80`) | `rosettafold3/rosettafold3.bin.zst` | bit-identical |
@@ -49,7 +49,14 @@ foldforge checkpoints verify
 | `protenix1` | `protenix_base_default_v1.0.0.pt` (`2b7d5a8b3049`) | `protenix/protenix1.bin.zst` | needs the reference's JAX environment (its guard imports haiku) |
 | AF3 | DeepMind's `af3.bin.zst`, on request | `af3/af3.bin.zst` | the release file itself |
 
-ESM-C 6B (`biohub/ESMC-6B`) is read directly from its release directory
+**Pin the Hugging Face revisions.** On 2026-09-14 `biohub/ESMFold2` and `biohub/ESMC-6B` were both restructured (the single
+`model.safetensors` was removed from `ESMFold2`'s HEAD; the key names changed in both). The converter and the vendored `ESMCModel`
+read the old layout: ESM-C `esmc.embed.weight` / `esmc.transformer.blocks.N.attn...` (revision `45b0fa5d7f`, 2026-06-03; HEAD has
+`esmc.embed_tokens.weight` / `esmc.layers.N.input_layernorm...`), ESMFold2 `z_init_1.weight` and friends (revision `8fc3ff4710`).
+With HEAD's ESM-C nothing matches, the language model keeps uninitialised weights, its hidden states are all NaN and every ESMFold2
+fold ends with `non-finite AF3 coordinates`; with HEAD's ESMFold2 the converter stops at `KeyError: 'z_init_1.weight'`.
+
+ESM-C 6B (`biohub/ESMC-6B`, revision `45b0fa5d7f`) is read directly from its release directory
 `$FOLDFORGE_HOME/checkpoints/esmc-6b/`; do not rely on the Hugging Face cache copy (see
 `docs/bug-reports/esmfold2-hf-esmc-random-weights.md`).
 

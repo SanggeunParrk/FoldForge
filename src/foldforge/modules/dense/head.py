@@ -10,8 +10,11 @@
 # https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md
 
 
+import os
+
 import einops
 import torch
+from foldforge.utils.device_constants import built_on_device
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -429,8 +432,10 @@ class ConfidenceHead(nn.Module):
 
         if self.spec.confidence_centre_dgram:
             # Token-centre (CA, dense atom 1) distances over 39 edges from 3.25 A.
-            ca = dense_atom_positions[:, 1, :]
-            distance = ((ca[:, None] - ca[None]).square().sum(-1) + 1e-10).sqrt()
+            ca = dense_atom_positions[..., 1, :]
+            distance = (
+                (ca[..., :, None, :] - ca[..., None, :, :]).square().sum(-1) + 1e-10
+            ).sqrt()
             edges = torch.arange(39, device=ca.device) * ((50.75 - 3.25) / 39.0) + 3.25
             dgram = torch.nn.functional.one_hot(
                 (distance[..., None] > edges).sum(-1), 40
@@ -440,7 +445,10 @@ class ConfidenceHead(nn.Module):
             # and NOT masked: the family that trained this does not mask it.
             low, high, classes = self.confidence_dgram
             distance = (
-                (positions[:, None] - positions[None]).square().sum(-1) + 1e-10
+                (positions[..., :, None, :] - positions[..., None, :, :])
+                .square()
+                .sum(-1)
+                + 1e-10
             ).sqrt()
             edges = torch.linspace(
                 low, high, classes - 1, device=positions.device, dtype=distance.dtype
@@ -455,16 +463,21 @@ class ConfidenceHead(nn.Module):
 
         dgram *= pair_mask[..., None]
 
-        out += self.distogram_feat_project(dgram)
+        projected = self.distogram_feat_project(dgram)
+        # [L, L, C] base plus a per-sample term: broadcast to [S, L, L, C] when batched.
+        out = out.add_(projected) if projected.ndim == out.ndim else out + projected
         if self.spec.confidence_raw_distance:
             distance = (
-                (positions[:, None] - positions[None]).square().sum(-1) + 1e-10
+                (positions[..., :, None, :] - positions[..., None, :, :])
+                .square()
+                .sum(-1)
+                + 1e-10
             ).sqrt()
             out = out + self.distance_feat_project(distance[..., None].to(out.dtype))
 
         return out
 
-    def forward(  # noqa: PLR0915 - one head sequence per released variant
+    def forward(
         self,
         dense_atom_positions: torch.Tensor,
         embeddings: dict[str, torch.Tensor],
@@ -484,6 +497,15 @@ class ConfidenceHead(nn.Module):
         token_atoms_to_pseudo_beta (atom_layout.GatherInfo): Pseudo beta info for
             atom tokens.
         """
+        if dense_atom_positions.ndim == 4:
+            return self._forward_samples(
+                dense_atom_positions,
+                embeddings,
+                seq_mask,
+                token_atoms_to_pseudo_beta,
+                asym_id,
+                batch,
+            )
         dtype = self.left_half_distance_logits.weight.dtype
         if not self.reembed_pair:
             dtype = self.left_target_feat_project.weight.dtype
@@ -548,6 +570,109 @@ class ConfidenceHead(nn.Module):
                 torch.einsum("nm,nmd->nd", torch.softmax(scores, dim=-1), pair_act)
             )
 
+        return self._output_heads(
+            pair_act, single_act, seq_mask, pair_mask, asym_id, batch
+        )
+
+    #: Bytes of ``[S, L, L, c_pair]`` pair stream one chunk of samples may hold. Measured on
+    #: H100 (AF3, 5 samples): batching the samples is neutral-to-better only while the head is
+    #: launch-bound (L <= 512: 7 -> 3 ms at 128 tokens, 48 -> 44 ms at 512); at 1024 tokens
+    #: it is equal and at 2048 it is 2% slower with +7.7 GB peak, so the cap keeps the large
+    #: sizes on one sample per call.
+    SAMPLE_CHUNK_PAIR_BYTES = 384 << 20
+
+    def sample_chunk(self, num_samples: int, num_tokens: int) -> int:
+        """Samples per call: all of them while their ``[S, L, L, c_pair]`` stream stays under
+        ``SAMPLE_CHUNK_PAIR_BYTES``, else the largest count that does (at least one).
+
+        A function of the token count only, so it is deterministic. ``1`` is the sequential
+        path; a head that re-embeds its pair or pools its single from the pair stays on it.
+        """
+        override = os.environ.get("FOLDFORGE_CONFIDENCE_SAMPLE_CHUNK")
+        if override:
+            return max(1, min(num_samples, int(override)))
+        if self.reembed_pair or self.row_pool_attn is not None:
+            return 1
+        itemsize = self.left_half_distance_logits.weight.element_size()
+        per_sample = num_tokens * num_tokens * self.c_pair * itemsize
+        return max(1, min(num_samples, self.SAMPLE_CHUNK_PAIR_BYTES // per_sample))
+
+    def _forward_samples(
+        self,
+        dense_atom_positions: torch.Tensor,
+        embeddings: dict[str, torch.Tensor],
+        seq_mask: torch.Tensor,
+        token_atoms_to_pseudo_beta: atom_layout.GatherInfo,
+        asym_id: torch.Tensor,
+        batch: feat_batch.Batch | None,
+    ) -> dict[str, torch.Tensor]:
+        """S diffusion samples of one fold as one batch: positions ``[S, N_token, N_atom, 3]``.
+
+        Only the distance embedding depends on the sample. The trunk pair and single, the
+        target features, the masks and the global norms are computed once and broadcast; the
+        pairformer stack and the output heads run with S as the leading axis. Outputs carry the
+        leading S axis (equal to stacking S ``forward`` calls).
+        """
+        if self.reembed_pair or self.row_pool_attn is not None:
+            outputs = [
+                type(self).forward(
+                    self, sample, embeddings, seq_mask, token_atoms_to_pseudo_beta, asym_id, batch
+                )
+                for sample in dense_atom_positions
+            ]
+            return {key: torch.stack([o[key] for o in outputs]) for key in outputs[0]}
+        count = dense_atom_positions.shape[0]
+        dtype = self.left_target_feat_project.weight.dtype
+        seq_mask_cast = seq_mask.to(dtype=dtype)
+        pair_mask = (seq_mask_cast[:, None] * seq_mask_cast[None, :]).to(dtype=dtype)
+
+        pair_act = embeddings["pair"].to(dtype=dtype)
+        single_act = embeddings["single"].to(dtype=dtype)
+        target_feat = embeddings["target_feat"].to(dtype=dtype)
+        if self.spec.confidence_global_norm:
+            real = seq_mask.bool()
+            pair_act = masked_global_norm(pair_act, real[:, None] & real[None])
+            single_act = masked_global_norm(single_act, real)
+            target_feat = masked_global_norm(target_feat, real, width=449)
+        if self.spec.confidence_single_clamp:
+            single_act = self.input_single_norm(single_act.clamp(-512.0, 512.0))
+
+        # [S, L, L, C]: the sample-independent trunk pair joins the per-sample distance term.
+        summed = self._embed_features(
+            dense_atom_positions, token_atoms_to_pseudo_beta, pair_mask, target_feat
+        ).add_(pair_act)
+        # The sequential path adds into a pair of the head's dtype; round the same way.
+        pair_act = summed.to(dtype)
+        del summed
+        single_act = single_act[None].repeat(count, 1, 1)
+
+        for layer in self.confidence_pairformer:
+            if getattr(layer, "supports_sample_batch", False):
+                pair_act, single_act = layer(pair_act, pair_mask, single_act, seq_mask)
+            else:
+                pairs, singles = zip(
+                    *(
+                        layer(pair_act[i], pair_mask, single_act[i], seq_mask)
+                        for i in range(count)
+                    ),
+                    strict=True,
+                )
+                pair_act, single_act = torch.stack(pairs), torch.stack(singles)
+        return self._output_heads(
+            pair_act, single_act, seq_mask, pair_mask, asym_id, batch
+        )
+
+    def _output_heads(
+        self,
+        pair_act: torch.Tensor,
+        single_act: torch.Tensor,
+        seq_mask: torch.Tensor,
+        pair_mask: torch.Tensor,
+        asym_id: torch.Tensor,
+        batch: feat_batch.Batch | None,
+    ) -> dict[str, torch.Tensor]:
+        """pLDDT / PAE / PDE / resolved heads; every op is over the trailing axes, so a
+        leading sample axis ``[S, ...]`` on the activations passes through unchanged."""
         pair_act = pair_act.to(self.left_half_distance_logits.weight.dtype)
         single_act = single_act.to(self.plddt_logits.weight.dtype)
 
@@ -680,10 +805,14 @@ class ConfidenceHead(nn.Module):
             message = "Gathering pLDDT by atom name needs the batch's atom names"
             raise ValueError(message)
         names = batch.ref_structure.atom_name_chars.to(torch.int64)
-        table = torch.tensor(
-            [[ord(c) - 32 for c in name.ljust(4)] for name in atom_types.ATOM37],
-            dtype=names.dtype,
-            device=names.device,
+        table = built_on_device(
+            "atom37_name_chars",
+            names.device,
+            lambda: torch.tensor(
+                [[ord(c) - 32 for c in name.ljust(4)] for name in atom_types.ATOM37],
+                dtype=names.dtype,
+                device=names.device,
+            ),
         )
         hit = (names[:, :, None, :] == table[None, None]).all(-1)
         # (n_token, dense slots) -> the canonical slot each one names.

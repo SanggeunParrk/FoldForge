@@ -6,6 +6,7 @@
   every render. Earlier reports: [4YX2, 2026-09-18](archive/benchmark-20260918-4yx2/benchmark_results.md)
   and [2026-09-16](archive/benchmark-20260916/benchmark_results.md).
 - [Code structure](guides/CODE-STRUCTURE.md): shared runtime and code ownership.
+- [Execution scopes](guides/EXECUTION-SCOPES.md): what `compile` and `cuda_graph` wrap (`denoiser`, `trunk`), the rules for captured code, and that ESM-C optimisation is out of scope (taken from Anthropic's kit).
 - [Input and database formats](guides/MINIWORLD-FORMAT.md): CCD, MSA-LMDB and template-LMDB.
 - [Data and evaluation](guides/DATA-AND-EVALUATION.md).
 - [Model integration](guides/MODEL-INTEGRATION.md) and [checkpoint variants](guides/CHECKPOINT-VARIANTS.md).

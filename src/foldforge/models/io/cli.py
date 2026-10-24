@@ -44,9 +44,9 @@ def parse(model: str, argv: list[str] | None = None) -> Request:
     parser.add_argument("--max-graphs", type=int, default=4)
     parser.add_argument("--compile", action="store_true")
     parser.add_argument("--cuda-graph", action="store_true")
-    parser.add_argument("--bucketing", action="store_true")
+    parser.add_argument("--bucketing", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(
-        "--execution-scope", choices=("denoiser", "model"), default="denoiser"
+        "--execution-scope", choices=("denoiser", "trunk", "model"), default="denoiser"
     )
     parser.add_argument("--benchmark-repeats", type=int, default=0)
     parser.add_argument("--input", type=Path, required=True)

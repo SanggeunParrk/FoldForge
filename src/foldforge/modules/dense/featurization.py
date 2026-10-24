@@ -379,6 +379,22 @@ _ESM_POLYMER_CLASSES = 33
 AF3_NUCLEIC_IN_ESM_ORDER = (22, 23, 24, 25, 30, 26, 27, 28, 29)
 
 
+def _contiguous_runs(indices: tuple[int, ...]) -> tuple[tuple[int, int], ...]:
+    """``indices`` as (start, stop) slices: a list index is a host-to-device copy, which a CUDA graph capture refuses."""
+    runs = []
+    start = previous = indices[0]
+    for index in indices[1:]:
+        if index != previous + 1:
+            runs.append((start, previous + 1))
+            start = index
+        previous = index
+    runs.append((start, previous + 1))
+    return tuple(runs)
+
+
+_NUCLEIC_RUNS = _contiguous_runs(AF3_NUCLEIC_IN_ESM_ORDER)
+
+
 def widen_to_esm_classes(features: torch.Tensor) -> torch.Tensor:
     """Re-lay a 31-class restype and profile pair out over ESMFold2's 33.
 
@@ -392,10 +408,10 @@ def widen_to_esm_classes(features: torch.Tensor) -> torch.Tensor:
     """
     n = _AF3_POLYMER_CLASSES
     zero = torch.zeros_like(features[..., :1])
-    nucleic = list(AF3_NUCLEIC_IN_ESM_ORDER)
 
     def widen(block: torch.Tensor) -> list[torch.Tensor]:
-        return [zero, block[..., 21:22], block[..., :21], block[..., nucleic], zero]
+        nucleic = torch.concatenate([block[..., a:b] for a, b in _NUCLEIC_RUNS], dim=-1)
+        return [zero, block[..., 21:22], block[..., :21], nucleic, zero]
 
     return torch.concatenate(
         [

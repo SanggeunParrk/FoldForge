@@ -48,6 +48,9 @@ def _plus_transition(transition: nn.Module, x: torch.Tensor) -> torch.Tensor:
 # Carefully measured by averaging multimer training set.
 SIGMA_DATA = 16.0
 
+#: Rows (steps x tokens) the batched conditioning of a whole trajectory passes through the transitions at once.
+MAX_TABLE_ROWS = 32768
+
 
 class FourierEmbeddings(nn.Module):
     """Represent fourier embeddings."""
@@ -146,6 +149,8 @@ class DiffusionHead(nn.Module):
             bias=spec.single_cond_projection_bias,
         )
 
+        self._fold = None
+        self._fold_epoch = 0
         self.c_noise_embedding = 256
         self.noise_embedding_initial_norm = nn.LayerNorm(
             self.c_noise_embedding, bias="noise_embedding_initial_norm" in affine
@@ -195,13 +200,17 @@ class DiffusionHead(nn.Module):
 
         self.fourier_embeddings = FourierEmbeddings(dim=256)
 
-    def _conditioning(
+    def _fold_conditioning(
         self,
         batch,
         embeddings: dict[str, torch.Tensor],
-        noise_level: torch.Tensor,
         use_conditioning: bool,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        """The pair conditioning and the noise-independent part of the single conditioning.
+
+        Both read only the trunk output and the batch, never the noise level or the coordinates,
+        so they are the same at every sampler step of a fold.
+        """
         # Official AF3 hands FP32 trunk embeddings to its FP32 denoiser.
         # Keep this boundary explicit when the trunk itself uses BF16.
         if self.single_cond_initial_projection.weight.dtype == torch.float32:
@@ -266,22 +275,63 @@ class DiffusionHead(nn.Module):
             features_1d,
         )
 
+        return single_cond, pair_cond
+
+    def _fold_atom_state(self, batch, embeddings, pair_cond):
+        """The atom encoder's fold-invariant part (atom conditioning, atom-pair activations, rotary tables)."""
+        return self.atom_cross_att_encoder.prepare(
+            batch,
+            trunk_single_cond=embeddings["single"],
+            trunk_pair_cond=pair_cond,
+        )
+
+    def _noise_term(self, noise_level: torch.Tensor) -> torch.Tensor:
+        """The noise-level embedding the single conditioning adds (one row per noise level)."""
         noise_embedding = self.fourier_embeddings(
             (1 / 4) * torch.log(noise_level / SIGMA_DATA)
         )
-
-        single_cond += layernorm_projection(
+        return layernorm_projection(
             self.noise_embedding_initial_norm,
             self.noise_embedding_initial_projection,
             noise_embedding,
         )
 
+    def _finish_single_conditioning(self, single_cond: torch.Tensor) -> torch.Tensor:
+        """The conditioning transitions (and the closing norm) over the fold's single plus the noise term."""
         single_cond = _plus_transition(self.single_transition_0, single_cond)
         single_cond = _plus_transition(self.single_transition_1, single_cond)
         if self.cond_final_norm:
             single_cond = self.single_cond_final_norm(single_cond)
+        return single_cond
 
-        return single_cond, pair_cond
+    def _complete_single_conditioning(
+        self, single_base: torch.Tensor, noise_level: torch.Tensor
+    ) -> torch.Tensor:
+        """Add the noise-level embedding to the fold's single conditioning (per step)."""
+        return self._finish_single_conditioning(
+            single_base + self._noise_term(noise_level)
+        )
+
+    def conditioning_table(
+        self,
+        batch: feat_batch.Batch,
+        embeddings: dict[str, torch.Tensor],
+        noise_levels: torch.Tensor,
+    ) -> torch.Tensor:
+        """The single conditioning of every step of a trajectory at once: ``[steps, *single_base.shape]``.
+
+        It depends on the fold and the noise level only, not on the iterate, so a sampler that knows its whole schedule makes it in
+        one batched pass instead of one small pass per step (``_step(..., single_cond=table[i])``).
+        """
+        single_base = self._conditioned(batch, embeddings, True)[0]
+        # The transitions widen every row 8x: bound the rows of one pass, not the length of the trajectory.
+        per_pass = max(1, MAX_TABLE_ROWS // max(1, single_base.numel() // single_base.shape[-1]))
+        rows = []
+        for levels in noise_levels.split(per_pass):
+            term = self._noise_term(levels)
+            term = term.reshape(term.shape[0], *(1,) * (single_base.ndim - 1), term.shape[-1])
+            rows.append(self._finish_single_conditioning(single_base[None] + term))
+        return rows[0] if len(rows) == 1 else torch.cat(rows)
 
     def forward(
         self,
@@ -290,14 +340,100 @@ class DiffusionHead(nn.Module):
         batch: feat_batch.Batch,
         embeddings: dict[str, torch.Tensor],
         use_conditioning: bool,
+        single_cond: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        # Get conditioning
-        """Compute the module output."""
-        trunk_single_cond, trunk_pair_cond = self._conditioning(
-            batch=batch,
-            embeddings=embeddings,
-            noise_level=noise_level,
-            use_conditioning=use_conditioning,
+        """Compute the module output (``single_cond``: this step's row of :meth:`conditioning_table`, else made here)."""
+        single_base, pair_cond, lite, epoch, key_mask, atom_state = self._conditioned(
+            batch, embeddings, use_conditioning
+        )
+        return self._step(
+            positions_noisy,
+            noise_level,
+            batch,
+            lite,
+            single_base,
+            pair_cond,
+            key_mask,
+            atom_state,
+            fold_epoch=epoch,
+            single_cond=single_cond,
+        )
+
+    def _conditioned(self, batch, embeddings, use_conditioning):
+        """The fold's conditioning, made once and reused by every step that reads the same trunk output.
+
+        The key is the identity and version of every trunk tensor (and the batch): a new fold has
+        new tensors, an in-place change bumps a version. The entry keeps its tensors alive, so an
+        address cannot be reused while the entry stands.
+        """
+        try:
+            key = (
+                id(batch),
+                bool(use_conditioning),
+                tuple(
+                    (name, id(value), value._version, tuple(value.shape))
+                    for name, value in sorted(embeddings.items())
+                ),
+            )
+        except RuntimeError:  # inference tensors carry no version counter
+            key = (
+                id(batch),
+                bool(use_conditioning),
+                tuple(
+                    (name, id(value), value.data_ptr(), tuple(value.shape))
+                    for name, value in sorted(embeddings.items())
+                ),
+            )
+        entry = self._fold
+        if entry is None or entry[0] != key:
+            single_base, pair_cond = self._fold_conditioning(
+                batch, embeddings, use_conditioning
+            )
+            lite = {
+                name: embeddings[name]
+                for name in ("single", "structural_pair_attn_bias")
+                if name in embeddings
+            }
+            self._fold_epoch += 1
+            # The key mask is one tensor for the whole fold: the engine keys its hoisted pair bias
+            # on its address, and a mask made inside the (compiled, captured) step is a new
+            # tensor at every call.
+            key_mask = (batch.token_features.mask > 0)[None]
+            atom_state = self._fold_atom_state(batch, embeddings, pair_cond)
+            entry = self._fold = (
+                key,
+                single_base,
+                pair_cond,
+                lite,
+                self._fold_epoch,
+                key_mask,
+                atom_state,
+                (batch, embeddings),
+            )
+        return entry[1], entry[2], entry[3], entry[4], entry[5], entry[6]
+
+    def _step(
+        self,
+        positions_noisy: torch.Tensor,
+        noise_level: torch.Tensor,
+        batch: feat_batch.Batch,
+        embeddings: dict[str, torch.Tensor],
+        single_base: torch.Tensor,
+        trunk_pair_cond: torch.Tensor,
+        key_mask: torch.Tensor,
+        atom_state,
+        fold_epoch: int = 0,
+        single_cond: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """One denoiser evaluation given the fold's conditioning (the part CUDA graphs capture).
+
+        ``fold_epoch`` only keys the graph: it changes when the conditioning was remade for another
+        fold, so a captured graph never outlives the tensors it was captured with.
+        """
+        trunk_single_cond = (
+            single_cond
+            if single_cond is not None
+            else self._complete_single_conditioning(single_base, noise_level)
         )
 
         # Extract features
@@ -309,12 +445,7 @@ class DiffusionHead(nn.Module):
             positions_noisy, noise_level, SIGMA_DATA, mask=atom_mask
         )
 
-        enc = self.atom_cross_att_encoder(
-            batch=batch,
-            token_atoms_act=act,
-            trunk_single_cond=embeddings["single"],
-            trunk_pair_cond=trunk_pair_cond,
-        )
+        enc = self.atom_cross_att_encoder.step(batch, act, atom_state)
         act = enc.token_act
 
         if self.single_cond_embedding_norm is None:
@@ -336,6 +467,7 @@ class DiffusionHead(nn.Module):
             # Present only on the structural-token path: the expander's own
             # statement of which token pairs belong together.
             extra_pair_bias=embeddings.get("structural_pair_attn_bias"),
+            key_mask=key_mask,
         )
         act = self.output_norm(act)
 

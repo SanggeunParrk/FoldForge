@@ -12,6 +12,7 @@
 from dataclasses import dataclass
 
 import torch
+from foldforge.utils.device_constants import on_device
 import torch.nn as nn
 
 from foldforge.data.constants import residue_names
@@ -142,17 +143,25 @@ class TemplateEmbedding(nn.Module):
         multichain_mask_2d: torch.Tensor,
     ) -> torch.Tensor:
         """Compute the module output."""
+        count = templates.aatype.shape[0]
+        embed = lambda index: self.single_template_embedding(  # noqa: E731
+            query_embedding, templates[index], padding_mask_2d, multichain_mask_2d
+        )
+        if count > 1 and self.single_template_embedding.supports_batch():
+            # One pair-stack call for all slots; the slots are still summed one by one below.
+            batched = self.single_template_embedding.forward_batch(
+                query_embedding, templates, count, padding_mask_2d, multichain_mask_2d
+            )
+            embed = lambda index: batched[index]  # noqa: E731
         return template_embedding_mean(
-            templates.aatype.shape[0],
-            embed=lambda index: self.single_template_embedding(
-                query_embedding, templates[index], padding_mask_2d, multichain_mask_2d
-            ),
+            count,
+            embed=embed,
             empty=query_embedding.new_zeros(
                 *query_embedding.shape[:-1], self.num_channels
             ),
             project=self.output_linear,
             present=(
-                (lambda index: bool(templates.atom_mask[index].any()))
+                (lambda index: templates.atom_mask[index].any())
                 if self.present_denominator
                 else None
             ),
@@ -283,8 +292,9 @@ class SingleTemplateEmbedding(nn.Module):
         # each of the other residues.
 
         template_group_indices = torch.take_along_dim(
-            protein_data_processing.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX.to(
-                device=templates.aatype.device
+            on_device(
+                protein_data_processing.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX,
+                templates.aatype.device,
             ),
             templates.aatype.to(dtype=torch.int64)[..., None, None],
             dim=0,
@@ -357,6 +367,42 @@ class SingleTemplateEmbedding(nn.Module):
             # A fused feature projection's bias; nine bias-free Linears summed
             # cannot express it, so it is added once here.
             act = act + self.template_feature_bias
+        return act
+
+    def supports_batch(self) -> bool:
+        """Whether every pair-stack block takes the template slots as one batch."""
+        return len(self.template_embedding_iteration) > 0 and all(
+            getattr(block, "supports_template_batch", False)
+            for block in self.template_embedding_iteration
+        )
+
+    def forward_batch(
+        self,
+        query_embedding: torch.Tensor,
+        templates: features.Templates,
+        count: int,
+        padding_mask_2d: torch.Tensor,
+        multichain_mask_2d: torch.Tensor,
+    ) -> torch.Tensor:
+        """``[count, N, N, C]``: every template slot through the pair stack as one batch.
+
+        Each slot's input is built on its own (it reads the slot's features), the stack runs once
+        over all slots, and the output norm and coverage mask are applied per slot. Slot ``i`` of
+        the result is the result of ``forward`` on slot ``i``.
+        """
+        acts, coverage = [], []
+        for index in range(count):
+            acts.append(
+                self.construct_input(query_embedding, templates[index], multichain_mask_2d)
+            )
+            if self.spec.template_coverage_mask:
+                coverage.append(self._coverage_2d)
+        act = torch.stack(acts)
+        for pairformer_block in self.template_embedding_iteration:
+            act = pairformer_block(act, pair_mask=padding_mask_2d)
+        act = self.output_layer_norm(act)
+        if self.spec.template_coverage_mask:
+            act = act * torch.stack(coverage)[..., None].to(act.dtype)
         return act
 
     def forward(

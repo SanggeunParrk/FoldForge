@@ -38,12 +38,14 @@ def token_bond_types(batch: feat_batch.Batch, *, symmetric: bool) -> torch.Tenso
     ):
         valid = gather.gather_mask.prod(dim=1).to(torch.int64)
         index = gather.gather_idxs.to(torch.int64) * valid[:, None]
-        value = (torch.as_tensor(code, device=device).to(torch.int64) + 1) * valid
+        # A Python int stays a Python int: a tensor made from it would copy from the host.
+        order = code + 1 if isinstance(code, int) else code.to(torch.int64) + 1
+        value = order * valid
         matrix[index[:, 0], index[:, 1]] = value
         if symmetric:
             matrix[index[:, 1], index[:, 0]] = value
     # Every padded bond row points at [0, 0].
-    matrix[0, 0] = 0
+    matrix[0, 0].zero_()
     return matrix
 
 

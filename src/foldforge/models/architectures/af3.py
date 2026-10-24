@@ -13,6 +13,7 @@ from miniworld_engine.architecture.diffusion.edm.schedules import PowerLawSchedu
 
 from foldforge.data.features import dense as features
 from foldforge.data.features import dense_batch as feat_batch
+from foldforge.models import sampler_graph
 from foldforge.models.bucketing import MSA_SHAPES, ceiling, pad_axis
 from foldforge.modules.dense import atom_cross_attention, diffusion_head, featurization
 from foldforge.modules.dense.fused_template import FusedTemplateEmbedding
@@ -27,6 +28,7 @@ from foldforge.modules.dense.pairformer import EvoformerBlock, PairformerBlock
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 from foldforge.modules.dense.structural_tokens import StructuralTokenExpander
 from foldforge.modules.dense.template import TemplateEmbedding
+from foldforge.utils.rigid_align import kabsch_rotation
 
 # Copyright 2024 DeepMind Technologies Limited
 #
@@ -59,15 +61,9 @@ def weighted_rigid_align(
     a = (mobile - centre_m).reshape(*lead, -1, 3)
     b = (reference - centre_r).reshape(*lead, -1, 3)
     covariance = torch.einsum("...nc,...nd->...cd", a * w.reshape(-1, 1), b).float()
-    u, _, vt = torch.linalg.svd(covariance)
-    # Reflections are not rotations: flip the least significant axis when the
-    # determinant says the naive product is one.
-    sign = torch.sign(torch.linalg.det(u @ vt))
-    flip = torch.zeros_like(u)
-    flip[..., 0, 0] = 1
-    flip[..., 1, 1] = 1
-    flip[..., 2, 2] = sign
-    rotation = (u @ flip @ vt).to(mobile.dtype)
+    # The optimal PROPER rotation (a reflection is never returned), by Horn's quaternion method:
+    # no SVD, whose host-side status check cannot be captured in a CUDA graph.
+    rotation = kabsch_rotation(covariance).to(mobile.dtype)
     return (a @ rotation).reshape(mobile.shape) + centre_r
 
 
@@ -415,12 +411,15 @@ class Evoformer(nn.Module):
         gather_idxs = torch.concatenate(
             [gather_idxs_polymer_ligand, gather_idxs_ligand_ligand]
         )
-        contact_matrix[gather_idxs[:, 0], gather_idxs[:, 1]] = 1.0
+        # A device scalar: a Python 1.0 becomes a CPU tensor whose host-to-device copy
+        # cannot be captured in a CUDA graph.
+        one = torch.ones((), dtype=contact_matrix.dtype, device=contact_matrix.device)
+        contact_matrix[gather_idxs[:, 0], gather_idxs[:, 1]] = one
         if self.spec.symmetric_bonds:
-            contact_matrix[gather_idxs[:, 1], gather_idxs[:, 0]] = 1.0
+            contact_matrix[gather_idxs[:, 1], gather_idxs[:, 0]] = one
 
         # Because all the padded index's are 0's.
-        contact_matrix[0, 0] = 0.0
+        contact_matrix[0, 0].zero_()
 
         pair_activations = pair_activations + self.bond_embedding(
             contact_matrix[:, :, None]
@@ -550,19 +549,9 @@ class Evoformer(nn.Module):
         recycled = prev.get("pair_pre_coda", prev["pair"]).to(
             dtype=pair_activations.dtype
         )
-        if self.spec.recycle_from_initial and first_pass:
+        if self.spec.recycle_from_initial and first_pass and not self.spec.ssm_random_init:
             recycled = pair_activations
-        if self.spec.ssm_random_init and first_pass:
-            # The release starts its recurrent state from truncated-normal
-            # noise (std sqrt(2 / 5c), cut at 3 std), not zeros; the decay
-            # carries it through every pass. Drawn from the trunk seed.
-            std = (2.0 / (5.0 * pair_activations.shape[-1])) ** 0.5
-            recycled = torch.nn.init.trunc_normal_(
-                torch.empty_like(pair_activations, dtype=torch.float32),
-                std=std,
-                a=-3 * std,
-                b=3 * std,
-            ).to(pair_activations.dtype)
+        # With `ssm_random_init` the first pass reads the recurrent state `forward` drew (see `_ssm_state`).
         projected = self.prev_embedding(
             self.prev_embedding_layer_norm(pair_activations)
         )
@@ -808,6 +797,21 @@ class AlphaFold3(nn.Module):
         both = torch.concatenate([target_feat, enc.token_act], dim=-1).to(dtype)
         return both, both
 
+    def _ssm_state(self, num_res: int, device: torch.device) -> torch.Tensor:
+        """The pair state the first trunk pass reads: zeros, or for the SSM recurrence the release's truncated-normal noise.
+
+        The release starts the recurrent state from truncated-normal noise (std sqrt(2 / 5c), cut at 3 std), not zeros; the decay
+        carries it through every pass. Drawn from the trunk seed. Drawn here, outside the trunk pass, because the rejection loop of
+        ``trunc_normal_`` reads the device on the host, which a CUDA-graph capture of the pass forbids.
+        """
+        shape = [num_res, num_res, self.evoformer_pair_channel]
+        if not (self.spec.ssm_random_init and not self.spec.trunk_single_track):
+            return torch.zeros(shape, device=device, dtype=torch.float32)
+        std = (2.0 / (5.0 * self.evoformer_pair_channel)) ** 0.5
+        return torch.nn.init.trunc_normal_(
+            torch.empty(shape, device=device, dtype=torch.float32), std=std, a=-3 * std, b=3 * std
+        )
+
     def _sample_diffusion(
         self,
         batch: feat_batch.Batch,
@@ -847,7 +851,9 @@ class AlphaFold3(nn.Module):
             )
         sampler = EulerSampler(sampler_config)
 
-        def denoise(coords: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
+        def denoise(
+            coords: torch.Tensor, sigma: torch.Tensor, single_cond: torch.Tensor | None = None
+        ) -> torch.Tensor:
             """Compute denoise."""
             return self.diffusion_head(
                 positions_noisy=coords,
@@ -855,6 +861,7 @@ class AlphaFold3(nn.Module):
                 batch=batch,
                 embeddings=embeddings,
                 use_conditioning=True,
+                single_cond=single_cond,
             )
 
         def augment(coords: torch.Tensor) -> torch.Tensor:
@@ -873,23 +880,83 @@ class AlphaFold3(nn.Module):
             """
             return weighted_rigid_align(noisy, denoised, mask)
 
-        positions = sampler.sample(
-            denoise,
-            (self.num_samples, *mask.shape, 3),
-            sigmas,
-            device=mask.device,
-            coordinate_dims=2,
-            chunk_size=None,
-            initialize_all=True,
-            augment=augment,
-            align=realign if self.spec.realign_sampler else None,
-        )
+        scope = getattr(self, "foldforge_sampler_scope", None)
+        try:
+            if scope is not None:
+                positions = sampler_graph.sample(
+                    sampler,
+                    denoise,
+                    (self.num_samples, *mask.shape, 3),
+                    sigmas,
+                    device=mask.device,
+                    generator=None,
+                    augment=augment,
+                    align=realign if self.spec.realign_sampler else None,
+                    coordinate_dims=2,
+                    scopes=scope,
+                    rigid_mask=mask,
+                    conditioning=lambda levels: self.diffusion_head.conditioning_table(
+                        batch, embeddings, levels
+                    ),
+                )
+            else:
+                positions = sampler.sample(
+                    denoise,
+                    (self.num_samples, *mask.shape, 3),
+                    sigmas,
+                    device=mask.device,
+                    coordinate_dims=2,
+                    chunk_size=None,
+                    initialize_all=True,
+                    augment=augment,
+                    align=realign if self.spec.realign_sampler else None,
+                )
+        finally:
+            # The fold's conditioning is not needed once its steps are done.
+            self.diffusion_head._fold = None
         if not isinstance(positions, torch.Tensor):
             message = "Sampling without trajectories must return a Tensor"
             raise TypeError(message)
         return {
             "atom_positions": positions,
             "mask": torch.tile(mask[None], (self.num_samples, 1, 1)),
+        }
+
+    def _confidence_over_samples(
+        self,
+        positions: torch.Tensor,
+        embeddings: dict[str, torch.Tensor],
+        batch_data: feat_batch.Batch,
+    ) -> dict[str, torch.Tensor]:
+        """Confidence outputs of the diffusion samples ``[S, ...]``.
+
+        The samples go through the head in chunks (``ConfidenceHead.sample_chunk``: all
+        at once while their pair stream is small, fewer at large token counts, never
+        fewer than one); a chunk of one is the sequential per-sample call.
+        """
+        head = self.confidence_head
+        count = positions.shape[0]
+        chunker = getattr(head, "sample_chunk", None)
+        chunk = 1 if chunker is None else chunker(count, positions.shape[1])
+        outputs = []
+        for start in range(0, count, chunk):
+            part = positions[start : start + chunk]
+            result = head(
+                dense_atom_positions=part[0] if part.shape[0] == 1 else part,
+                embeddings=embeddings,
+                seq_mask=batch_data.token_features.mask,
+                token_atoms_to_pseudo_beta=batch_data.pseudo_beta_info.token_atoms_to_pseudo_beta,
+                asym_id=batch_data.token_features.asym_id,
+                batch=batch_data,
+            )
+            if part.shape[0] == 1:
+                result = {key: value[None] for key, value in result.items()}
+            outputs.append(result)
+        return {
+            key: outputs[0][key]
+            if len(outputs) == 1
+            else torch.cat([o[key] for o in outputs])
+            for key in outputs[0]
         }
 
     def forward(
@@ -906,11 +973,7 @@ class AlphaFold3(nn.Module):
         target_feat, structure_feat = self.create_target_feat_embedding(batch_data)
 
         embeddings = {
-            "pair": torch.zeros(
-                [num_res, num_res, self.evoformer_pair_channel],
-                device=target_feat.device,
-                dtype=torch.float32,
-            ),
+            "pair": self._ssm_state(num_res, target_feat.device),
             "single": torch.zeros(
                 [num_res, self.evoformer_seq_channel],
                 dtype=torch.float32,
@@ -980,24 +1043,9 @@ class AlphaFold3(nn.Module):
         if self.spec.structural_tokens:
             samples = _to_residue_layout(samples, batch, num_res)
 
-        confidence_output_per_sample = []
-        confidence_output_per_sample.extend(
-            self.confidence_head(
-                dense_atom_positions=sample_dense_atom_position,
-                embeddings=embeddings,
-                seq_mask=batch_data.token_features.mask,
-                token_atoms_to_pseudo_beta=batch_data.pseudo_beta_info.token_atoms_to_pseudo_beta,
-                asym_id=batch_data.token_features.asym_id,
-                batch=batch_data,
-            )
-            for sample_dense_atom_position in samples["atom_positions"]
+        confidence_output = self._confidence_over_samples(
+            samples["atom_positions"], embeddings, batch_data
         )
-
-        confidence_output = {}
-        for key in confidence_output_per_sample[0]:
-            confidence_output[key] = torch.stack(
-                [sample[key] for sample in confidence_output_per_sample], dim=0
-            )
 
         distogram = self.distogram_head(batch_data, embeddings)
 

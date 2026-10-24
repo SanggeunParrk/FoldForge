@@ -30,9 +30,24 @@ class ExecutionConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     compile: bool = False
     cuda_graph: bool = False
-    bucketing: bool = False
-    scope: Literal["denoiser", "model"] = "denoiser"
+    # Pad tokens, atoms and MSA rows up a fixed ladder (models.bucketing). On by default: without it the
+    # dense atom layout (24 slots per token) makes the atom blocks compute ~3x the real atoms.
+    bucketing: bool = True
+    # float32 matmuls on TF32 tensor cores (torch "high") instead of full FP32 ("highest").
+    tf32: bool = False
+    scope: Literal["denoiser", "trunk", "model"] = "denoiser"
     max_graphs: int = Field(default=4, ge=1, le=32)
+    # scope=trunk only: above this many tokens the trunk and head sites run uncaptured (same kernels).
+    # There the GPU is already full and the graph pools would only take memory from the denoiser.
+    trunk_graph_max_tokens: int = Field(default=512, ge=0)
+    # scope=trunk only: the sampler step (re-pose, re-noise, denoise, align, update) as one graph.
+    sampler_graph: bool = True
+    # scope=trunk only: which trunk-side callables get a graph of their own.
+    trunk_sites: tuple[Literal["evoformer", "confidence_head", "distogram_head"], ...] = (
+        "evoformer",
+        "confidence_head",
+        "distogram_head",
+    )
     benchmark_repeats: int = Field(default=0, ge=0, le=20)
 
     @model_validator(mode="after")
@@ -40,7 +55,7 @@ class ExecutionConfig(BaseModel):
         """Keep host-side random sampling outside captured GPU work."""
         if self.cuda_graph and self.scope == "model":
             message = (
-                "CUDA graphs require scope=denoiser; "
+                "CUDA graphs require scope=denoiser or trunk; "
                 "full-model host sampling cannot be captured"
             )
             raise ValueError(message)

@@ -29,6 +29,21 @@ from foldforge.modules.engine.attention_ops import (
 from foldforge.utils import atom_layout
 
 
+def _pool_engine(queries_act, gather, atom_mask):
+    """The pooled token activation from the engine's one-pass gather + relu + masked mean, or None where it does not serve.
+
+    It serves bf16 atom features ``[samples, subsets, queries, C]`` on an H100 whose engine ships ``sampler_ops``.
+    """
+    try:
+        from miniworld_engine.kernels.sampler_ops import interface
+    except ImportError:
+        return None
+    if queries_act.ndim != 4 or not interface.pool_atoms_serves(queries_act):
+        return None
+    flat = queries_act.reshape(queries_act.shape[0], -1, queries_act.shape[-1])
+    return interface.pool_atoms(flat, gather.gather_idxs, gather.gather_mask, atom_mask)
+
+
 @dataclasses.dataclass(frozen=True)
 class AtomCrossAttEncoderOutput:
     """Represent atom cross att encoder output."""
@@ -48,6 +63,37 @@ class AtomCrossAttEncoderOutput:
     #: flat atom list, and rebuilding them is where a mismatch would go.
     rope_q: tuple[torch.Tensor, torch.Tensor] | None = None
     rope_k: tuple[torch.Tensor, torch.Tensor] | None = None
+    #: The engine's layout of the atom pair and key mask (see ``AtomFoldState``).
+    engine_pair: torch.Tensor | None = None
+    engine_key_mask: torch.Tensor | None = None
+    engine_uid: torch.Tensor | None = None
+    engine_even: tuple[torch.Tensor | None, ...] | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class AtomFoldState:
+    """What the atom encoder builds from the batch and the trunk alone: the same at every sampler step of a fold."""
+
+    query_base: torch.Tensor  # (num_subsets, num_queries, ch)
+    queries_mask: torch.Tensor
+    queries_single_cond: torch.Tensor
+    keys_mask: torch.Tensor
+    keys_single_cond: torch.Tensor
+    pair_cond: torch.Tensor  # (num_subsets, num_queries, num_keys, ch)
+    pair_mask: torch.Tensor | None = None
+    rope_q: tuple[torch.Tensor, torch.Tensor] | None = None
+    rope_k: tuple[torch.Tensor, torch.Tensor] | None = None
+    #: The engine's layout of the atom pair and key mask, made once per fold: the engine
+    #: hoists its pair bias per tensor OBJECT, and a view made at every call is a new object.
+    engine_pair: torch.Tensor | None = None
+    engine_key_mask: torch.Tensor | None = None
+    #: The atoms' reference-conformer ids in the engine's flat layout, for a family whose pair
+    #: mask is same-conformer (the engine's variant stack rebuilds the mask from them).
+    engine_uid: torch.Tensor | None = None
+    #: The same three with one empty window appended, when the atoms make an odd number of
+    #: 32-atom windows: the variant stack's window kernel takes pairs of windows, and padding
+    #: inside its call would be a new tensor (a new pair bias) at every step.
+    engine_even: tuple[torch.Tensor | None, ...] | None = None
 
 
 def build_atom_rope(
@@ -233,6 +279,11 @@ class AtomCrossAttEncoder(nn.Module):
                 self.per_atom_pair_channels, self.per_atom_pair_channels, bias=False
             )
 
+        # The distogram bin edges as a buffer: building them in forward is a host-to-device
+        # copy, which a CUDA graph capture refuses.
+        self.register_buffer(
+            "atom_pair_edges", torch.tensor(self.ATOM_PAIR_BINS), persistent=False
+        )
         self.c_query = 128
         self.atom_transformer_encoder = DiffusionCrossAttTransformer(
             c_query=self.c_query, spec=spec
@@ -376,13 +427,28 @@ class AtomCrossAttEncoder(nn.Module):
         trunk_single_cond: torch.Tensor | None = None,
         trunk_pair_cond: torch.Tensor | None = None,
     ) -> AtomCrossAttEncoderOutput:
-        """Compute the module output."""
+        """Compute the module output: the fold's conditioning, then one step on it."""
         if (token_atoms_act is not None) != self.with_token_atoms_act:
             message = (
                 "Invalid state: (token_atoms_act is not None) == "
                 "self.with_token_atoms_act"
             )
             raise ValueError(message)
+        state = self.prepare(batch, trunk_single_cond, trunk_pair_cond)
+        return self.step(batch, token_atoms_act, state)
+
+    def prepare(
+        self,
+        batch: feat_batch.Batch,
+        trunk_single_cond: torch.Tensor | None = None,
+        trunk_pair_cond: torch.Tensor | None = None,
+    ) -> AtomFoldState:
+        """Everything the encoder builds from the batch and the trunk -- not from the noisy coordinates.
+
+        The atom conditioning, the atom-pair activations (trunk pair, reference offsets, MLP),
+        the masks and the rotary tables are the same at every sampler step of a fold; the
+        coordinates enter only through ``step``.
+        """
         if (trunk_single_cond is not None) != self.with_trunk_single_cond:
             message = (
                 "Invalid state: (trunk_single_cond is not None) == "
@@ -440,25 +506,6 @@ class AtomCrossAttEncoder(nn.Module):
 
         if not self.spec.pre_trunk_atom_query:
             query_base = queries_single_cond
-
-        if token_atoms_act is None:
-            queries_act = query_base.clone()
-        else:
-            # Convert token_atoms_act to queries layout and map to per_atom_channels
-            # (num_subsets, num_queries, channels)
-            queries_act = atom_layout.convert(
-                batch.atom_cross_att.token_atoms_to_queries,
-                token_atoms_act,
-                layout_axes=(-3, -2),
-            )
-
-            queries_act = self.atom_positions_to_features(queries_act)
-            if self.spec.atom_chiral_features:
-                queries_act = queries_act + self._chiral_features(
-                    batch, token_atoms_act
-                )
-            queries_act *= queries_mask[..., None]
-            queries_act += query_base
 
         keys_single_cond = atom_layout.convert(
             batch.atom_cross_att.queries_to_keys,
@@ -543,8 +590,8 @@ class AtomCrossAttEncoder(nn.Module):
             # root first needs an epsilon, and that epsilon turns a self-pair's
             # exact zero into a positive number, which lands every self-pair one
             # class too high. Squaring is exact and needs no guard.
-            edges = torch.tensor(
-                self.ATOM_PAIR_BINS, dtype=sq_dists.dtype, device=sq_dists.device
+            edges = self.atom_pair_edges.to(
+                device=sq_dists.device, dtype=sq_dists.dtype
             )
             index = (sq_dists[..., None] > edges.square()).sum(-1)
             index = torch.where(
@@ -614,6 +661,75 @@ class AtomCrossAttEncoder(nn.Module):
                 self.spec.atom_window_half,
             )
 
+        subsets, queries, _ = queries_single_cond.shape[-3:]
+        engine_pair = pair_act.reshape(1, subsets, queries, -1, pair_act.shape[-1])
+        engine_key_mask = (queries_mask > 0).reshape(1, subsets * queries)
+        engine_uid = (
+            queries_ref_space_uid.reshape(subsets * queries)
+            if self.spec.same_conformer_atom_attention
+            else None
+        )
+        engine_even = None
+        if subsets % 2:
+            engine_even = (
+                F.pad(engine_pair, (0, 0, 0, 0, 0, 0, 0, 1)),
+                F.pad(engine_key_mask, (0, queries)),
+                None
+                if engine_uid is None
+                else F.pad(engine_uid, (0, queries), value=-1),
+            )
+        return AtomFoldState(
+            engine_pair=engine_pair,
+            engine_key_mask=engine_key_mask,
+            engine_uid=engine_uid,
+            engine_even=engine_even,
+            query_base=query_base,
+            queries_mask=queries_mask,
+            queries_single_cond=queries_single_cond,
+            keys_mask=keys_mask,
+            keys_single_cond=keys_single_cond,
+            pair_cond=pair_act,
+            pair_mask=pair_mask,
+            rope_q=rope_q,
+            rope_k=rope_k,
+        )
+
+    def step(
+        self,
+        batch: feat_batch.Batch,
+        token_atoms_act: torch.Tensor | None,
+        state: AtomFoldState,
+    ) -> AtomCrossAttEncoderOutput:
+        """One encoder evaluation on the fold's ``state``."""
+        token_atoms_mask = batch.predicted_structure_info.atom_mask
+        queries_mask = state.queries_mask
+        query_base = state.query_base
+        keys_mask = state.keys_mask
+        queries_single_cond = state.queries_single_cond
+        keys_single_cond = state.keys_single_cond
+        pair_act = state.pair_cond
+        pair_mask = state.pair_mask
+        rope_q, rope_k = state.rope_q, state.rope_k
+
+        if token_atoms_act is None:
+            queries_act = query_base.clone()
+        else:
+            # Convert token_atoms_act to queries layout and map to per_atom_channels
+            # (num_subsets, num_queries, channels)
+            queries_act = atom_layout.convert(
+                batch.atom_cross_att.token_atoms_to_queries,
+                token_atoms_act,
+                layout_axes=(-3, -2),
+            )
+
+            queries_act = self.atom_positions_to_features(queries_act)
+            if self.spec.atom_chiral_features:
+                queries_act = queries_act + self._chiral_features(
+                    batch, token_atoms_act
+                )
+            queries_act *= queries_mask[..., None]
+            queries_act += query_base
+
         queries_act = self.atom_transformer_encoder(
             queries_act=queries_act,
             queries_mask=queries_mask,
@@ -625,6 +741,12 @@ class AtomCrossAttEncoder(nn.Module):
             pair_mask=pair_mask,
             rope_q=rope_q,
             rope_k=rope_k,
+            engine_inputs=(
+                state.engine_pair,
+                state.engine_key_mask,
+                state.engine_uid,
+                state.engine_even,
+            ),
         )
 
         queries_act *= queries_mask[..., None]
@@ -632,22 +754,26 @@ class AtomCrossAttEncoder(nn.Module):
 
         queries_act = self.project_atom_features_for_aggr(queries_act)
 
-        token_atoms_act = atom_layout.convert(
-            batch.atom_cross_att.queries_to_token_atoms,
-            queries_act,
-            layout_axes=(-3, -2),
+        token_act = _pool_engine(
+            queries_act, batch.atom_cross_att.queries_to_token_atoms, token_atoms_mask
         )
+        if token_act is None:
+            token_atoms_act = atom_layout.convert(
+                batch.atom_cross_att.queries_to_token_atoms,
+                queries_act,
+                layout_axes=(-3, -2),
+            )
 
-        # Masked pooling may promote BF16 features through its FP32 denominator.
-        # Restore the feature dtype before entering the token DiT residual stream.
-        token_act = utils.mask_mean(
-            token_atoms_mask.reshape(
-                (1,) * (token_atoms_act.ndim - token_atoms_mask.ndim - 1)
-                + (*token_atoms_mask.shape, 1)
-            ),
-            torch.relu(token_atoms_act),
-            dim=-2,
-        ).to(token_atoms_act.dtype)
+            # Masked pooling may promote BF16 features through its FP32 denominator.
+            # Restore the feature dtype before entering the token DiT residual stream.
+            token_act = utils.mask_mean(
+                token_atoms_mask.reshape(
+                    (1,) * (token_atoms_act.ndim - token_atoms_mask.ndim - 1)
+                    + (*token_atoms_mask.shape, 1)
+                ),
+                torch.relu(token_atoms_act),
+                dim=-2,
+            ).to(token_atoms_act.dtype)
 
         return AtomCrossAttEncoderOutput(
             token_act=token_act,
@@ -660,6 +786,10 @@ class AtomCrossAttEncoder(nn.Module):
             pair_mask=pair_mask,
             rope_q=rope_q,
             rope_k=rope_k,
+            engine_pair=state.engine_pair,
+            engine_key_mask=state.engine_key_mask,
+            engine_uid=state.engine_uid,
+            engine_even=state.engine_even,
         )
 
 
@@ -729,6 +859,12 @@ class AtomCrossAttDecoder(nn.Module):
             queries_to_keys=batch.atom_cross_att.queries_to_keys,
             keys_mask=enc.keys_mask,
             pair_mask=enc.pair_mask,
+            engine_inputs=(
+                enc.engine_pair,
+                enc.engine_key_mask,
+                enc.engine_uid,
+                enc.engine_even,
+            ),
             queries_single_cond=(
                 enc.queries_single_cond
                 if self.post_atom_cond_layer_norm is None

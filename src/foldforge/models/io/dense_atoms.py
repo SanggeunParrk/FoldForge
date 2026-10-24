@@ -148,8 +148,12 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
             example, bucket_shape = bucket_af3(example)
             model.evoformer.foldforge_msa_bucketing = True
         if model.spec.structural_tokens:
+            # The structural tokens join the bucketed residues; the engine's token DiT serves only a
+            # multiple of 128 tokens, so a bucketed run pads them to the residue bucket's own granularity.
             example = structural_tokens.attach(
-                example, captures[example_index], pad_multiple=32
+                example,
+                captures[example_index],
+                pad_multiple=128 if args.execution.bucketing else 32,
             )
         example = dense_conventions.apply_after_bucketing(example, model.spec)
         start = time.monotonic()

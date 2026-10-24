@@ -26,12 +26,11 @@ from foldforge.modules.engine.attention_ops import (
     gated_projection,
     pair_bias_projection,
 )
-from foldforge.modules.engine.modules import engine_of
 from foldforge.modules.engine.routing import (
-    enabled,
     reference_adaln,
     reference_conditioned_transition,
 )
+from foldforge.modules.engine.transformers import serve_atom, serve_token
 from foldforge.modules.reference.attention import dot_product_attention
 from foldforge.modules.reference.composition import conditioned_residual
 from foldforge.utils import atom_layout
@@ -50,9 +49,6 @@ def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.T
     a, b = torch.split(x[..., :width], width // 2, dim=-1)
     rotated = torch.concatenate([-b, a], dim=-1)
     return torch.concatenate([x[..., :width] * c + rotated * s, x[..., width:]], dim=-1)
-
-
-_UNBATCHED_TOKEN_RANK = 2
 
 
 class RMSNorm(nn.Module):
@@ -485,22 +481,25 @@ class DiffusionTransformer(nn.Module):
         single_cond: torch.Tensor,
         pair_cond: torch.Tensor,
         extra_pair_bias: torch.Tensor | None = None,
+        key_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Compute the module output.
+
+        ``key_mask`` is ``[1, N_token]`` bool: ``mask > 0`` made by the caller. The engine keys its
+        hoisted pair bias on that tensor's address, so a caller that runs the sampler's steps
+        passes one tensor for all of them; made here, it would be a new tensor at every call
+        (and inside a compiled region, at every replay).
 
         ``extra_pair_bias`` is (N_token, N_token), added to every head's pair
         logits in every block. Only the structural-token family supplies one:
         its expander states the token relationships the pair itself cannot,
         having just been built rather than trained on this token set.
         """
-        blocks = engine_of(self)
-        if (
-            blocks is not None
-            and extra_pair_bias is None
-            and enabled(self, act)
-            and not torch.is_inference_mode_enabled()
-        ):
-            return self._engine_forward(blocks, act, mask, single_cond, pair_cond)
+        served = serve_token(
+            self, act, mask, single_cond, pair_cond, key_mask, extra_pair_bias
+        )
+        if served is not None:
+            return served
         if self.per_block_pair:
             for idx in range(self.num_blocks):
                 pair_logits = self.pair_logits_projection[idx](
@@ -552,30 +551,6 @@ class DiffusionTransformer(nn.Module):
                 )
 
         return act
-
-    def _engine_forward(
-        self,
-        blocks: list[nn.Module],
-        act: torch.Tensor,
-        mask: torch.Tensor,
-        single_cond: torch.Tensor,
-        pair_cond: torch.Tensor,
-    ) -> torch.Tensor:
-        """The engine's token DiT blocks: attention + conditioned transition, residuals included.
-
-        The engine caches the pair bias across solver steps by tensor version, which only a
-        ``no_grad`` (not ``inference_mode``) tensor has.
-        """
-        unbatched = act.ndim == _UNBATCHED_TOKEN_RANK
-        cond = single_cond.expand(*act.shape[:-1], single_cond.shape[-1])
-        if unbatched:
-            x, cond = act[None, None], cond[None, None]
-        else:
-            x, cond = act[:, None], cond[:, None]
-        pair, key_mask = pair_cond[None], (mask > 0)[None]
-        for block in blocks:
-            x = block(x, cond, pair, key_mask)
-        return x[0, 0] if unbatched else x[:, 0]
 
 
 class CrossAttention(nn.Module):
@@ -830,40 +805,6 @@ class DiffusionCrossAttTransformer(nn.Module):
             ]
         )
 
-    def _engine_forward(
-        self,
-        blocks: list[nn.Module],
-        queries_act: torch.Tensor,
-        queries_mask: torch.Tensor,
-        queries_single_cond: torch.Tensor,
-        pair_cond: torch.Tensor,
-        rope_q: tuple[torch.Tensor, torch.Tensor] | None = None,
-    ) -> torch.Tensor:
-        """The engine's AF3 atom blocks: the atoms of the query subsets are one flat run of windows.
-
-        Subset ``w`` holds atoms ``32 w .. 32 w + 31``, its keys are the AF3 slid window, so the
-        dense ``pair_cond`` is the engine's trunked pair as it is. The real atoms come first.
-        ESMFold2's blocks take the query rotary tables per atom (the keys are rotated by
-        their own atom's row, the gather the engine does itself).
-        """
-        subsets, queries, channels = queries_act.shape[-3:]
-        samples = queries_act.shape[:-3]
-        atoms = subsets * queries
-        x = queries_act.reshape(-1, 1, atoms, channels)
-        cond = queries_single_cond.reshape(1, 1, atoms, channels).expand(
-            x.shape[0], 1, -1, -1
-        )
-        pair = pair_cond.reshape(1, subsets, queries, -1, pair_cond.shape[-1])
-        key_mask = (queries_mask > 0).reshape(1, atoms)
-        rope = (
-            {"rope": tuple(t.reshape(1, atoms, t.shape[-1]) for t in rope_q)}
-            if rope_q is not None
-            else {}
-        )
-        for block in blocks:
-            x = block(x, cond, pair, key_mask, **rope)
-        return x.reshape(*samples, subsets, queries, channels)
-
     def forward(
         self,
         queries_act: torch.Tensor,  # (num_subsets, num_queries, ch)
@@ -876,27 +817,27 @@ class DiffusionCrossAttTransformer(nn.Module):
         pair_mask: torch.Tensor | None = None,  # (num_subsets, num_queries, num_keys)
         rope_q: tuple[torch.Tensor, torch.Tensor] | None = None,
         rope_k: tuple[torch.Tensor, torch.Tensor] | None = None,
+        engine_inputs: tuple[torch.Tensor | None, ...] | None = None,
     ) -> torch.Tensor:
-        """Compute the module output."""
-        blocks = engine_of(self)
-        # ESMFold2's blocks rotate q / k themselves and build its sliding window (the only
-        # pair_mask that family has, from ``window_half``); AF3's take neither.
-        rotary = blocks is not None and getattr(blocks[0], "rope", False)
-        if (
-            blocks is not None
-            and (rope_q is not None) == rotary
-            and (rope_k is not None) == rotary
-            and (pair_mask is None or (rotary and self.window_half is not None))
-            and not torch.is_inference_mode_enabled()
-        ):
-            return self._engine_forward(
-                blocks,
-                queries_act,
-                queries_mask,
-                queries_single_cond,
-                pair_cond,
-                rope_q if rotary else None,
-            )
+        """Compute the module output.
+
+        ``engine_inputs`` is the engine's ``(pair, key_mask[, uid])`` layout made once per fold by the
+        caller (``uid``: the atoms' conformer ids, for a family whose pair mask is same-conformer): the engine hoists its pair bias per tensor object, and a view made here would be a
+        new object at every call.
+        """
+        served = serve_atom(
+            self,
+            queries_act,
+            queries_mask,
+            queries_single_cond,
+            pair_cond,
+            pair_mask,
+            rope_q,
+            rope_k,
+            engine_inputs,
+        )
+        if served is not None:
+            return served
         if self.per_block_pair:
             pair_logits = [
                 projection(norm(pair_cond)).permute(0, 3, 1, 2)

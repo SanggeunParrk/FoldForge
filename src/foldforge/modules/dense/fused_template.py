@@ -17,6 +17,7 @@ from __future__ import annotations
 import math
 
 import torch
+from foldforge.utils.device_constants import built_on_device, on_device
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -32,7 +33,7 @@ _EPS = 1e-10
 
 def _backbone(aatype: torch.Tensor, positions: torch.Tensor, mask: torch.Tensor):
     """C, CA, N positions and their joint mask; rigid group 0 lists them in that order."""
-    group = protein_data_processing.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX.to(aatype.device)
+    group = on_device(protein_data_processing.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX, aatype.device)
     index = group[aatype.to(torch.int64)][:, 0].to(torch.int64)  # (N, 3) = [C, CA, N]
     picked = torch.gather(positions, 1, index[..., None].expand(-1, -1, 3))
     picked_mask = torch.gather(mask, 1, index)
@@ -84,12 +85,14 @@ def protenix2_template_features(
 
     squared = (beta[:, None] - beta[None]).square().sum(-1)[..., None]
     lower = torch.linspace(3.25, 50.75, 39, device=squared.device).square()
-    upper = torch.cat([lower[1:], lower.new_tensor([1e8])])
+    upper = torch.cat([lower[1:], lower.new_full((1,), 1e8)])
     distogram = ((squared > lower) & (squared < upper)).float()
 
     covered = (beta_mask[:, None] * beta_mask[None] * visible)[..., None].float()
     framed = (frame_mask[:, None] * frame_mask[None] * visible)[..., None].float()
-    remap = torch.tensor(_AF3_TO_OF3, device=aatype.device, dtype=torch.int64)
+    remap = built_on_device(
+        "af3_to_of3", aatype.device, lambda: torch.tensor(_AF3_TO_OF3, device=aatype.device, dtype=torch.int64)
+    )
     restype = F.one_hot(remap[aatype.to(torch.int64)], 32).float()
     return torch.cat(
         [
@@ -165,7 +168,7 @@ def rf3_template_features(
     ``(log(1e-4 / 16) + 1.2) / 1.5``. The condition mask gates every channel.
     """
     _, ca, _, _ = _backbone(aatype, positions, mask)
-    group = protein_data_processing.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX.to(aatype.device)
+    group = on_device(protein_data_processing.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX, aatype.device)
     ca_index = group[aatype.to(torch.int64)][:, 0, 1].to(torch.int64)
     ca_mask = torch.gather(mask, 1, ca_index[:, None])[:, 0].float()
     distance = ((ca[:, None] - ca[None]).square().sum(-1) + _EPS).sqrt()
@@ -236,7 +239,7 @@ class FusedTemplateEmbedding(nn.Module):
                 query, templates, padding_mask_2d, multichain_mask_2d
             )
 
-        def embed(index: int) -> torch.Tensor:
+        def prepare(index: int) -> torch.Tensor:
             template = templates[index]
             mask = template.atom_mask
             visible = multichain_mask_2d
@@ -248,7 +251,7 @@ class FusedTemplateEmbedding(nn.Module):
                 visible = (covered[:, None] & covered[None]) | (
                     ~covered[:, None] & ~covered[None] & multichain_mask_2d.bool()
                 )
-            value = query + self.a_proj(
+            return query + self.a_proj(
                 self.build(
                     template.aatype,
                     template.atom_positions.float(),
@@ -256,12 +259,41 @@ class FusedTemplateEmbedding(nn.Module):
                     visible,
                 ).to(dtype)
             )
-            stacked = value
-            for block in self.tmpl_pairformer:
-                stacked = block(stacked, padding_mask_2d)
+
+        def finish(value: torch.Tensor, stacked: torch.Tensor) -> torch.Tensor:
             if self.spec.template_stack_outer_residual and len(self.tmpl_pairformer):
                 stacked = value + stacked
             return self.v_norm(stacked)
+
+        if (
+            count > 1
+            and len(self.tmpl_pairformer)
+            and all(
+                getattr(block, "supports_template_batch", False)
+                for block in self.tmpl_pairformer
+            )
+        ):
+            # The template slots go through the pair stack as ONE batch (the engine
+            # kernels take B samples per launch and give each the result of its own
+            # one-sample call); the slots are then summed one by one, in slot order,
+            # exactly as the per-slot loop below does.
+            values = torch.stack([prepare(index) for index in range(count)])
+            stacked = values
+            for block in self.tmpl_pairformer:
+                stacked = block(stacked, padding_mask_2d)
+            batched = finish(values, stacked)
+
+            def embed(index: int) -> torch.Tensor:
+                return batched[index]
+
+        else:
+
+            def embed(index: int) -> torch.Tensor:
+                value = prepare(index)
+                stacked = value
+                for block in self.tmpl_pairformer:
+                    stacked = block(stacked, padding_mask_2d)
+                return finish(value, stacked)
 
         return template_embedding_mean(
             count,
@@ -269,7 +301,7 @@ class FusedTemplateEmbedding(nn.Module):
             empty=torch.zeros_like(query),
             project=self.u_proj,
             present=(
-                (lambda index: bool(templates[index].atom_mask.any()))
+                (lambda index: templates[index].atom_mask.any())
                 if self.spec.template_present_denominator
                 else None
             ),
@@ -289,20 +321,21 @@ class FusedTemplateEmbedding(nn.Module):
         every recycle. No outer residual around the stack.
         """
         feature = query.new_zeros(*query.shape[:2], self.a_proj.in_features)
-        present = 0
+        present = torch.zeros((), device=query.device)
         count = templates.aatype.shape[0] if self.spec.use_input_templates else 0
         for index in range(count):
             template = templates[index]
-            if not bool(template.atom_mask.any()):
-                continue
+            # An absent slot is built and weighted by zero, not skipped: the skip read the
+            # mask on the host, which a CUDA-graph capture does not allow.
+            filled = template.atom_mask.any()
             feature = feature + self.build(
                 template.aatype,
                 template.atom_positions.float(),
                 template.atom_mask.float(),
                 multichain_mask_2d,
-            ).to(query.dtype)
-            present += 1
-        value = query + self.a_proj(feature / max(present, 1))
+            ).to(query.dtype) * filled.to(query.dtype)
+            present = present + filled
+        value = query + self.a_proj(feature / present.clamp_min(1.0))
         for block in self.tmpl_pairformer:
             value = block(value, padding_mask_2d)
         return self.u_proj(torch.relu(self.v_norm(value)))

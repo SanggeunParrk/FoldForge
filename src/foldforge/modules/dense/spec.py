@@ -15,6 +15,10 @@ class DenseSpec:
     """Widths, head counts and sampler constants of one dense-graph family."""
 
     family: str = "alphafold3"
+    #: Whether the trunk pass and the heads may each run as a CUDA graph (`execution.scope = trunk`). Every
+    #: family is on it; see docs/guides/EXECUTION-SCOPES.md for the fold-to-fold fault that kept Boltz2,
+    #: Chai-1 and RosettaFold3 off it before miniworld-engine 2.3.9.
+    trunk_graph: bool = True
     pair_channel: int = 128
     seq_channel: int = 384
     msa_channel: int = 64

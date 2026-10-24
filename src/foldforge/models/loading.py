@@ -158,6 +158,7 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     setattr(model, "foldforge_load_report", report)  # noqa: B010 - runtime metadata
     from foldforge.modules.engine.configure import configure_model
     from foldforge.modules.engine.install import install_engine
+    from foldforge.modules.engine.routing import set_tf32_policy
 
     source = model.get_submodule("diffusion_head.fourier_embeddings")
     fourier_fp32 = (source.weight.float().clone(), source.bias.float().clone())
@@ -170,6 +171,23 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         model = configure_model(model, backend, torch.float32, device)
         for parameter in model.parameters():
             parameter.data = parameter.data.to(released_dtypes[id(parameter)])
+        if os.environ.get("FF_TRUNK_BF16") == "1":
+            # Experiment: AF3's mixed policy on a release that is fp32 throughout -- every parameter outside the
+            # diffusion head (norm weights aside) in bf16, so the engine serves the trunk; the diffusion head keeps fp32.
+            diffusion = {id(p) for p in model.diffusion_head.parameters()}
+            norms = {
+                id(p)
+                for m in model.modules()
+                if "LayerNorm" in type(m).__name__
+                for p in m.parameters(recurse=False)
+            }
+            for parameter in model.parameters():
+                if (
+                    id(parameter) not in diffusion
+                    and id(parameter) not in norms
+                    and parameter.dtype == torch.float32
+                ):
+                    parameter.data = parameter.data.to(torch.bfloat16)
     else:
         model = configure_model(model, backend, dtype, device)
     # Noise Fourier features stay FP32 whatever the parameter dtype.
@@ -183,12 +201,11 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         model,
         dtype,
         device,
-        modules=(
-            backend == "miniworld"
-            and dtype == torch.bfloat16
-            and torch.device(device).type == "cuda"
-        ),
+        modules=backend == "miniworld" and torch.device(device).type == "cuda",
     )
+    # The engine's FP32 kernels run on TF32 tensor cores: the diffusion head of af3_default takes them as its
+    # atom blocks always have; everything else waits for ``execution.tf32`` (models.execution.Execution).
+    set_tf32_policy(model, tf32=False, diffusion_tf32=precision_policy == "af3_default")
     if dtype == torch.bfloat16 and precision_policy != "af3_default":
         clear_native_compute_override(model, dtype)
     report.update(
@@ -201,8 +218,13 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         report.update(
             precision_policy="af3_default",
             parameter_dtype="mixed (released checkpoint dtypes)",
-            trunk_parameter_dtype="torch.bfloat16",
-            diffusion_parameter_dtype="torch.float32",
+            # the released dtypes: AF3's trunk is BF16, Protenix's checkpoint is FP32 throughout
+            trunk_parameter_dtype=sorted(
+                {str(p.dtype) for p in getattr(model, "evoformer", model).parameters()}
+            ),
+            diffusion_parameter_dtype=sorted(
+                {str(p.dtype) for p in model.diffusion_head.parameters()}
+            ),
         )
     setattr(model, "foldforge_load_report", report)  # noqa: B010 - runtime metadata
     return model

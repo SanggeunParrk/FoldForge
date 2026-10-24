@@ -73,7 +73,7 @@ class Vec3Array:
         norm2 = self.dot(self)
         if epsilon:
             norm2 = torch.maximum(
-                norm2, torch.tensor(epsilon**2, dtype=norm2.dtype, device=norm2.device)
+                norm2, torch.full_like(norm2, epsilon**2)
             )
         return torch.sqrt(norm2)
 

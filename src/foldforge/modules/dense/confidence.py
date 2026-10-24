@@ -11,6 +11,7 @@
 """Library of scoring methods of the model outputs."""
 
 import torch
+from foldforge.utils.device_constants import on_device
 
 from foldforge.data.features import dense_protein as protein_data_processing
 
@@ -38,7 +39,7 @@ def pseudo_beta_fn(
         is_ligand = torch.zeros_like(aatype, dtype=torch.bool)
 
     pseudobeta_index_polymer = torch.take_along_dim(
-        protein_data_processing.RESTYPE_PSEUDOBETA_INDEX.to(device=aatype.device),
+        on_device(protein_data_processing.RESTYPE_PSEUDOBETA_INDEX, aatype.device),
         aatype.to(dtype=torch.int64),
         dim=0,
     ).to(dtype=torch.int32)

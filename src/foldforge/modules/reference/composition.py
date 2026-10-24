@@ -86,7 +86,7 @@ def template_embedding_mean(
     empty: Tensor,
     project: Callable[[Tensor], Tensor],
     eps: float = 1e-7,
-    present: Callable[[int], bool] | None = None,
+    present: Callable[[int], Tensor] | None = None,
 ) -> Tensor:
     """Aggregate model-specific template features after their shared pair stack.
 
@@ -96,15 +96,16 @@ def template_embedding_mean(
     ``present`` makes the divisor the number of slots that carry a template
     rather than the number of slots. The two agree on a fully populated input
     and differ by the padding factor on any other, which is a rescaling of the
-    whole term and not a small one.
+    whole term and not a small one. It returns a 0-d boolean tensor and the
+    count stays on the device: a host read would break a CUDA-graph capture.
     """
     if count < 0:
         raise ValueError("Template count cannot be negative")
     total = empty
-    filled = 0
+    filled = torch.zeros((), device=empty.device)
     for index in range(count):
         total = total + embed(index)
-        if present is not None and present(index):
-            filled += 1
-    divisor = max(float(filled), 1.0) if present is not None else count + eps
+        if present is not None:
+            filled = filled + present(index)
+    divisor = filled.clamp_min(1.0) if present is not None else count + eps
     return project(torch.relu(total / divisor))

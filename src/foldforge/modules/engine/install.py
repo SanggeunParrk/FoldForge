@@ -42,12 +42,16 @@ def install_engine(
     model: nn.Module, dtype: torch.dtype, device: str | torch.device, *, modules: bool
 ) -> nn.Module:
     """Wrap the pairformers, attach the engine modules (``modules``), convert the conditioning blocks."""
+    import os  # FF_ENGINE_SKIP (debugging): comma list of pairformers, conditioning and engine_* module keys left dense
+
+    skip = set(filter(None, os.environ.get("FF_ENGINE_SKIP", "").split(",")))
     with skip_engine_init():
-        model = install_pairformers(model)
+        if "pairformers" not in skip:
+            model = install_pairformers(model)
         if modules:
             model.foldforge_load_report.update(
                 install_engine_modules(
                     model, torch.empty(0, dtype=dtype, device=device)
                 )
             )
-        return install_conditioning(model)
+        return model if "conditioning" in skip else install_conditioning(model)

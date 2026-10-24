@@ -20,8 +20,8 @@ from foldforge.modules.engine.attention_ops import (
     engine_triangle_attention,
     gated_projection,
 )
-from foldforge.modules.engine.modules import engine_of, residue_mask
-from foldforge.modules.engine.routing import enabled
+from foldforge.modules.engine.modules import residue_mask
+from foldforge.modules.engine.routing import served_by
 from foldforge.modules.reference.attention import dot_product_attention
 
 
@@ -191,8 +191,8 @@ class GridSelfAttention(nn.Module):
 
         ``mask`` is the outer-product pair mask, as everywhere in the dense graph.
         """
-        built = engine_of(self)
-        if built is not None and enabled(self, pair):
+        built = served_by(self, pair)
+        if built is not None:
             return built(pair[None], residue_mask(mask))[0]
         return pair + self(pair, mask)
 
@@ -250,8 +250,8 @@ class MSAAttention(nn.Module):
         self, msa: torch.Tensor, msa_mask: torch.Tensor, pair: torch.Tensor
     ) -> torch.Tensor:
         """``msa + forward(msa, msa_mask, pair)``; the engine module owns the residual when installed."""
-        built = engine_of(self)
-        if built is not None and enabled(self, msa):
+        built = served_by(self, msa)
+        if built is not None:
             key_mask = (msa_mask.max(dim=0).values > 0)[None]
             return built(msa[None], pair[None], key_mask)[0]
         return msa + self(msa, msa_mask, pair)

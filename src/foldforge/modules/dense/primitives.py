@@ -14,8 +14,7 @@
 import torch
 import torch.nn as nn
 
-from foldforge.modules.engine.modules import engine_of
-from foldforge.modules.engine.routing import enabled, reference_transition
+from foldforge.modules.engine.routing import reference_transition, served_by
 
 
 class Transition(nn.Module):
@@ -86,8 +85,8 @@ class OuterProductMean(nn.Module):
 
     def forward(self, msa: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """Compute the module output."""
-        built = engine_of(self)
-        if built is not None and enabled(self, msa):
+        built = served_by(self, msa)
+        if built is not None:
             # The raw update (the engine adds no residual without one), from the CUDA kernels.
             return built(msa[None], (mask > 0)[None])[0]
         mask = mask.to(msa.dtype).unsqueeze(-1)

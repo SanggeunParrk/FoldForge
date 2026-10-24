@@ -12,6 +12,7 @@ dense module                     engine module
 ``MSAAttention``                 ``MSAPairWeightedAveraging`` (residual included)
 ``OuterProductMean``             ``OuterProductMean``         (raw update)
 ``DiffusionTransformer``         ``DiTBlock`` per block       (residual included)
+``DiffusionTransformer``         ``DiTVariantStack``          (Boltz-2 / RoseTTAFold3 / Chai-1: the whole stack)
 Pairformer single attention      ``AttentionPairBias``        (residual included)
 ===============================  ===========================================================
 
@@ -50,14 +51,36 @@ _ENGINE = ImplementationType.MINIWORLD
 _ENGINE_HAS_BIAS_ORIENTATION = (
     "transposed_bias" in inspect.signature(TriangleAttention.__init__).parameters
 )
+#: The engine's ``TriangleAttention`` takes RoseTTAFold3's biases and Chai-1's output orientations (2.3.8).
+_ENGINE_HAS_TRIATTN_VARIANTS = (
+    "dual_output" in inspect.signature(TriangleAttention.__init__).parameters
+)
+#: The engine's ``OuterProductMean`` takes RoseTTAFold3's projection biases and Chai-1's groups (2.3.8).
+_ENGINE_HAS_OPM_VARIANTS = (
+    "groups" in inspect.signature(OuterProductMean.__init__).parameters
+)
+#: The engine's ``AttentionPairBias`` takes Chai-1's constant gate bias (2.3.8).
+_ENGINE_HAS_APB_GATE_BIAS = (
+    "gate_bias" in inspect.signature(AttentionPairBias.__init__).parameters
+)
 #: The engine's ``LocalDiTBlock`` takes AlphaFold 3's K/V norm and key window (``kv_norm`` / ``key_window``).
 _ENGINE_HAS_ATOM_VARIANT = (
     "kv_norm" in inspect.signature(LocalDiTBlock.__init__).parameters
 )
 _ATTR = "_engine_module"
+_TOKEN_DIT_COND = 384
+#: The dense classes with an FP32 engine kernel on H100 (TF32 tensor cores): the diffusion transformers.
+_FP32_ENGINE_CLASSES = ("DiffusionTransformer", "DiffusionCrossAttTransformer")
 _DEFAULT_EPS = 1e-5
 _ATOM_WIDTH, _ATOM_PAIR, _ATOM_KEYS = 128, 16, 128
 _ATOM_ROPE_PAIRS = 16  # rotary pairs per 32-channel atom head (3 x 2 spatial + 10 uid)
+try:  # the engine's Boltz-2 / RoseTTAFold3 / Chai-1 token and atom stacks (2.3.8)
+    from miniworld_engine.modules.dit_variant import (
+        AtomDiTVariantStack,
+        DiTVariantStack,
+    )
+except ImportError:
+    AtomDiTVariantStack = DiTVariantStack = None
 try:  # the engine's ESMFold2 atom block options (RMS / SiLU AdaLN, rotary q / k, 192-key window)
     from miniworld_engine.modules.local_dit import ESMFOLD2 as _ENGINE_ESMFOLD2
 except ImportError:
@@ -119,9 +142,7 @@ def triangle_multiplication(module: nn.Module, like: torch.Tensor) -> nn.Module 
     # The hidden width may differ from the pair width (template stacks: pair 64,
     # hidden 128); the engine takes it as d_hidden.
     h = module.center_norm.weight.shape[0]
-    if getattr(module, "divide_by_length", False) or (
-        module.left_norm_input.eps != module.center_norm.eps
-    ):
+    if module.left_norm_input.eps != module.center_norm.eps:
         return None
     outgoing = module.equation == "cik,cjk->cij"
     # The released projection interleaves a,b per hidden channel; the engine takes them as two
@@ -149,6 +170,11 @@ def triangle_multiplication(module: nn.Module, like: torch.Tensor) -> nn.Module 
         like,
     )
     _set_eps(built, module.left_norm_input.eps)
+    if getattr(module, "divide_by_length", False):
+        # RoseTTAFold3 divides the contraction by the real length before the centre norm. The
+        # left operand is linear in its projection, so the call scales a copy of that weight by
+        # 1 / length on the device (``routing.triangle_residual``) and the kernels run unchanged.
+        built.foldforge_left_weight = built.to_left.weight.detach().clone()
     return built
 
 
@@ -157,17 +183,22 @@ def triangle_attention(module: nn.Module, like: torch.Tensor) -> nn.Module | Non
 
     The ending node takes its pair bias from the transposed pair (``transposed_bias``) or, as AF3's
     released code does, from the pair as it is. An engine without the ``transposed_bias`` option
-    knows only the first, so a module on the second is left on the reference path there.
+    knows only the first, so a module on the second is left on the reference path there. The
+    released variants map one to one: RoseTTAFold3's gate / out-projection biases (``gate_bias`` /
+    ``out_bias``), Chai-1's ending node returned as the transposed pair has it
+    (``untransposed_output``) and its confidence head's second out-projection (``dual_output``).
     """
     hidden = module.num_head * module.qkv_dim
     ending_as_is = module.transpose and not module.transposed_bias
-    if (
-        module.dual_output
-        or module.untransposed_output
-        or module.gating_query.bias is not None
-        or module.output_projection.bias is not None
-        or (ending_as_is and not _ENGINE_HAS_BIAS_ORIENTATION)
-    ):
+    if ending_as_is and not _ENGINE_HAS_BIAS_ORIENTATION:
+        return None
+    variant = {
+        "gate_bias": module.gating_query.bias is not None,
+        "out_bias": module.output_projection.bias is not None,
+        "untransposed_output": module.untransposed_output,
+        "dual_output": module.dual_output,
+    }
+    if any(variant.values()) and not _ENGINE_HAS_TRIATTN_VARIANTS:
         return None
     orientation = (
         {"transposed_bias": not ending_as_is} if _ENGINE_HAS_BIAS_ORIENTATION else {}
@@ -182,21 +213,24 @@ def triangle_attention(module: nn.Module, like: torch.Tensor) -> nn.Module | Non
         implementation=_ENGINE,
         p_drop=0.0,
         **orientation,
+        **({k: v for k, v in variant.items() if v}),
     )
-    _copy(
-        built,
-        {
-            "ln_pair.weight": module.act_norm.weight,
-            "ln_pair.bias": module.act_norm.bias,
-            "to_query.weight": module.q_projection.weight,
-            "to_key.weight": module.k_projection.weight,
-            "to_value.weight": module.v_projection.weight,
-            "to_bias.weight": module.pair_bias_projection.weight,
-            "to_gate.weight": module.gating_query.weight,
-            "to_out.weight": module.output_projection.weight,
-        },
-        like,
-    )
+    sources = {
+        "ln_pair.weight": module.act_norm.weight,
+        "ln_pair.bias": module.act_norm.bias,
+        "to_query.weight": module.q_projection.weight,
+        "to_key.weight": module.k_projection.weight,
+        "to_value.weight": module.v_projection.weight,
+        "to_bias.weight": module.pair_bias_projection.weight,
+        "to_gate.weight": module.gating_query.weight,
+        "to_gate.bias": module.gating_query.bias,
+        "to_out.weight": module.output_projection.weight,
+        "to_out.bias": module.output_projection.bias,
+    }
+    if module.dual_output:
+        sources["to_out_t.weight"] = module.output_projection_transposed.weight
+        sources["to_out_t.bias"] = module.output_projection_transposed.bias
+    _copy(built, sources, like)
     _set_eps(built, module.act_norm.eps)
     return built
 
@@ -234,38 +268,52 @@ def pair_weighted_averaging(module: nn.Module, like: torch.Tensor) -> nn.Module:
 
 
 def outer_product_mean(module: nn.Module, like: torch.Tensor) -> nn.Module | None:
-    """Engine OuterProductMean from a dense ``OuterProductMean`` (single group, no projection bias).
+    """Engine OuterProductMean from a dense ``OuterProductMean``.
 
     The engine always divides by ``clamp(count, 1)``; the released form divides by ``count + 1e-3``.
     The two differ by 0.1% at a single row and not at all beyond bf16 resolution after that; they
     differ at pairs with no valid row (padding), which the graph masks. ``bias_after_norm`` is the
-    engine's ``normalize_before_proj``.
+    engine's ``normalize_before_proj``. RoseTTAFold3's projection biases and Chai-1's groups (G
+    outer products of K-wide halves, LayerNorm'd, no count division) map to the engine's
+    ``projection_bias`` / ``groups``.
     """
-    if module.groups != 1 or module.left_projection.bias is not None:
+    groups = module.groups
+    projection_bias = module.left_projection.bias is not None
+    if (groups != 1 or projection_bias) and not _ENGINE_HAS_OPM_VARIANTS:
         return None
     channels = module.num_outer_channel
+    variant = (
+        {"projection_bias": projection_bias, "groups": groups}
+        if _ENGINE_HAS_OPM_VARIANTS
+        else {}
+    )
     built = OuterProductMean(
         module.c_msa,
         module.num_output_channel,
-        channels,
+        groups * channels,
         normalize_before_proj=module.bias_after_norm,
         implementation=_ENGINE,
+        **variant,
     )
-    _copy(
-        built,
-        {
-            "ln_msa.weight": module.layer_norm_input.weight,
-            "ln_msa.bias": module.layer_norm_input.bias,
-            "to_left.weight": module.left_projection.weight,
-            "to_right.weight": module.right_projection.weight,
-            "to_out.weight": module.output_w.reshape(
-                channels * channels, module.num_output_channel
-            ).T,
-            "to_out.bias": module.output_b,
-        },
-        like,
-    )
+    sources = {
+        "ln_msa.weight": module.layer_norm_input.weight,
+        "ln_msa.bias": module.layer_norm_input.bias,
+        "to_left.weight": module.left_projection.weight,
+        "to_left.bias": module.left_projection.bias,
+        "to_right.weight": module.right_projection.weight,
+        "to_right.bias": module.right_projection.bias,
+        "to_out.weight": module.output_w.reshape(
+            groups * channels * channels, module.num_output_channel
+        ).T,
+        "to_out.bias": module.output_b,
+    }
+    if groups > 1:
+        sources["product_norm.weight"] = module.product_norm.weight
+        sources["product_norm.bias"] = module.product_norm.bias
+    _copy(built, sources, like)
     _set_eps(built, module.layer_norm_input.eps)
+    if groups > 1:
+        built.product_norm.eps = module.product_norm.eps
     return built
 
 
@@ -366,6 +414,308 @@ def diffusion_blocks(module: nn.Module, like: torch.Tensor) -> list[nn.Module] |
     return blocks
 
 
+def _variant_adaln(norm: nn.Module, prefix: str) -> dict[str, torch.Tensor]:
+    """The engine ``VariantAdaLN`` tensors of a dense ``AdaptiveLayerNorm`` (sigmoid form or identity form)."""
+    sources = {
+        f"{prefix}.to_scale.weight": norm.single_cond_scale.weight,
+        f"{prefix}.to_shift.weight": norm.single_cond_bias.weight,
+    }
+    if not norm.identity_scale:
+        sources[f"{prefix}.cond_norm_weight"] = norm.single_cond_layer_norm.weight
+        sources[f"{prefix}.to_scale.bias"] = norm.single_cond_scale.bias
+    return sources
+
+
+def _variant_adaln_plain(norm: nn.Module, identity: bool, eps: float) -> bool:
+    """Whether an AdaLN is the layer-norm form the variant stacks compute (not ESMFold2's RMS / SiLU form)."""
+    return bool(
+        norm.use_single_cond
+        and not getattr(norm, "rms_norm", False)
+        and not getattr(norm, "activate_cond", False)
+        and norm.identity_scale == identity
+        and norm.layer_norm.eps == eps
+        and (identity or norm.single_cond_layer_norm.eps == _DEFAULT_EPS)
+        and (norm.single_cond_scale.bias is None) == identity
+    )
+
+
+def _variant_transition_sources(
+    trans: nn.Module, prefix: str
+) -> dict[str, torch.Tensor]:
+    """Engine block tensors of a dense (Gated)DiffusionTransition: ``expand`` rows are [gate | value]."""
+    sources = {
+        f"{prefix}.expand.weight": trans.transition1.weight,
+        f"{prefix}.squeeze.weight": trans.adaptive_zero_init.transition2.weight,
+        f"{prefix}.trans_zero.weight": trans.adaptive_zero_init.adaptive_zero_cond.weight,
+        f"{prefix}.trans_zero.bias": trans.adaptive_zero_init.adaptive_zero_cond.bias,
+        **_variant_adaln(trans.adaptive_layernorm, f"{prefix}.trans_adaln"),
+    }
+    if hasattr(trans, "a_to_b"):
+        sources[f"{prefix}.up.weight"] = trans.a_to_b.weight
+    return sources
+
+
+def _variant_transition_ok(
+    trans: nn.Module, identity: bool, eps: float, gated: bool
+) -> bool:
+    zero = trans.adaptive_zero_init
+    return bool(
+        type(trans).__name__
+        == ("GatedDiffusionTransition" if gated else "DiffusionTransition")
+        and _variant_adaln_plain(trans.adaptive_layernorm, identity, eps)
+        and zero.project
+        and not zero.raw_gate
+        and zero.adaptive_zero_cond.bias is not None
+    )
+
+
+def diffusion_variant_stack(module: nn.Module, like: torch.Tensor) -> nn.Module | None:
+    """The engine's ``DiTVariantStack`` for a dense ``DiffusionTransformer`` the per-block ``DiTBlock`` cannot serve.
+
+    Boltz-2 (sequential, up-gate transition), RoseTTAFold3 (parallel, kq-norm) and Chai-1 (parallel, identity
+    AdaLN, no gating query, affine pair LayerNorm): the engine owns the whole stack, residuals included.
+    The pair LayerNorm offset is dropped by the engine's bias (a per-head constant on the logits).
+    """
+    if DiTVariantStack is None:
+        return None
+    attention = module.self_attention
+    first = attention[0]
+    first_norm = first.adaptive_layernorm
+    identity = first_norm.identity_scale
+    eps = first_norm.layer_norm.eps
+    per_block = module.per_block_pair
+    norms = (
+        list(module.pair_input_layer_norm)
+        if per_block
+        else [module.pair_input_layer_norm] * module.num_blocks
+    )
+    gated = type(module.transition_block[0]).__name__ == "GatedDiffusionTransition"
+    heads = module.num_head
+    factor = module.transition_block[0].num_intermediate_factor
+    if not (
+        len({(norm.eps, norm.bias is None) for norm in norms}) == 1
+        and all(
+            _variant_adaln_plain(block.adaptive_layernorm, identity, eps)
+            and block.kq_norm == first.kq_norm
+            and block.use_gating_query == first.use_gating_query
+            and not block.gate_bias
+            and block.q_projection.bias is not None
+            and block.adaptive_zero_init.project
+            and not block.adaptive_zero_init.raw_gate
+            and block.adaptive_zero_init.adaptive_zero_cond.bias is not None
+            and (
+                not block.kq_norm
+                or block.query_layer_norm.eps
+                == block.key_layer_norm.eps
+                == _DEFAULT_EPS
+            )
+            for block in attention
+        )
+        and all(
+            _variant_transition_ok(block, identity, eps, gated)
+            and block.num_intermediate_factor == factor
+            for block in module.transition_block
+        )
+    ):
+        return None
+    options = {
+        "parallel": module.parallel,
+        "identity_scale": identity,
+        "gating": first.use_gating_query,
+        "kq_norm": first.kq_norm,
+        "up_gate": gated,
+        "pair_norm_bias": norms[0].bias is not None,
+        "adaln_eps": eps,
+        "pair_eps": norms[0].eps,
+    }
+    with torch.device(like.device):  # the default initialiser is cheap on the GPU
+        stack = DiTVariantStack(
+            module.num_blocks,
+            module.c_act,
+            module.c_single_cond,
+            module.c_pair_cond,
+            heads,
+            factor,
+            implementation=_ENGINE,
+            **options,
+        )
+    sources: dict[str, torch.Tensor] = {}
+    for index, (attn, trans) in enumerate(
+        zip(attention, module.transition_block, strict=True)
+    ):
+        prefix = f"blocks.{index}"
+        zero = attn.adaptive_zero_init
+        if per_block:
+            rows = module.pair_logits_projection[index].weight
+        else:
+            super_block, offset = divmod(index, module.super_block_size)
+            rows = module.pair_logits_projection[super_block].weight[
+                offset * heads : (offset + 1) * heads
+            ]
+        sources |= {
+            f"{prefix}.to_q.weight": attn.q_projection.weight,
+            f"{prefix}.to_q.bias": attn.q_projection.bias,
+            f"{prefix}.to_k.weight": attn.k_projection.weight,
+            f"{prefix}.to_v.weight": attn.v_projection.weight,
+            f"{prefix}.to_out.weight": zero.transition2.weight,
+            f"{prefix}.attn_zero.weight": zero.adaptive_zero_cond.weight,
+            f"{prefix}.attn_zero.bias": zero.adaptive_zero_cond.bias,
+            f"{prefix}.pair_norm.weight": norms[index].weight,
+            f"{prefix}.to_pair_bias.weight": rows,
+            **_variant_adaln(attn.adaptive_layernorm, f"{prefix}.attn_adaln"),
+            **_variant_transition_sources(trans, prefix),
+        }
+        if norms[index].bias is not None:
+            sources[f"{prefix}.pair_norm.bias"] = norms[index].bias
+        if attn.use_gating_query:
+            sources[f"{prefix}.to_g.weight"] = attn.gating_query.weight
+        if attn.kq_norm:
+            sources |= {
+                f"{prefix}.q_norm.weight": attn.query_layer_norm.weight,
+                f"{prefix}.q_norm.bias": attn.query_layer_norm.bias,
+                f"{prefix}.k_norm.weight": attn.key_layer_norm.weight,
+                f"{prefix}.k_norm.bias": attn.key_layer_norm.bias,
+            }
+    return _copy(stack, sources, like, keep_master=True)
+
+
+def atom_variant_stack(module: nn.Module, like: torch.Tensor) -> nn.Module | None:
+    """The engine's ``AtomDiTVariantStack`` for a dense ``DiffusionCrossAttTransformer`` the ``LocalDiTBlock`` cannot serve.
+
+    Boltz-2 (shared pair projection, up-gate), RoseTTAFold3 (per-block pair LayerNorm, kq-norm, parallel) and
+    Chai-1 (identity AdaLN, no gating query, no output projection, same-conformer mask by ``uid``). The window
+    is AF3's slid one or the clipped, OR-masked one (``atom_blocks``).
+    """
+    if AtomDiTVariantStack is None or getattr(module, "rope", False):
+        return None
+    attention = module.cross_attention
+    first = attention[0]
+    first_norm = first.q_adaptive_layernorm
+    identity = first_norm.identity_scale
+    eps = first_norm.layer_norm.eps
+    per_block = module.per_block_pair
+    norms = (
+        list(module.pair_input_layer_norm)
+        if per_block
+        else [module.pair_input_layer_norm] * module.num_blocks
+    )
+    window = {("slide", False): "slide", ("pad", True): "pad"}.get(
+        (module.key_window, first.key_masked)
+    )
+    gated = type(module.transition_block[0]).__name__ == "GatedDiffusionTransition"
+    factor = module.transition_block[0].num_intermediate_factor
+    if not (
+        window is not None
+        and not module.chained_key_norm
+        and module.window_half is None
+        and module.keys_subset == _ATOM_KEYS
+        and module.c_query == _ATOM_WIDTH
+        and module.c_single_cond == _ATOM_WIDTH
+        and module.c_pair_cond == _ATOM_PAIR
+        and module.num_head == 4
+        and len({(norm.eps, norm.bias is None) for norm in norms}) == 1
+        and all(
+            block.key_masked == first.key_masked
+            and _variant_adaln_plain(block.q_adaptive_layernorm, identity, eps)
+            and _variant_adaln_plain(block.k_adaptive_layernorm, identity, eps)
+            and block.kq_norm == first.kq_norm
+            and block.use_gating_query == first.use_gating_query
+            and block.adaptive_zero_init.project == first.adaptive_zero_init.project
+            and not block.adaptive_zero_init.raw_gate
+            and block.adaptive_zero_init.adaptive_zero_cond.bias is not None
+            and block.q_projection.bias is not None
+            and (
+                not block.kq_norm
+                or block.query_layer_norm.eps
+                == block.key_layer_norm.eps
+                == _DEFAULT_EPS
+            )
+            for block in attention
+        )
+        and all(
+            _variant_transition_ok(block, identity, eps, gated)
+            and block.num_intermediate_factor == factor
+            for block in module.transition_block
+        )
+    ):
+        return None
+    with torch.device(like.device):
+        stack = AtomDiTVariantStack(
+            module.num_blocks,
+            _ATOM_WIDTH,
+            _ATOM_WIDTH,
+            _ATOM_PAIR,
+            factor,
+            parallel=module.parallel,
+            per_block_pair_norm=per_block,
+            pair_norm_bias=norms[0].bias is not None,
+            key_window=window,
+            implementation=_ENGINE,
+            identity_scale=identity,
+            gating=first.use_gating_query,
+            project_output=first.adaptive_zero_init.project,
+            kq_norm=first.kq_norm,
+            up_gate=gated,
+            adaln_eps=eps,
+            pair_eps=norms[0].eps,
+        )
+    sources: dict[str, torch.Tensor] = {}
+    if not per_block:
+        sources |= {
+            "pair_norm.weight": norms[0].weight,
+            "to_pair_bias.weight": module.pair_logits_projection.weight,
+        }
+        if norms[0].bias is not None:
+            sources["pair_norm.bias"] = norms[0].bias
+    for index, (attn, trans) in enumerate(
+        zip(attention, module.transition_block, strict=True)
+    ):
+        prefix = f"blocks.{index}"
+        zero = attn.adaptive_zero_init
+        sources |= {
+            f"{prefix}.to_q.weight": attn.q_projection.weight,
+            f"{prefix}.to_q.bias": attn.q_projection.bias,
+            f"{prefix}.to_k.weight": attn.k_projection.weight,
+            f"{prefix}.to_v.weight": attn.v_projection.weight,
+            f"{prefix}.attn_zero.weight": zero.adaptive_zero_cond.weight,
+            f"{prefix}.attn_zero.bias": zero.adaptive_zero_cond.bias,
+            **_variant_adaln(attn.q_adaptive_layernorm, f"{prefix}.q_adaln"),
+            **_variant_adaln(attn.k_adaptive_layernorm, f"{prefix}.k_adaln"),
+            **_variant_transition_sources(trans, prefix),
+        }
+        if per_block:
+            sources[f"{prefix}.pair_norm.weight"] = norms[index].weight
+            sources[f"{prefix}.to_pair_bias.weight"] = module.pair_logits_projection[
+                index
+            ].weight
+            if norms[index].bias is not None:
+                sources[f"{prefix}.pair_norm.bias"] = norms[index].bias
+        if attn.use_gating_query:
+            sources[f"{prefix}.to_g.weight"] = attn.gating_query.weight
+        if zero.project:
+            sources[f"{prefix}.to_out.weight"] = zero.transition2.weight
+        if attn.kq_norm:
+            sources |= {
+                f"{prefix}.q_norm.weight": attn.query_layer_norm.weight,
+                f"{prefix}.q_norm.bias": attn.query_layer_norm.bias,
+                f"{prefix}.k_norm.weight": attn.key_layer_norm.weight,
+                f"{prefix}.k_norm.bias": attn.key_layer_norm.bias,
+            }
+    return _copy(stack, sources, like, keep_master=True)
+
+
+def variant_serves(stack: nn.Module, *inputs: torch.Tensor | None) -> bool:
+    """Whether the engine's H100 inference kernels take this call; if not, the caller keeps the dense path."""
+    from miniworld_engine.kernels.dit_variants import interface
+
+    serves = (
+        interface.atom_serves
+        if isinstance(stack, AtomDiTVariantStack)
+        else interface.serves
+    )
+    return bool(serves(stack, *inputs))
+
+
 def _eps_of(adaptive_norm: nn.Module) -> set[float | None]:
     """The epsilons of an AdaLN's norms; a form without them (RMS conditioning) gives ``None``, which is not the default."""
     return {
@@ -393,7 +743,9 @@ def _raw_gate(zero_init: nn.Module) -> bool:
     )
 
 
-def _esmfold2_atom_blocks(module: nn.Module, like: torch.Tensor) -> list[nn.Module] | None:
+def _esmfold2_atom_blocks(
+    module: nn.Module, like: torch.Tensor
+) -> list[nn.Module] | None:
     """ESMFold2's atom stack: one engine ``LocalDiTBlock(**ESMFOLD2)`` per block.
 
     AF3's block (parallel K/V AdaLN, slid window, atom pair bias, gating query, q bias) with the
@@ -627,7 +979,7 @@ def single_attention(
         attention.use_single_cond
         or attention.kq_norm
         or not attention.use_gating_query
-        or attention.gate_bias
+        or (attention.gate_bias and not _ENGINE_HAS_APB_GATE_BIAS)
         or attention.q_projection.bias is None
         or attention.qkv_dim * attention.num_head != attention.c_x
     ):
@@ -637,6 +989,8 @@ def single_attention(
         norm.weight.shape[0],
         attention.num_head,
         implementation=_ENGINE,
+        # Chai-1: a constant on the gate logits
+        **({"gate_bias": attention.gate_bias} if attention.gate_bias else {}),
     )
     layer_norm = attention.adaptive_layernorm.layer_norm
     _copy(
@@ -661,7 +1015,15 @@ def single_attention(
 
 
 def install_engine_modules(model: nn.Module, like: torch.Tensor) -> dict[str, int]:
-    """Attach an engine module to every dense module that has an exact one; return the counts."""
+    """Attach an engine module to every dense module that has an exact one; return the counts.
+
+    ``like`` carries the model's dtype and device. An FP32 model (``precision: fp32``) gets the diffusion
+    transformers only: they are the modules with an FP32 engine kernel (TF32 tensor cores) on H100. The
+    pair stack's modules (TriMul, triangle attention, outer product mean, pair weighted averaging, pair
+    bias attention) have BF16 kernels only, and the variant stacks serve BF16; attaching them to an FP32
+    model would copy weights nothing reads.
+    """
+    fp32_model = like.dtype == torch.float32
     counts = {
         "engine_trimul": 0,
         "engine_triangle_attention": 0,
@@ -670,11 +1032,18 @@ def install_engine_modules(model: nn.Module, like: torch.Tensor) -> dict[str, in
         "engine_dit_blocks": 0,
         "engine_single_attention": 0,
         "engine_atom_blocks": 0,
+        "engine_dit_variant_blocks": 0,
+        "engine_atom_variant_blocks": 0,
     }
+    import os  # FF_ENGINE_SKIP (debugging): engine_* keys whose modules stay dense
+
+    skip = set(filter(None, os.environ.get("FF_ENGINE_SKIP", "").split(",")))
     for module in model.modules():
         name = type(module).__name__
         built: object | None = None
         key = ""
+        if fp32_model and name not in _FP32_ENGINE_CLASSES:
+            continue
         if name == "TriangleMultiplication":
             built, key = triangle_multiplication(module, like), "engine_trimul"
         elif name == "GridSelfAttention":
@@ -691,18 +1060,42 @@ def install_engine_modules(model: nn.Module, like: torch.Tensor) -> dict[str, in
         elif name == "DiffusionCrossAttTransformer":
             built = atom_blocks(module, like)
             key = "engine_atom_blocks"
-            counts[key] += len(built) if built else 0
-            if built:
+            if built is None and not fp32_model:
+                built = atom_variant_stack(module, like)
+                key = "engine_atom_variant_blocks"
+                counts[key] += module.num_blocks if built else 0
+            else:
+                counts[key] += len(built or [])
+            if built and key not in skip:
                 attach(module, built)
+                if isinstance(built, list):
+                    module.foldforge_engine_fp32 = all(
+                        p.dtype == torch.float32 for p in built[0].parameters()
+                    )
             continue
         elif name == "DiffusionTransformer":
-            built = diffusion_blocks(module, like)
+            # the per-block engine DiTBlock serves a 384-wide conditioning only (ESMFold2's is 768, Boltz-2's too)
+            built = (
+                diffusion_blocks(module, like)
+                if module.c_single_cond == _TOKEN_DIT_COND
+                else None
+            )
             key = "engine_dit_blocks"
-            counts[key] += len(built) if built else 0
-            if built:
+            if built is None and not fp32_model:
+                built = diffusion_variant_stack(module, like)
+                key = "engine_dit_variant_blocks"
+                counts[key] += module.num_blocks if built else 0
+            else:
+                counts[key] += len(built or [])
+            if built and key not in skip:
                 attach(module, built)
+                if isinstance(built, list):
+                    # read by the dense forward (a compiled region reads an attribute, not the blocks' parameters)
+                    module.foldforge_engine_fp32 = all(
+                        p.dtype == torch.float32 for p in built[0].parameters()
+                    )
             continue
-        if built is not None:
+        if built is not None and key not in skip:
             attach(module, built)
             counts[key] += 1
     return counts

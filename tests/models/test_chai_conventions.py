@@ -15,26 +15,45 @@ def _loaded(block: nn.Module) -> nn.Module:
     return holder
 
 
-def test_install_keeps_a_block_with_its_own_schedule():
-    """The shared block is sequential; a parallel one must keep its forward.
+def test_install_keeps_a_parallel_block_on_its_own_schedule():
+    """A parallel block (every update reads the block's input) stays parallel when installed.
 
-    Swapping it ran Chai-1's 48 trunk blocks under the wrong composition for
-    every real fold while a harness that skipped the loader matched the
-    release, and cost 18 pLDDT points on 5I28.
+    Swapping it for the sequential composition ran Chai-1's 48 trunk blocks
+    under the wrong schedule for every real fold while a harness that skipped
+    the loader matched the release, and cost 18 pLDDT points on 5I28. The
+    engine block now takes the parallel schedule: the installed block must
+    give the dense block's output, and a sequential one must still differ.
     """
+    import copy
+
+    import torch
+
     from foldforge.modules.engine.pairformer import install_pairformers
 
+    torch.manual_seed(0)
     kwargs = {"c_pair": 16, "c_single": 32, "n_heads": 2, "n_heads_pair": 2}
-    parallel = _loaded(PairformerBlock(spec=SPECS["chai1"], **kwargs).eval())
-    sequential = _loaded(PairformerBlock(spec=SPECS["alphafold3"], **kwargs).eval())
+    dense = PairformerBlock(spec=SPECS["chai1"], **kwargs).eval()
+    for parameter in dense.parameters():  # the zero-initialised projections would hide the schedule
+        torch.nn.init.normal_(parameter, std=0.2)
+    installed = _loaded(copy.deepcopy(dense))
+    install_pairformers(installed)
+    assert type(installed.block) is not PairformerBlock
+    assert installed.foldforge_load_report["engine_pairformer_blocks"] == 1
 
-    install_pairformers(parallel)
-    install_pairformers(sequential)
-
-    assert type(parallel.block) is PairformerBlock
-    assert parallel.foldforge_load_report["engine_pairformer_blocks"] == 0
-    assert type(sequential.block) is not PairformerBlock
-    assert sequential.foldforge_load_report["engine_pairformer_blocks"] == 1
+    length = 6
+    pair = torch.randn(length, length, 16)
+    single = torch.randn(length, 32)
+    seq_mask = torch.ones(length)
+    seq_mask[-1] = 0
+    pair_mask = seq_mask[:, None] * seq_mask[None, :]
+    with torch.no_grad():
+        want = dense(pair.clone(), pair_mask, single.clone(), seq_mask)
+        got = installed.block(pair.clone(), pair_mask, single.clone(), seq_mask)
+        dense.parallel = False
+        sequential = dense(pair.clone(), pair_mask, single.clone(), seq_mask)
+    for g, w, s in zip(got, want, sequential, strict=True):
+        torch.testing.assert_close(g[:-1, :-1] if g.ndim == 3 else g[:-1], w[:-1, :-1] if w.ndim == 3 else w[:-1])
+        assert not torch.allclose(s, w, atol=1e-3)
 
 
 def test_relative_encoding_tells_chains_and_entities_apart():

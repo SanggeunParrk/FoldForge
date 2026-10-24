@@ -12,6 +12,7 @@ from miniworld_engine.modules.exceptions import ImplementationType as EngineImpl
 from torch import nn
 
 from foldforge.modules.engine.native_linear import NativeLinear
+from foldforge.modules.engine.routing import enabled_fp32
 
 _UNBATCHED_TOKEN_RANK = 2
 #: The engine Transition kernels normalise with this eps (its LayerNorm default).
@@ -156,6 +157,9 @@ class ReleasedTransition(nn.Module):
 
     def _serves(self, x: torch.Tensor) -> bool:
         weight = self.layer.expand_a.weight.dtype
+        if x.dtype == torch.float32:
+            # FP32 activations and weights: the engine's TF32 tensor core kernel, where TF32 is allowed.
+            return weight == torch.float32 and enabled_fp32(self.source, x)
         return (
             x.is_cuda
             and x.dtype == torch.bfloat16

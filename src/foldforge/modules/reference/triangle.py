@@ -27,10 +27,13 @@ def triangle_update(
     project_out: Projection,
     gate_out: Projection,
     config: TriangleConfig,
+    contraction_scale: Tensor | None = None,
 ) -> Tensor:
     """Return a raw delta while preserving masked-product rounding order.
 
     ``project_a`` / ``gate_a`` hold both branches, interleaved per hidden channel.
+    ``contraction_scale``: a 0-d tensor the contraction is multiplied by before the centre
+    norm (RoseTTAFold3 divides it by the real length); a tensor, so no host read.
     """
     value = normalize(x)
     projection = project_a(value).movedim(-1, -3)
@@ -40,4 +43,6 @@ def triangle_update(
     a, b = projection.unflatten(-3, (-1, 2)).unbind(-3)
     equation = "...cik,...cjk->...cij" if config.outgoing else "...ckj,...cki->...cij"
     contracted = torch.einsum(equation, a, b).movedim(-3, -1)
+    if contraction_scale is not None:
+        contracted = contracted * contraction_scale.to(contracted.dtype)
     return project_out(center(contracted)) * torch.sigmoid(gate_out(value))

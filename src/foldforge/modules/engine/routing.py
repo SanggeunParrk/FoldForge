@@ -37,9 +37,47 @@ def enabled(module: nn.Module, x: torch.Tensor) -> bool:
     )
 
 
+def set_tf32_policy(
+    model: nn.Module, *, tf32: bool, diffusion_tf32: bool = False
+) -> None:
+    """Record whether the engine's FP32 kernels (TF32 tensor cores) may serve this model's modules.
+
+    The engine's FP32 paths multiply on TF32 tensor cores; exact FP32 has no engine kernel. A module
+    therefore runs its FP32 engine kernel only when TF32 is allowed (``tf32``: ``execution.tf32``) and
+    keeps the dense FP32 statements otherwise. ``diffusion_tf32`` additionally allows it in the diffusion
+    head (the ``af3_default`` policy, whose atom blocks have always run on TF32 tensor cores) while the
+    trunk stays exact.
+    """
+    head = getattr(model, "diffusion_head", None)
+    diffusion = set() if head is None else {id(m) for m in head.modules()}
+    for module in model.modules():
+        module.foldforge_tf32 = tf32 or (diffusion_tf32 and id(module) in diffusion)
+
+
+def enabled_fp32(module: nn.Module, x: torch.Tensor) -> bool:
+    """Whether an FP32 activation may take the engine's FP32 (TF32 tensor core) kernels."""
+    return (
+        getattr(module, "foldforge_implementation", ImplementationType.PYTORCH)
+        == ImplementationType.MINIWORLD_ENGINE
+        and x.is_cuda
+        and x.dtype == torch.float32
+        and getattr(module, "foldforge_tf32", False)
+    )
+
+
+def served_by(module: nn.Module, x: torch.Tensor) -> object | None:
+    """The engine module attached to ``module`` when ``x`` is eligible for it, else None.
+
+    The one gate of every dense module that has an engine twin: the module owns the call
+    (and its residual, where it has one) when this returns it.
+    """
+    built = engine_of(module)
+    return built if built is not None and enabled(module, x) else None
+
+
 def transition_residual(module: nn.Module, x: torch.Tensor) -> torch.Tensor:
     """Return the complete transition including its single residual."""
-    if not enabled(module, x):
+    if not (enabled(module, x) or enabled_fp32(module, x)):
         return x + module(x)
     norm = module.input_layer_norm
     wa, wb = module.transition1.weight.chunk(2, dim=0)
@@ -59,25 +97,35 @@ def transition_residual(module: nn.Module, x: torch.Tensor) -> torch.Tensor:
     return out.squeeze(0) if unbatched else out
 
 
+def _inverse_length(x: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
+    """1 / the real sequence length as a 0-d device tensor: counted without a host read, so a
+    captured graph takes each replay's length."""
+    if mask is None:
+        return torch.full((), 1.0 / x.shape[-2], device=x.device)
+    count = mask.reshape(-1, mask.shape[-1]).any(0).sum().clamp_min(1)
+    return count.float().reciprocal()
+
+
 def _length_divided_triangle(
     module: nn.Module, x: torch.Tensor, mask: torch.Tensor | None
 ) -> torch.Tensor:
-    """Triangle update whose contraction is divided by the real sequence length.
+    """Triangle update whose contraction is divided by the real sequence length (the reference)."""
+    return reference_triangle(
+        module, x, mask, contraction_scale=_inverse_length(x, mask)
+    )
 
-    A LayerNorm follows, so only its epsilon can see the division:
-    ``LN_eps(y / L) == LN_{eps * L**2}(y)``. The fused kernels share one epsilon
-    between their two norms, so this convention takes the reference path.
+
+def _length_divided_engine(
+    built: nn.Module, x: torch.Tensor, mask: torch.Tensor | None
+) -> torch.Tensor:
+    """The engine TriMul on a contraction divided by the real length (RoseTTAFold3).
+
+    The left operand ``sigmoid(gate) * (W_left x)`` is linear in ``W_left``, so the engine module
+    runs with ``W_left / length``: the contraction it normalises is the released ``y / L``.
     """
-    center = module.center_norm
-    length = x.shape[-2]
-    if mask is not None:
-        length = int(mask.reshape(-1, mask.shape[-1]).any(0).sum())
-    epsilon = center.eps
-    center.eps = epsilon * float(max(length, 1)) ** 2
-    try:
-        return reference_triangle(module, x, mask)
-    finally:
-        center.eps = epsilon
+    scale = _inverse_length(x, mask)
+    built.to_left.weight.copy_(built.foldforge_left_weight.float() * scale)
+    return built(x[None], residue_mask(mask))[0]
 
 
 def triangle_residual(
@@ -90,10 +138,12 @@ def triangle_residual(
         and x.is_cuda
         and x.shape[-1] % 32 == 0
     )
+    built = served_by(module, x)
     if getattr(module, "divide_by_length", False):
+        if built is not None and x.ndim == _UNBATCHED_PAIR_RANK:
+            return _length_divided_engine(built, x, mask)
         return x + _length_divided_triangle(module, x, mask)
-    built = engine_of(module)
-    if built is not None and enabled(module, x) and x.ndim == _UNBATCHED_PAIR_RANK:
+    if built is not None and x.ndim == _UNBATCHED_PAIR_RANK:
         # The engine module owns the residual and reaches the hand-CUDA legs.
         return built(x[None], residue_mask(mask))[0]
     # The engine op needs the contraction width to equal the pair width; a stack
@@ -218,7 +268,10 @@ def reference_conditioned_transition(
 
 
 def reference_triangle(
-    module: nn.Module, x: torch.Tensor, mask: torch.Tensor | None
+    module: nn.Module,
+    x: torch.Tensor,
+    mask: torch.Tensor | None,
+    contraction_scale: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Map the packed checkpoint weights to the shared contraction (a raw delta)."""
     return triangle_update(
@@ -231,4 +284,5 @@ def reference_triangle(
         project_out=module.output_projection,
         gate_out=module.gating_linear,
         config=_TRIANGLE_CONFIGS[module.equation == "cik,cjk->cij"],
+        contraction_scale=contraction_scale,
     )

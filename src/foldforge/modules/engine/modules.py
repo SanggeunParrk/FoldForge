@@ -43,6 +43,8 @@ from miniworld_engine.modules.dit.module import DiTBlock
 from miniworld_engine.modules.exceptions import ImplementationType
 from miniworld_engine.modules.local_dit import LocalDiTBlock
 
+from foldforge.modules.engine.backends import call_refusal
+
 if TYPE_CHECKING:
     from collections.abc import Collection
 
@@ -1026,12 +1028,14 @@ def single_attention(
 _ANTHROPIC_MODULES = ("trimul", "opm", "msa_pwa")
 
 
-def gate_anthropic(built: nn.Module, op: str) -> None:
+def gate_anthropic(built: nn.Module, op: str, device: torch.device) -> str | None:
     """Give an engine module built for the Anthropic payload the predicate that says whether a call fits it.
 
     ``foldforge_refuses(x)`` is the engine's own non-raising ``refusal`` for the call (None when the payload serves it);
     ``routing.served_by`` asks it before every call, so a shape the payload does not take runs the PyTorch reference
     (one log line, or an error under ``engine.unsupported: error``) instead of raising inside the engine module.
+    Returns the answer for a small probe call on ``device`` (the machine and the module's widths, not the sequence length):
+    why this module can never be served, or None.
     """
     from miniworld_engine.integrations import anthropic_msa, anthropic_trimul
 
@@ -1066,6 +1070,10 @@ def gate_anthropic(built: nn.Module, op: str) -> None:
             return anthropic_msa.pwa_refusal(x[None], *dims, grad=grad(), dropout=False)
 
     built.foldforge_refuses = refuses
+    channels = (built.ln_pair if op == "trimul" else built.ln_msa).weight.shape[0]
+    shape = (16, 16, channels) if op == "trimul" else (8, 16, channels)
+    with torch.no_grad():
+        return refuses(torch.empty(shape, dtype=torch.bfloat16, device=device))
 
 
 _PAIR_BATCHED_RANK = 4
@@ -1183,10 +1191,15 @@ def install_engine_modules(  # noqa: PLR0915 - one flat table of module classes
                     )
             continue
         if built is not None and key not in skip:
+            if getattr(built, "implementation", None) == ImplementationType.ANTHROPIC:
+                op = {"engine_trimul": "trimul", "engine_opm": "opm"}.get(key, "msa_pwa")
+                never = gate_anthropic(built, op, like.device)
+                # the payload can never serve this module (the machine, its widths): the reference, stated now
+                if never is not None and call_refusal(getattr(plan, "unsupported", "fallback"), op, "anthropic", never):
+                    counts["anthropic_refused"] = counts.get("anthropic_refused", 0) + 1
+                    continue
             attach(module, built)
             counts[key] += 1
-            if getattr(built, "implementation", None) == ImplementationType.ANTHROPIC:
-                gate_anthropic(built, {"engine_trimul": "trimul", "engine_opm": "opm"}.get(key, "msa_pwa"))
     return counts
 
 

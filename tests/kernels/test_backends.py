@@ -568,10 +568,11 @@ def test_af3_opm_bias_convention_is_refused_by_the_release_and_stated(caplog):
 @needs_cuda
 @pytest.mark.skipif(len(PAYLOAD) < 3, reason="the Anthropic payloads are not named")
 @pytest.mark.usefixtures("payload")
-def test_a_call_the_payload_refuses_runs_the_reference_with_one_line_or_raises(caplog):
-    """A pair width the payload has no TriMul unit for (192): stated once, then the reference."""
+def test_a_module_the_payload_cannot_serve_is_stated_at_install_and_equals_the_reference(caplog):
+    """A pair width the payload has no TriMul unit for (192): stated once at install, no engine module, the reference."""
     from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
     from foldforge.modules.engine.configure import configure_model
+    from foldforge.modules.engine.modules import engine_of
     from foldforge.modules.engine.routing import triangle_residual
 
     torch.manual_seed(5)
@@ -580,24 +581,45 @@ def test_a_call_the_payload_refuses_runs_the_reference_with_one_line_or_raises(c
     mask = torch.ones(128, 128, device="cuda", dtype=torch.bool)
     reference = configure_model(copy.deepcopy(layer), "pytorch")
     backends.forget_logged_refusals()
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        built = install(copy.deepcopy(layer), "anthropic")
+    refusals = [r.getMessage() for r in caplog.records if "refuses a trimul call" in r.getMessage()]
+    assert len(refusals) == 1, caplog.text
+    assert engine_of(built) is None
+    with torch.no_grad():
+        assert torch.equal(
+            triangle_residual(built, x.clone(), mask),
+            triangle_residual(reference, x.clone(), mask),
+        )
+    backends.forget_logged_refusals()
+    with pytest.raises(BackendUnsupportedError, match="trimul"):
+        install(copy.deepcopy(layer), "pytorch", {"trimul": "anthropic"}, unsupported="error")
+
+
+@needs_cuda
+@pytest.mark.skipif(len(PAYLOAD) < 3, reason="the Anthropic payloads are not named")
+@pytest.mark.usefixtures("payload")
+def test_a_call_the_payload_refuses_runs_the_reference_with_one_line_or_raises(caplog):
+    """The OPM epilogue tiles 4 x 16 tokens: N = 100 is refused at the call (not at install), stated once."""
+    from foldforge.modules.dense.primitives import OuterProductMean
+    from foldforge.modules.engine.configure import configure_model
+
+    torch.manual_seed(5)
+    layer = randomize(OuterProductMean(64, 128, 32, bias_after_norm=True, clamped_norm=True))
+    msa = torch.randn(32, 100, 64, device="cuda", dtype=torch.bfloat16)
+    mask = torch.ones(32, 100, device="cuda")
+    reference = configure_model(copy.deepcopy(layer), "pytorch")
+    backends.forget_logged_refusals()
     built = install(copy.deepcopy(layer), "anthropic")
     with torch.no_grad(), caplog.at_level(logging.WARNING, logger=LOGGER):
-        out = triangle_residual(built, x.clone(), mask)
-        triangle_residual(built, x.clone(), mask)
-        expected = triangle_residual(reference, x.clone(), mask)
-    refusals = [
-        r.getMessage()
-        for r in caplog.records
-        if r.name == LOGGER and "refuses a trimul call" in r.getMessage()
-    ]
-    assert len(refusals) == 1, caplog.text
+        out = built(msa, mask)
+        built(msa, mask)
+        expected = reference(msa, mask)
+    assert len([r for r in caplog.records if "refuses a opm call" in r.getMessage()]) == 1, caplog.text
     assert torch.equal(out, expected)
-    strict = install(
-        copy.deepcopy(layer), "pytorch", {"trimul": "anthropic"}, unsupported="error"
-    )
-    backends.forget_logged_refusals()
-    with torch.no_grad(), pytest.raises(BackendUnsupportedError):
-        triangle_residual(strict, x.clone(), mask)
+    strict = install(copy.deepcopy(layer), "pytorch", {"opm": "anthropic"}, unsupported="error")
+    with torch.no_grad(), pytest.raises(BackendUnsupportedError, match="opm"):
+        strict(msa, mask)
 
 
 @needs_cuda

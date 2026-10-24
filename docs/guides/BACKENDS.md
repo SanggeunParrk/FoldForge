@@ -66,10 +66,10 @@ raises with `unsupported: error`; a module the machine or its widths exclude for
 | backend, op | the kernel takes |
 |---|---|
 | miniworld, any | whatever the engine's dispatch takes on the card; what it cannot serve, the engine runs as the PyTorch reference (on H100 / B200 deliberately, see the engine's `docs/gpus/h100/dispatch.md`). Dense FP32 models install the diffusion transformers only |
-| cuequivariance, `trimul` | bf16 CUDA, pair width a multiple of 32, no checkpoint-specific length division |
+| cuequivariance, `trimul` | bf16 CUDA, pair width a multiple of 32 and equal to the contraction width, no length division (RoseTTAFold3's) |
 | cuequivariance, `triangle_attention` | bf16 CUDA (any head count the library takes) |
 | cuequivariance, `single_attention` | bf16 CUDA, AF3's form: no single conditioning, k/q norm or gate bias (so not Chai-1's) |
-| anthropic, `trimul` | `TRIMUL_NATIVE_BUILD_DIR` names a payload; bf16, no grad, one square pair plane per call, sm_90 (sm_100 with the rebuilt member), a payload unit for (pair width, hidden width): 128/128 and 128/256 |
+| anthropic, `trimul` | `TRIMUL_NATIVE_BUILD_DIR` names a payload; bf16, no grad, one square pair plane per call, sm_90 (sm_100 with the rebuilt member), a payload unit for (pair width, hidden width): 128/128 and 128/256; not RoseTTAFold3's length-divided contraction (it scales a weight per call, the payload packs weights once per version) |
 | anthropic, `triangle_attention` | the release's row `k2b` through `integrations.anthropic`; bf16, no grad; the release refuses by name what it has no cell for |
 | anthropic, `opm` | `OPT_CORE_DIR`; 32-wide outer channels into a 128-wide pair, tokens a multiple of 16, bf16, sm_90, and the bias added after the division by the pair count (the OpenFold-lineage convention: AF3's adds it before and is refused) |
 | anthropic, `msa_pwa` | `OPT_CORE_DIR`; the cell is (64-wide MSA, 128-wide pair, 8 heads of width 32): AF3's heads are 8 wide and are refused |
@@ -130,4 +130,158 @@ The measurements below come from the forward-only harness (`ffbench/ff_fwd.py`, 
 now records the `backend`, the backend of every op (`ops`), the fallbacks, the peak allocated memory and the
 coordinate file next to the earlier fields.
 
-RESULTS_PLACEHOLDER
+## Results (H100 80GB, 2026-10-24)
+
+Forward-only harness, the same as `final_af3.jsonl` / `final_esm.jsonl`: `compile_graph_trunk_bucket` (compile and CUDA
+graphs on the denoiser, graphs on the trunk and heads, bucketing), real MSA (and templates where the family has them)
+for 5I28 replicated n times, `mode: exact`, 5 diffusion samples, 200 steps, the released recycles per family; warm median
+of 3 forwards (n <= 2), 2 (n <= 8) or 1. One backend per process, one process per GPU, on the engine tree FoldForge main
+runs on (unreleased engine work, 2.3.8 + `integ/all-20261023`). FoldForge `6d5b7b6`, except RoseTTAFold3 on `anthropic`
+(`91fb117`: its length-divided TriMul is a stated reference there, see below). `anthropic` has the payloads of
+`~/ext/uplifting-biomolecular-modeling` and `trimul_native_cu129`.
+
+Warm median forward time, seconds:
+
+| model | n | miniworld | cuequivariance | anthropic | pytorch |
+|---|---|---|---|---|---|
+| af3 | 1 | 0.51 | 0.89 | 0.86 | 0.99 |
+| openfold3 | 1 | 0.51 | 0.89 | 0.87 | 1.00 |
+| protenix1 | 1 | 0.43 | 0.93 | 0.90 | 1.04 |
+| boltz2 | 1 | 0.45 | 1.01 | 0.97 | 1.16 |
+| rosettafold3 | 1 | 0.47 | 1.04 | 1.01 | 1.07 |
+| esmfold2 | 1 | 0.25 | 0.79 | 0.65 | 0.78 |
+| chai1 | 1 | 0.46 | 0.79 | 0.69 | 0.82 |
+| opendde | 1 | 0.61 | 1.36 | 1.37 | 1.59 |
+| af3 | 4 | 1.38 | 4.06 | 3.42 | 8.03 |
+| openfold3 | 4 | 1.38 | 4.06 | 3.43 | 8.05 |
+| protenix1 | 4 | 1.28 | 4.43 | 3.60 | 9.04 |
+| boltz2 | 4 | 1.60 | 5.03 | 4.09 | 11.26 |
+| rosettafold3 | 4 | 1.41 | 5.54 | 4.98 | 8.00 |
+| esmfold2 | 4 | 0.93 | 3.24 | 2.21 | 4.51 |
+| chai1 | 4 | 2.22 | 4.80 | 4.04 | 8.05 |
+| opendde | 4 | 3.09 | 10.90 | 9.86 | 21.02 |
+
+Mean pLDDT:
+
+| model | n | miniworld | cuequivariance | anthropic | pytorch |
+|---|---|---|---|---|---|
+| af3 | 1 | 96.20 | 96.15 | 96.15 | 96.19 |
+| openfold3 | 1 | 95.13 | 95.09 | 95.08 | 95.07 |
+| protenix1 | 1 | 96.14 | 96.14 | 96.10 | 96.13 |
+| boltz2 | 1 | 97.11 | 97.07 | 97.09 | 97.05 |
+| rosettafold3 | 1 | 86.65 | 86.64 | 86.63 | 86.62 |
+| esmfold2 | 1 | 92.36 | 92.36 | 92.42 | 92.36 |
+| chai1 | 1 | 95.54 | 95.53 | 95.54 | 95.54 |
+| opendde | 1 | 94.86 | 94.86 | 94.84 | 94.87 |
+| af3 | 4 | 89.19 | 89.11 | 88.85 | 89.08 |
+| openfold3 | 4 | 83.89 | 83.73 | 83.80 | 83.73 |
+| protenix1 | 4 | 83.30 | 83.25 | 83.35 | 83.40 |
+| boltz2 | 4 | 91.21 | 91.19 | 91.15 | 91.02 |
+| rosettafold3 | 4 | 83.88 | 83.84 | 83.87 | 83.88 |
+| esmfold2 | 4 | 91.11 | 89.67 | 89.80 | 89.81 |
+| chai1 | 4 | 89.45 | 89.27 | 89.06 | 89.40 |
+| opendde | 4 | 89.71 | 89.65 | 89.56 | 89.64 |
+
+Predicted coordinates against the `pytorch` backend, rms / max displacement of the atoms as they come out, and rms after
+the best rigid fit, Angstrom (the five samples together):
+
+| model | n | miniworld | cuequivariance | anthropic |
+|---|---|---|---|---|
+| af3 | 1 | 0.72 / 4.08 / 0.19 | 0.31 / 2.54 / 0.13 | 0.37 / 2.37 / 0.11 |
+| openfold3 | 1 | 0.87 / 3.94 / 0.13 | 0.52 / 2.48 / 0.08 | 0.30 / 2.87 / 0.08 |
+| protenix1 | 1 | 0.65 / 3.43 / 0.14 | 0.37 / 2.02 / 0.09 | 0.27 / 2.62 / 0.10 |
+| boltz2 | 1 | 1.08 / 2.88 / 0.14 | 0.77 / 2.44 / 0.12 | 0.47 / 1.61 / 0.08 |
+| rosettafold3 | 1 | 0.56 / 2.17 / 0.07 | 0.32 / 3.16 / 0.10 | 0.46 / 2.97 / 0.17 |
+| esmfold2 | 1 | 4.71 / 20.66 / 0.25 | 0.00 / 0.00 / 0.00 | 1.32 / 5.06 / 0.14 |
+| chai1 | 1 | 0.67 / 3.58 / 0.15 | 0.37 / 3.55 / 0.12 | 0.45 / 2.95 / 0.15 |
+| opendde | 1 | 1.31 / 5.28 / 0.16 | 0.28 / 2.39 / 0.12 | 0.51 / 2.19 / 0.11 |
+| af3 | 4 | 1.47 / 6.64 / 0.59 | 0.58 / 3.41 / 0.29 | 1.16 / 4.68 / 0.41 |
+| openfold3 | 4 | 16.16 / 63.12 / 15.57 | 2.46 / 14.37 / 2.21 | 9.51 / 34.97 / 9.43 |
+| protenix1 | 4 | 8.92 / 43.52 / 8.14 | 17.55 / 78.40 / 5.45 | 2.53 / 12.30 / 2.48 |
+| boltz2 | 4 | 15.66 / 70.37 / 10.01 | 8.26 / 45.87 / 7.24 | 14.10 / 51.37 / 13.72 |
+| rosettafold3 | 4 | 14.76 / 79.55 / 14.14 | 8.75 / 44.47 / 7.69 | 15.55 / 80.41 / 12.05 |
+| esmfold2 | 4 | 1.63 / 7.40 / 1.40 | 0.62 / 4.08 / 0.43 | 0.65 / 4.05 / 0.30 |
+| chai1 | 4 | 0.27 / 2.89 / 0.22 | 0.55 / 3.20 / 0.14 | 1.19 / 4.45 / 0.27 |
+| opendde | 4 | 1.26 / 4.94 / 0.86 | 0.44 / 3.15 / 0.20 | 0.81 / 3.72 / 0.14 |
+
+At n = 1 the fits agree to 0.07-0.25 A and pLDDT to 0.1 on every backend and family. At n = 4 the chains are placed
+differently by every run, so the displacement says nothing about the kernels there (a different arrangement of the same
+chains: up to 80 A); pLDDT is the figure to compare. The ESMFold2 n = 1 rms of 4.7 A is a different global frame
+(its fit is 0.25 A), and its `cuequivariance` column is identical to `pytorch` because that family contains none of the ops
+cuequivariance serves. RoseTTAFold3 is not deterministic from run to run even on the
+tree before backends existed (two runs of it differ by up to 2.5 A), so its columns carry that noise.
+
+ESMFold2, n = 16 (the largest size of the recorded series; FoldForge `9bd2e11`, which has the same source as `6d5b7b6`;
+no row failed):
+
+| backend | warm median s | pLDDT | peak allocated GiB |
+|---|---|---|---|
+| miniworld | 10.53 | 73.83 | 33.0 |
+| anthropic | 23.24 | 73.02 | 34.9 |
+| cuequivariance | 39.33 | 72.99 | 58.6 |
+| pytorch | 80.94 | 73.01 | 55.8 |
+
+`miniworld` against the recorded final numbers (`~/foldforge-scratch/ffbench/final_af3.jsonl`, `final_esm.jsonl`):
+
+| | recorded | now (`backend: miniworld`) |
+|---|---|---|
+| AF3 n=4 warm / pLDDT | 1.39 s / 89.19 | 1.38 s / 89.19 |
+| ESMFold2 n = 1, 2, 4, 8, 12, 16 warm, seconds | 0.25, 0.42, 0.93, 2.81, 6.11, 10.68 | 0.25, 0.41, 0.93, 2.77, 6.03, 10.53 |
+
+Unchanged by the backend work: the tree before it (`2af6213`) and the tree after it were run back to back on one GPU with
+the same caches and `backend: miniworld`. All nine arrays of the output (coordinates, pLDDT, PAE, PDE, ...) are bit-identical
+for AF3 at n = 4 and for AF3, Boltz-2, Chai-1, ESMFold2, OpenDDE, OpenFold3 and Protenix at n = 1; RoseTTAFold3 is not
+bit-reproducible by itself (above), and its pLDDT is the same (86.65). The tables use a copy of the kernel cache of the recorded runs (a fresh cache gives pLDDT 89.17 for the same AF3 fold: the engine's tuned configurations are part of the numbers).
+
+Each op through the seam, milliseconds per call at L = 256 / 384 tokens (bf16, AF3 widths, MSA of 512 rows; the
+Anthropic pair weighted averaging cell needs 32-wide heads, so that row uses them on every backend; its OPM epilogue
+needs the OpenFold-lineage bias convention, so there are two OPM rows):
+
+| op | miniworld | cuequivariance | anthropic | pytorch |
+|---|---|---|---|---|
+| TriMul (outgoing) | 0.51 / 0.52 | 0.57 / 0.57 | 0.34 / 0.34 | 0.76 / 1.69 |
+| triangle attention (starting) | 0.15 / 0.28 | 0.51 / 1.21 | 0.45 / 1.02 | 1.16 / 3.34 |
+| OPM, OpenFold convention | 0.90 / 1.88 | ref | 0.29 / 0.43 | 0.75 / 1.42 |
+| OPM, AF3 convention | 0.53 / 1.07 | ref | refused | 0.75 / 1.42 |
+| pair weighted averaging | 0.59 / 0.85 | ref | 0.55 / 0.56 | 0.95 / 1.49 |
+| Transition (pair) | 0.08 / 0.11 | ref | 0.11 / 0.16 | 0.46 / 0.99 |
+| single attention | 0.14 / 0.14 | 0.33 / 0.35 | ref | 0.37 / 0.45 |
+
+What a backend refused or could not express, in the folds above (each is one log line; the op then ran the PyTorch
+reference):
+
+| family | `anthropic` | `cuequivariance` |
+|---|---|---|
+| AF3, OpenFold3, Protenix | pair weighted averaging (heads 8 wide), OPM (AF3 convention) | Protenix: a TriMul whose contraction is wider than the pair |
+| Boltz-2 | none | none |
+| RoseTTAFold3 | TriMul (length-divided contraction) | TriMul (length-divided contraction) |
+| ESMFold2 | pair weighted averaging (128/256 wide), OPM | none (no triangle op in the family) |
+| Chai-1 | pair weighted averaging, OPM, Transition (256 x 512 and 384 x 768 cells) | single attention (gate bias) |
+| OpenDDE | pair weighted averaging, OPM, Transition (384 x 768) | none |
+
+Out of memory: nothing on 80 GB at these sizes, once RoseTTAFold3's TriMul was made a stated reference on `anthropic`
+(before, that combination ran out of memory capturing the trunk graph at n = 4: the payload repacked a weight on every
+call).
+
+Not measured: any card but the H100 (see Other cards); n = 8 and 12 for other backends than `miniworld` on ESMFold2;
+fp32 and `af3_default` precision (the engine kernels of the pair stack are bf16; `precision: fp32` installs the diffusion
+transformers only on `miniworld`, and the other backends run the reference).
+
+## Engine-side changes this needs
+
+None was made (the engine is not touched from here). In order of value:
+
+1. `modules.dispatch.resolve` raises for `anthropic` on any op but triangle multiplication ("the anthropic payload serves
+   triangle_multiplication only"), although `TriangleAttention` and `Transition` have `anthropic` branches. FoldForge calls the
+   release's adapters (`integrations.anthropic.triangle_attention`, `.transition`) itself instead of the engine modules.
+2. `integrations.opm_train.wanted` and `pwa_train.wanted` accept `ImplementationType.ANTHROPIC`, so an engine OPM / pair
+   weighted averaging built with `implementation="anthropic"` runs the engine's own H100 path whenever it serves.
+   `install_engine` therefore sets `settings.opm_train`, `pwa_train` and `pwa_infer` to False when those ops are on
+   `anthropic`. `wanted` should exclude `ANTHROPIC`.
+3. `anthropic_msa.opm_refusal` does not know `normalize_before_proj`: the release's epilogue adds the bias after the division
+   by the pair count, AF3 before; the engine would serve AF3's OPM with the wrong bias. FoldForge refuses that case itself.
+4. `ImplementationType.ANTHROPIC` is missing from `architecture.exceptions` (FoldForge keeps the name as a string).
+5. `_CUEQ_OPS` has no `attention_pair_bias` although `cuequivariance_torch` has the op (FoldForge calls it directly).
+6. The engine's OPM in the OpenFold-lineage convention (`normalize_before_proj`) is slower than the PyTorch reference at
+   S = 512, L = 384 on H100 (1.9 ms against 1.4; the Anthropic path: 0.43 ms). The AF3 convention is 1.1 ms.
+

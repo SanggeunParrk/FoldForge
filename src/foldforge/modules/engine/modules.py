@@ -1070,6 +1070,10 @@ def gate_anthropic(built: nn.Module, op: str, device: torch.device) -> str | Non
             return anthropic_msa.pwa_refusal(x[None], *dims, grad=grad(), dropout=False)
 
     built.foldforge_refuses = refuses
+    if hasattr(built, "foldforge_left_weight"):
+        # RoseTTAFold3's length-divided contraction scales a weight copy on every call; the payload packs its weights
+        # once per version, so each call would repack (and, in a captured graph, allocate) them again
+        return "the contraction is divided by the real sequence length (RoseTTAFold3), a per-call weight scale the payload cannot take"
     channels = (built.ln_pair if op == "trimul" else built.ln_msa).weight.shape[0]
     shape = (16, 16, channels) if op == "trimul" else (8, 16, channels)
     with torch.no_grad():

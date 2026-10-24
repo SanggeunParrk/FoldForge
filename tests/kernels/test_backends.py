@@ -354,11 +354,8 @@ def test_trimul_on_each_backend(backend, outgoing):
 
 
 @needs_cuda
-@pytest.mark.parametrize(
-    "backend", ["miniworld", pytest.param("anthropic", marks=needs_anthropic)]
-)
-def test_length_divided_trimul_on_each_backend(backend):
-    """RoseTTAFold3 divides the contraction by the real length: the engine scales the left projection, any kernel runs."""
+def test_length_divided_trimul_on_miniworld():
+    """RoseTTAFold3 divides the contraction by the real length: the engine scales the left projection, the kernel runs."""
     from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
     from foldforge.modules.engine.routing import triangle_residual
 
@@ -370,14 +367,18 @@ def test_length_divided_trimul_on_each_backend(backend):
     parity(
         lambda: TriangleMultiplication(128, _outgoing=True, divide_by_length=True),
         run,
-        backend,
+        "miniworld",
         "trimul",
         real=real,
     )
 
 
 @needs_cuda
-def test_length_divided_trimul_is_a_stated_reference_on_cuequivariance(caplog):
+@pytest.mark.parametrize(
+    "backend", ["cuequivariance", pytest.param("anthropic", marks=needs_anthropic)]
+)
+def test_length_divided_trimul_is_a_stated_reference_elsewhere(backend, caplog):
+    """Neither the vendor op nor the payload has the per-call length scale: one log line, then the reference."""
     from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
     from foldforge.modules.engine.configure import configure_model
     from foldforge.modules.engine.routing import triangle_residual
@@ -386,12 +387,13 @@ def test_length_divided_trimul_is_a_stated_reference_on_cuequivariance(caplog):
     layer = randomize(TriangleMultiplication(128, _outgoing=True, divide_by_length=True))
     x, mask, _ = pair_case(128)
     reference = configure_model(copy.deepcopy(layer), "pytorch")
-    built = install(copy.deepcopy(layer), "cuequivariance")
     backends.forget_logged_refusals()
-    with torch.no_grad(), caplog.at_level(logging.WARNING, logger=LOGGER):
-        out = triangle_residual(built, x.clone(), mask)
-        triangle_residual(built, x.clone(), mask)
-        expected = triangle_residual(reference, x.clone(), mask)
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        built = install(copy.deepcopy(layer), backend)
+        with torch.no_grad():
+            out = triangle_residual(built, x.clone(), mask)
+            triangle_residual(built, x.clone(), mask)
+            expected = triangle_residual(reference, x.clone(), mask)
     assert len([r for r in caplog.records if "refuses a trimul call" in r.getMessage()]) == 1
     assert torch.equal(out, expected)
 

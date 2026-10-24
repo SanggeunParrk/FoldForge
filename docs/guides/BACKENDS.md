@@ -341,6 +341,24 @@ Boltz-2 n = 1 0.45 s, RoseTTAFold3 0.46 s, Chai-1 0.46 s (the tables above: 1.38
 Test suite on the wheel (`FOLDFORGE_TEST_ALLOW_SIZE_MISMATCH=1`): 641 passed, 1 failed (the missing checkpoints of
 `test_every_registered_family_resolves_its_checkpoint`), 14 skipped (Anthropic payloads not named); 37 of them are new.
 
+## Re-check on the 2.3.11 wheel
+
+FoldForge pins `miniworld-engine==2.3.11` from PyPI (the La-Proteina kernels and the window-attention backward bands on top of
+2.3.10). `pixi.lock` resolves the cp312 wheel with sha256 `834835eb...eec7` (the file on PyPI); the `default` and `cu13`
+environments import 2.3.11 from FoldForge's own `.pixi` with an empty `PYTHONPATH`. Test suite
+(`FOLDFORGE_TEST_ALLOW_SIZE_MISMATCH=1`, empty kernel cache, `CUTLASS_PATH=/nonexistent`): 641 passed, 1 failed (the missing
+checkpoints of `test_every_registered_family_resolves_its_checkpoint`), 14 skipped; the backend tests with the Anthropic payload
+variables set: 52 passed. No engine extension was compiled in either run (empty `TORCH_EXTENSIONS_DIR`; the only `.so` is
+Triton's `cuda_utils` stub), including `miniworld_opm_epilogue`, which 2.3.9 still built in the pytest run. Warm median forward
+(n = 1, empty caches, `compile_graph_trunk_bucket`, real MSA), seconds, mean pLDDT in brackets:
+
+| model | n | miniworld | cuequivariance | anthropic | pytorch |
+|---|---|---|---|---|---|
+| af3 | 1 | 0.51 (96.22) | 0.89 (96.15) | 0.86 (96.17) | 1.00 (96.17) |
+| esmfold2 | 1 | 0.25 (92.36) | 0.78 (92.36) | 0.65 (92.42) | 0.78 (92.36) |
+
+Identical to the 2.3.9 / 2.3.10 numbers above within noise (miniworld AF3 0.51 s, ESMFold2 0.25 s; no deviation over 5%).
+
 ## Engine-side changes this needs
 
 None was made (the engine is not touched from here). In order of value:

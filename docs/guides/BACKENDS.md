@@ -136,7 +136,7 @@ Forward-only harness, the same as `final_af3.jsonl` / `final_esm.jsonl`: `compil
 graphs on the denoiser, graphs on the trunk and heads, bucketing), real MSA (and templates where the family has them)
 for 5I28 replicated n times, `mode: exact`, 5 diffusion samples, 200 steps, the released recycles per family; warm median
 of 3 forwards (n <= 2), 2 (n <= 8) or 1. One backend per process, one process per GPU, on the engine tree FoldForge main
-runs on (unreleased engine work, 2.3.8 + `integ/all-20261023`). FoldForge `6d5b7b6`, except RoseTTAFold3 on `anthropic`
+runs on (the PyPI wheel `miniworld-engine==2.3.9`; the numbers below were measured on the unreleased tree 2.3.8 + `integ/all-20261023`, whose content 2.3.9 contains, and re-checked on the wheel, see "Re-check on the 2.3.9 wheel"). FoldForge `6d5b7b6`, except RoseTTAFold3 on `anthropic`
 (`91fb117`: its length-divided TriMul is a stated reference there, see below). `anthropic` has the payloads of
 `~/ext/uplifting-biomolecular-modeling` and `trimul_native_cu129`.
 
@@ -267,6 +267,27 @@ Not measured: any card but the H100 (see Other cards); n = 8 and 12 for other ba
 fp32 and `af3_default` precision (the engine kernels of the pair stack are bf16; `precision: fp32` installs the diffusion
 transformers only on `miniworld`, and the other backends run the reference).
 
+## Re-check on the 2.3.9 wheel
+
+FoldForge pins `miniworld-engine==2.3.9` from PyPI (2.3.9 contains the engine work the tables above were measured on:
+`serves_extra_bias`, `sampler_ops`, `dit_variants`, the sm90 triangle attention fp16 core, `local_dit`, PWA up to N <= 2048).
+Nothing is put on `PYTHONPATH`: the engine is the installed wheel, FoldForge the editable checkout. Test suite
+(`FOLDFORGE_TEST_ALLOW_SIZE_MISMATCH=1`, empty kernel cache, `CUTLASS_PATH=/nonexistent`): 604 passed, 1 failed (the
+missing checkpoints of `test_every_registered_family_resolves_its_checkpoint`); the backend tests with the Anthropic
+payload variables set: 52 passed. Warm median forward (empty caches, `compile_graph_trunk_bucket`, real MSA), seconds,
+and mean pLDDT in brackets:
+
+| model | n | miniworld | cuequivariance | anthropic | pytorch |
+|---|---|---|---|---|---|
+| af3 | 1 | 0.51 (96.22) | 0.89 (96.16) | 0.86 (96.16) | 0.99 (96.19) |
+| af3 | 4 | 1.38 (89.17) | 4.08 (89.11) | 3.42 (88.85) | 8.08 (89.08) |
+| esmfold2 | 1 | 0.25 (92.36) | 0.79 (92.36) | 0.65 (92.46) | 0.78 (92.36) |
+
+All within 1% of the tables above. AF3 n=4 on `miniworld` gives pLDDT 89.17 with an empty cache (89.19 with the recorded
+cache, see above). No engine kernel was compiled in the four-backend folds. The pytest run built one engine extension,
+`miniworld_opm_epilogue` (the Anthropic-backend OPM epilogue of `integrations/anthropic_msa.py`), which the wheel does not
+ship prebuilt.
+
 ## Engine-side changes this needs
 
 None was made (the engine is not touched from here). In order of value:
@@ -285,3 +306,5 @@ None was made (the engine is not touched from here). In order of value:
 6. The engine's OPM in the OpenFold-lineage convention (`normalize_before_proj`) is slower than the PyTorch reference at
    S = 512, L = 384 on H100 (1.9 ms against 1.4; the Anthropic path: 0.43 ms). The AF3 convention is 1.1 ms.
 
+7. `integrations/anthropic_msa._ext()` JIT-compiles `miniworld_opm_epilogue` on first use; the 2.3.9 wheel ships the `native` variants of that
+   extension prebuilt but not this one (seen on the `anthropic` OPM path of the test suite).

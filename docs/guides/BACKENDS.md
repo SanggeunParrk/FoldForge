@@ -305,7 +305,7 @@ Boltz-2, RoseTTAFold3 and Chai-1 (token and atom) and ESMFold2's token stack ran
 AF3-style and ESMFold2 atom blocks the engine's reference core.
 
 No other card was available, so this was measured on the **H100 with the engine's internal A/B switch**
-(`miniworld_engine.settings.configure(force_triton_kernels=True)`, set by the scratch harness `ff_stage.py` and by the tests only: FoldForge
+(`miniworld_engine.settings.configure(force_portable_kernels=True)`, set by the scratch harness `ff_stage.py` and by the tests only: FoldForge
 has no key for it), which sends the engine to the kernels a recorded card would run, for the whole model. Harness
 `ffbench/ff_fwd.py`, `compile_graph_trunk_bucket`, real MSA and templates, `mode: exact`, 5 samples, 200 steps, warm median
 of 3 (n = 1) or 2 (n = 4) forwards, wheel `miniworld-engine==2.3.10` and no overlay. Columns: `default` = `miniworld` on the

@@ -56,17 +56,17 @@ def install(module: torch.nn.Module):
 
 
 @contextlib.contextmanager
-def force_triton(on: bool = True):
-    """The engine's A/B switch (``settings.force_triton_kernels``): on an H100 it sends the portable Triton paths what the CUDA
+def force_portable(on: bool = True):
+    """The engine's A/B switch (``settings.force_portable_kernels``): on an H100 it sends the portable Triton paths what the CUDA
     paths would take, so that they can be tested and timed there. A test and bench device only; FoldForge has no such key."""
     from miniworld_engine import settings
 
-    previous = settings.current().force_triton_kernels
-    settings.configure(force_triton_kernels=on)
+    previous = settings.current().force_portable_kernels
+    settings.configure(force_portable_kernels=on)
     try:
         yield
     finally:
-        settings.configure(force_triton_kernels=previous)
+        settings.configure(force_portable_kernels=previous)
 
 
 @contextlib.contextmanager
@@ -581,7 +581,7 @@ def test_atom_transformer(family, real, samples, portable):
             pair_cond=pair.to(dtype),
         )
 
-    with torch.no_grad(), engine_calls(engine) as calls, force_triton(portable):
+    with torch.no_grad(), engine_calls(engine) as calls, force_portable(portable):
         expected = run(truth, torch.float32)
         reference = run(ref, torch.bfloat16)
         if portable:  # the block's attention core is the engine's Triton window kernel
@@ -655,7 +655,7 @@ def test_esmfold2_atom_transformer(real, samples, portable):
             rope_k=rope_k,
         )
 
-    with torch.no_grad(), engine_calls(engine) as calls, force_triton(portable):
+    with torch.no_grad(), engine_calls(engine) as calls, force_portable(portable):
         expected = run(truth, torch.float32)
         reference = run(ref, torch.bfloat16)
         if portable:
@@ -998,7 +998,7 @@ def test_variant_atom_circular_window_stays_dense():
 #
 # The engine routes a variant stack itself (H100 CUDA, else its portable Triton path, else the reference);
 # `variant_serves` only asks. On the H100 here the portable path is reached through the engine's A/B switch
-# (`force_triton`) or through a faked card (`fake_card`), which is what the engine's own routing tests do.
+# (`force_portable`) or through a faked card (`fake_card`), which is what the engine's own routing tests do.
 
 
 @contextlib.contextmanager
@@ -1072,7 +1072,7 @@ def test_variant_diffusion_transformer_portable(family, monkeypatch):
     truth, ref, engine, act, single, pair, residues = variant_token_case(family)
     key_mask = residues[None]
     calls = count_portable(monkeypatch, "stack_forward")
-    with torch.no_grad(), force_triton(), engine_calls(engine) as stack_calls:
+    with torch.no_grad(), force_portable(), engine_calls(engine) as stack_calls:
         expected = truth(act.float(), residues, single.float(), pair.float())
         reference = ref(act.clone(), residues, single, pair)
         actual = engine(act.clone(), residues, single, pair, key_mask=key_mask)
@@ -1083,12 +1083,12 @@ def test_variant_diffusion_transformer_portable(family, monkeypatch):
     )
     assert rms_error(actual[:, residues], reference[:, residues]) < 0.02
     # A call that needs a gradient is the portable path's too (the H100 kernels are inference-only).
-    with force_triton(), engine_calls(engine) as graded_calls:
+    with force_portable(), engine_calls(engine) as graded_calls:
         graded = engine(act.clone(), residues, single, pair, key_mask=key_mask)
     assert graded_calls[0] == 1
     assert rms_error(graded[:, residues], expected[:, residues]) < 0.02
     # Inference mode stays the dense blocks' (the engine caches by tensor version).
-    with torch.inference_mode(), force_triton(), engine_calls(engine) as inference_calls:
+    with torch.inference_mode(), force_portable(), engine_calls(engine) as inference_calls:
         engine(act.clone(), residues, single, pair)
     assert inference_calls[0] == 0
 
@@ -1140,7 +1140,7 @@ def test_variant_atom_transformer_portable(family, samples, padded, real, monkey
         )
 
     calls = count_portable(monkeypatch, "atom_stack_forward")
-    with torch.no_grad(), force_triton(), engine_calls(engine) as stack_calls:
+    with torch.no_grad(), force_portable(), engine_calls(engine) as stack_calls:
         expected = run(truth, torch.float32)
         reference = run(ref, torch.bfloat16)
         actual = run(engine, torch.bfloat16, engine_inputs=engine_inputs)
@@ -1185,7 +1185,7 @@ def test_variant_serves_asks_the_portable_path_on_another_card(family, monkeypat
             with warnings.catch_warnings():
                 warnings.simplefilter("error")
                 assert not variant_serves(stack, *token_args)  # a gradient: not the CUDA path either
-            with force_triton():
+            with force_portable():
                 assert variant_serves(stack, *token_args)
 
 
@@ -1206,7 +1206,7 @@ def test_variant_atom_stack_asks_the_portable_path_on_another_card(monkeypatch, 
     with fake_card(monkeypatch, tmp_path, "NVIDIA RTX A6000", (8, 6), recorded=True), torch.no_grad():
         assert variant_serves(stack, x, cond, pair, mask, None)
         assert not variant_serves(stack, x, cond, pair[:, :, :64], mask, None)  # keys other than the atom window's
-    with force_triton():
+    with force_portable():
         assert variant_serves(stack, x, cond, pair, mask, None)
 
 

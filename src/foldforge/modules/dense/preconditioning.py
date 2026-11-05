@@ -3,7 +3,8 @@
 from typing import Literal
 
 import torch
-from miniworld_engine.architecture.diffusion.edm.sampling import expand_to_coords
+
+from foldforge.diffusion.edm.sampling import expand_to_coords
 
 
 def coordinate_coefficient(value: torch.Tensor, coords: torch.Tensor) -> torch.Tensor:

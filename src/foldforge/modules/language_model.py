@@ -26,8 +26,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from jaxtyping import Bool, Float, Int
-from miniworld_engine.architecture.primitives import LayerNorm
-from miniworld_engine.architecture.typing import typecheck
+from miniworld_engine.modules.primitives import LayerNorm
+from miniworld_engine.utils.typecheck import typecheck
 from torch import nn
 
 from foldforge.data.constants import residue_names

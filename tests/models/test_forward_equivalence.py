@@ -98,7 +98,7 @@ def test_conditioned_transition_checkpoint_mapping(
     source = mod.DiffusionTransition(*widths, use_single_cond=True)
     source = configure_model(randomize(source), "pytorch")
     converted_source = copy.deepcopy(source)
-    from miniworld_engine.architecture.exceptions import ImplementationType
+    from foldforge.layers.implementation import ImplementationType
 
     for m in converted_source.modules():
         m.foldforge_implementation = (
@@ -258,8 +258,7 @@ def test_unconditioned_transition_runs_the_engine_transition(
 ):
     """The diffusion head's conditioning transitions (no single conditioning) are
     the engine's plain Transition; ``residual`` is ``x + transition(x)``."""
-    from miniworld_engine.architecture.exceptions import ImplementationType
-
+    from foldforge.layers.implementation import ImplementationType
     from foldforge.modules.engine.conditioning import ReleasedTransition
 
     torch.manual_seed(11)

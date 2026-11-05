@@ -1,20 +1,30 @@
 """AF-family engine adapters with explicit residual ownership.
 
-The dense modules keep the released checkpoint names; this module binds them to the
-engine's whole-op entry points (``miniworld_engine.ops``) and to the shared reference
-equations in ``foldforge.modules.reference``. Callers use the ``*_residual`` entry points: the
-engine ops own their residual, so no subtraction is used to undo a fused BF16 residual.
+The dense modules keep the released checkpoint names; this module hands a call to the engine
+MODULE attached to a dense module (``modules.py``: built from its weights at install time) and
+otherwise binds the dense weights to the shared PyTorch reference equations in
+``foldforge.modules.reference``. No engine kernel function is called from here: a dense module
+the engine has no module for runs its PyTorch statements (or a vendor backend, cuequivariance /
+Anthropic, where one was selected). Callers use the ``*_residual`` entry points: the engine
+modules own their residual, so no subtraction is used to undo a fused BF16 residual.
 """
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import torch
-from miniworld_engine import ops
-from miniworld_engine.architecture.exceptions import ImplementationType
 from torch import nn
 
-from foldforge.modules.engine.attention_ops import triton_allowed
-from foldforge.modules.engine.modules import engine_of, residue_mask
+from foldforge.layers.implementation import ImplementationType
+from foldforge.modules.engine.backends import Support
+from foldforge.modules.engine.modules import attachment_support, engine_of, residue_mask
+from foldforge.modules.engine.policy import (
+    accept_support,
+    backend_support,
+    miniworld_support,
+    refused,
+)
 from foldforge.modules.reference.transition import (
     TransitionConfig,
     adaptive_normalization,
@@ -23,7 +33,6 @@ from foldforge.modules.reference.transition import (
 )
 from foldforge.modules.reference.triangle import TriangleConfig, triangle_update
 
-_UNBATCHED_TOKEN_RANK = 2
 _UNBATCHED_PAIR_RANK = 3
 _BATCHED_PAIR_RANK = 4
 #: The cuequivariance triangle kernels take channel widths that are multiples of 32.
@@ -32,12 +41,7 @@ _CUEQ_CHANNELS = 32
 
 def enabled(module: nn.Module, x: torch.Tensor) -> bool:
     """Whether this tensor is eligible for the requested engine backend."""
-    return (
-        getattr(module, "foldforge_implementation", ImplementationType.PYTORCH)
-        == ImplementationType.MINIWORLD_ENGINE
-        and x.is_cuda
-        and x.dtype == torch.bfloat16
-    )
+    return miniworld_support(module, x).accepted
 
 
 def set_tf32_policy(
@@ -59,13 +63,18 @@ def set_tf32_policy(
 
 def enabled_fp32(module: nn.Module, x: torch.Tensor) -> bool:
     """Whether an FP32 activation may take the engine's FP32 (TF32 tensor core) kernels."""
-    return (
-        getattr(module, "foldforge_implementation", ImplementationType.PYTORCH)
-        == ImplementationType.MINIWORLD_ENGINE
-        and x.is_cuda
-        and x.dtype == torch.float32
-        and getattr(module, "foldforge_tf32", False)
-    )
+    return miniworld_support(module, x, fp32=True).accepted
+
+
+def support_for(module: nn.Module, x: torch.Tensor) -> Support:
+    """Inspect an attached candidate without claiming that its forward ran."""
+    attached = attachment_support(module)
+    if not attached.accepted:
+        return attached
+    built = engine_of(module)
+    if backend_support(module, ANTHROPIC).accepted:
+        return anthropic_support(built, x)
+    return Support(refusal=None if enabled(module, x) else "backend_or_dtype")
 
 
 def served_by(module: nn.Module, x: torch.Tensor) -> object | None:
@@ -74,16 +83,38 @@ def served_by(module: nn.Module, x: torch.Tensor) -> object | None:
     The one gate of every dense module that has an engine twin: the module owns the call
     (and its residual, where it has one) when this returns it.
     """
-    built = engine_of(module)
-    if built is None:
-        return None
-    if getattr(module, "foldforge_implementation", None) == ANTHROPIC:
-        return built if not anthropic_refused(module, built, x) else None
-    return built if enabled(module, x) else None
+    support = support_for(module, x)
+    # Plane-only candidates deliberately defer to one-plane calls, even in strict mode.
+    if (
+        backend_support(module, ANTHROPIC).accepted
+        and not support.accepted
+        and support.refusal not in ("not_installed", "plane_only_batch")
+    ):
+        accepted = not refused(
+            module, cast("Any", engine_of(module)).foldforge_op, ANTHROPIC, support
+        )
+    else:
+        accepted = accept_support(module, support)
+    return engine_of(module) if accepted else None
 
 
 #: ``foldforge_implementation`` of a module on the Anthropic backend (the engine's enum has no member for it).
 ANTHROPIC = "anthropic"
+
+
+def anthropic_support(built: object, x: torch.Tensor) -> Support:
+    """Keep the backend's original refusal text in the common decision object."""
+    if (
+        x.ndim == _BATCHED_PAIR_RANK
+        and x.shape[0] > 1
+        and hasattr(built, "foldforge_plane_only")
+    ):
+        return Support(refusal="plane_only_batch", selection="anthropic_candidate")
+    refuses = getattr(built, "foldforge_refuses", None)
+    return Support(
+        refusal=None if refuses is None else refuses(x),
+        selection="anthropic_candidate",
+    )
 
 
 def anthropic_refused(module: nn.Module, built: object, x: torch.Tensor) -> bool:
@@ -93,35 +124,46 @@ def anthropic_refused(module: nn.Module, built: object, x: torch.Tensor) -> bool
     ONE log line per reason (the default) and an error. A batch of pair planes is not a refusal: the pairformer
     adapters send those through one plane at a time.
     """
-    from foldforge.modules.engine.backends import call_refusal
-
-    if x.ndim == _BATCHED_PAIR_RANK and x.shape[0] > 1 and hasattr(built, "foldforge_plane_only"):
-        return True
-    refuses = getattr(built, "foldforge_refuses", None)
-    if refuses is None:
+    support = anthropic_support(built, x)
+    if support.accepted:
         return False
-    return call_refusal(
-        getattr(module, "foldforge_unsupported", "fallback"), built.foldforge_op, ANTHROPIC, refuses(x)
-    )
+    if support.refusal == "plane_only_batch":
+        return True
+    return refused(module, built.foldforge_op, ANTHROPIC, support)
 
 
 def cueq_refused(module: nn.Module, op: str, x: torch.Tensor) -> bool:
     """Whether the cuequivariance kernel cannot take this call (it then runs the PyTorch reference, logged once)."""
-    from foldforge.modules.engine.backends import call_refusal
-
-    reason = None if x.shape[-1] % _CUEQ_CHANNELS == 0 else f"the channel width {x.shape[-1]} is not a multiple of 32"
-    return call_refusal(getattr(module, "foldforge_unsupported", "fallback"), op, "cuequivariance", reason)
+    reason = (
+        None
+        if x.shape[-1] % _CUEQ_CHANNELS == 0
+        else f"the channel width {x.shape[-1]} is not a multiple of 32"
+    )
+    return refused(module, op, "cuequivariance", reason)
 
 
 def cueq_declined(module: nn.Module, reason: str) -> None:
     """A trimul call the vendor op cannot express runs the PyTorch reference: say so once (or raise)."""
-    from foldforge.modules.engine.backends import call_refusal
+    refused(module, "trimul", "cuequivariance", reason)
 
-    call_refusal(getattr(module, "foldforge_unsupported", "fallback"), "trimul", "cuequivariance", reason)
+
+def single_attention_support(
+    wrapper: nn.Module, single: torch.Tensor, extra_pair_bias: torch.Tensor | None
+) -> Support:
+    """Inspect the existing Pairformer attention twin without changing bias semantics."""
+    attached = attachment_support(wrapper)
+    if not attached.accepted:
+        return attached
+    if extra_pair_bias is not None:
+        return Support(refusal="extra_pair_bias_unsupported")
+    return miniworld_support(cast("nn.Module", wrapper.attention), single)
 
 
 def cueq_single_attention(
-    wrapper: nn.Module, single: torch.Tensor, pair: torch.Tensor, mask: torch.Tensor | None
+    wrapper: nn.Module,
+    single: torch.Tensor,
+    pair: torch.Tensor,
+    mask: torch.Tensor | None,
 ) -> torch.Tensor | None:
     """``single + attention_pair_bias(single, pair)`` on cuequivariance's fused op, None where it cannot take the call.
 
@@ -129,8 +171,6 @@ def cueq_single_attention(
     normalised single, a pair-bias projection of the normalised pair, a gated output projection. The vendor op
     adds no residual and has no gate bias, so a stack with one (Chai-1) keeps the reference.
     """
-    from foldforge.modules.engine.backends import call_refusal
-
     attention = wrapper.attention
     if (
         attention.use_single_cond
@@ -145,7 +185,7 @@ def cueq_single_attention(
         why = f"bf16 on CUDA only, got {single.dtype} on {single.device.type}"
     else:
         why = None
-    if call_refusal(getattr(wrapper, "foldforge_unsupported", "fallback"), "single_attention", "cuequivariance", why):
+    if refused(wrapper, "single_attention", "cuequivariance", why):
         return None
     from cuequivariance_torch import attention_pair_bias
 
@@ -178,18 +218,17 @@ def anthropic_transition(module: nn.Module, x: torch.Tensor) -> torch.Tensor | N
 
     The release's selection raises ``Refusal`` by name for a shape it has no cell for; that is the reason logged.
     """
-    from foldforge.modules.engine.backends import call_refusal
-
-    policy = getattr(module, "foldforge_unsupported", "fallback")
     if not x.is_cuda or x.dtype != torch.bfloat16:
-        why = f"the release's kernels are bf16 on CUDA, got {x.dtype} on {x.device.type}"
+        why = (
+            f"the release's kernels are bf16 on CUDA, got {x.dtype} on {x.device.type}"
+        )
     elif torch.is_grad_enabled():
         why = "the release's calls are inference-only (grad is enabled)"
     else:
         why = None
-    if call_refusal(policy, "transition", ANTHROPIC, why):
+    if refused(module, "transition", ANTHROPIC, why):
         return None
-    from miniworld_engine.integrations import anthropic
+    from miniworld_engine.baselines import anthropic
 
     norm = module.input_layer_norm
     wa, wb = module.transition1.weight.chunk(2, dim=0)
@@ -198,8 +237,12 @@ def anthropic_transition(module: nn.Module, x: torch.Tensor) -> torch.Tensor | N
     cached = module.__dict__.get("_anthropic_transition")
     if cached is None or cached[0] != key:
         packed = anthropic.pack_transition(
-            w_a=wa.contiguous(), w_b=wb.contiguous(), w_o=module.transition2.weight,
-            ln_w=norm.weight, ln_b=norm.bias, eps=norm.eps,
+            w_a=wa.contiguous(),
+            w_b=wb.contiguous(),
+            w_o=module.transition2.weight,
+            ln_w=norm.weight,
+            ln_b=norm.bias,
+            eps=norm.eps,
         )
         cached = (key, packed)
         object.__setattr__(module, "_anthropic_transition", cached)
@@ -210,35 +253,44 @@ def anthropic_transition(module: nn.Module, x: torch.Tensor) -> torch.Tensor | N
     except Exception as error:  # the release refuses by name (opt_core ``Refusal``)
         if type(error).__name__ != "Refusal":
             raise
-        call_refusal(policy, "transition", ANTHROPIC, str(error))
+        refused(module, "transition", ANTHROPIC, str(error))
         return None
     return out.reshape(x.shape) if unbatched else out
 
 
+def transition_support(module: nn.Module, x: torch.Tensor) -> Support:
+    """Whether the engine ``Transition`` attached to a dense ``Transition`` takes this call.
+
+    BF16 activations on a BF16 twin, or FP32 activations on an FP32 twin where TF32 is allowed for the module
+    (``set_tf32_policy``: the engine's FP32 Transition multiplies on TF32 tensor cores).
+    """
+    attached = attachment_support(module)
+    if not attached.accepted:
+        return attached
+    weight = cast("nn.Module", engine_of(module)).expand_a.weight.dtype
+    if x.dtype == torch.float32:
+        fp32 = miniworld_support(module, x, fp32=True)
+        if fp32.accepted and weight != torch.float32:
+            return Support(refusal="fp32_activation_on_bf16_twin")
+        return fp32
+    return miniworld_support(module, x)
+
+
 def transition_residual(module: nn.Module, x: torch.Tensor) -> torch.Tensor:
-    """Return the complete transition including its single residual."""
-    if getattr(module, "foldforge_implementation", None) == ANTHROPIC:
+    """Return the complete transition including its single residual.
+
+    The engine ``Transition`` attached at install time (``modules.py``) serves it where it takes the call
+    (it owns the residual); the Anthropic payload where that backend was selected; else the dense PyTorch
+    statements.
+    """
+    if backend_support(module, ANTHROPIC).accepted:
         served = anthropic_transition(module, x)
         if served is not None:
             return served
-    if not (enabled(module, x) or enabled_fp32(module, x)):
+    if not accept_support(module, transition_support(module, x)):
         return x + module(x)
-    norm = module.input_layer_norm
-    wa, wb = module.transition1.weight.chunk(2, dim=0)
-    # A semantic batch axis for upstream unbatched token activations.
-    unbatched = x.ndim == _UNBATCHED_TOKEN_RANK
-    value = x.unsqueeze(0) if unbatched else x
-    out = ops.transition(
-        value,
-        ln_in_weight=norm.weight,
-        ln_in_bias=norm.bias,
-        expand_a_weight=wa,
-        expand_b_weight=wb,
-        squeeze_weight=module.transition2.weight,
-        n=module.num_intermediate_factor,
-        eps=norm.eps,
-    )
-    return out.squeeze(0) if unbatched else out
+    built = cast("nn.Module", engine_of(module))
+    return built(x.contiguous())
 
 
 def _inverse_length(x: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
@@ -276,31 +328,32 @@ def triangle_residual(
     module: nn.Module, x: torch.Tensor, mask: torch.Tensor | None = None
 ) -> torch.Tensor:
     """Map the released projection layout to the engine op and return the residual."""
-    cueq = (
-        getattr(module, "foldforge_implementation", None)
-        == ImplementationType.CUEQUIVARIANCE
-        and x.is_cuda
-        and not cueq_refused(module, "trimul", x)
-    )
+    cueq = backend_support(
+        module, ImplementationType.CUEQUIVARIANCE, x
+    ).accepted and not cueq_refused(module, "trimul", x)
     built = served_by(module, x)
     if getattr(module, "divide_by_length", False):
         if built is not None and x.ndim == _UNBATCHED_PAIR_RANK:
             return _length_divided_engine(built, x, mask)
         if cueq:
-            cueq_declined(module, "the contraction is divided by the real sequence length (RoseTTAFold3); the vendor op has no such form")
+            cueq_declined(
+                module,
+                "the contraction is divided by the real sequence length (RoseTTAFold3); the vendor op has no such form",
+            )
         return x + _length_divided_triangle(module, x, mask)
     if built is not None and x.ndim == _UNBATCHED_PAIR_RANK:
         # The engine module owns the residual and reaches the hand-CUDA legs.
         return built(x[None], residue_mask(mask))[0]
-    # The engine op needs the contraction width to equal the pair width; a stack
+    # The vendor op needs the contraction width to equal the pair width; a stack
     # that widens only its projections (``tri_hidden_dim``) keeps the equation.
     if cueq and module.center_norm.weight.shape[0] != x.shape[-1]:
-        cueq_declined(module, "the contraction is wider than the pair; the vendor op has one width")
-    if (
-        not (enabled(module, x) or cueq)
-        or module.center_norm.weight.shape[0] != x.shape[-1]
-        or not (cueq or triton_allowed(x))
-    ):
+        cueq_declined(
+            module,
+            "the contraction is wider than the pair; the vendor op has one width",
+        )
+    if not cueq or module.center_norm.weight.shape[0] != x.shape[-1]:
+        # No engine module serves this call (none attached, another backend, a dtype it does not take):
+        # the PyTorch statements.
         return x + reference_triangle(module, x, mask)
     norm, center = module.left_norm_input, module.center_norm
     # Official Haiku projection layout interleaves a,b per hidden channel.
@@ -310,18 +363,15 @@ def triangle_residual(
     outgoing = module.equation == "cik,cjk->cij"
     if not outgoing:
         # Xfold incoming contracts b[k,i] * a[k,j].
-        # Engine incoming contracts a[k,i] * b[k,j].
+        # The vendor incoming contracts a[k,i] * b[k,j].
         wp = torch.cat(wp.chunk(2)[::-1])
         wg = torch.cat(wg.chunk(2)[::-1])
     unbatched = x.ndim == _UNBATCHED_PAIR_RANK
     value = x.unsqueeze(0) if unbatched else x
     pair_mask = mask.unsqueeze(0) if unbatched and mask is not None else mask
-    update = ops.triangle_multiplicative_update
-    if cueq:
-        from cuequivariance_torch import triangle_multiplicative_update
+    from cuequivariance_torch import triangle_multiplicative_update
 
-        update = triangle_multiplicative_update
-    result = update(
+    result = triangle_multiplicative_update(
         value,
         "outgoing" if outgoing else "incoming",
         mask=pair_mask,
@@ -335,9 +385,8 @@ def triangle_residual(
         g_out_weight=module.gating_linear.weight,
         eps=norm.eps,
     )
-    # The vendor returns a delta; the MiniWorld op owns its residual.
-    if cueq:
-        result = value + result
+    # The vendor returns a delta.
+    result = value + result
     return result.squeeze(0) if unbatched else result
 
 
@@ -389,22 +438,13 @@ def reference_adaln(
 def reference_conditioned_transition(
     module: nn.Module, x: torch.Tensor, cond: torch.Tensor | None
 ) -> torch.Tensor:
-    """Bind the transition layout; normalization, SwiGLU and gating are shared."""
+    """Bind the transition layout; normalization, SwiGLU and gating are shared.
+
+    The PyTorch statements: an engine-served ``DiffusionTransition`` is replaced at install time
+    (``conditioning.py``: ``ReleasedTransition`` / ``ReleasedConditionedTransition``), so a block that
+    reaches this keeps its released equation.
+    """
     normalize = module.adaptive_layernorm
-    if (
-        not module.use_single_cond
-        and enabled(module, x)
-        and not module.training
-        and triton_allowed(x)
-    ):
-        normalized = normalize(x, cond)
-        wa, wb = module.transition1.weight.chunk(2, dim=0)
-        unbatched = normalized.ndim == _UNBATCHED_TOKEN_RANK
-        value = normalized.unsqueeze(0) if unbatched else normalized
-        out = ops.swiglu_ffn(
-            value, wa, wb, module.adaptive_zero_init.transition2.weight
-        )
-        return out.squeeze(0) if unbatched else out
     hidden = swiglu(
         normalize(x, cond),
         lambda value: (

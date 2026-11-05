@@ -17,7 +17,6 @@ from __future__ import annotations
 import math
 
 import torch
-from foldforge.utils.device_constants import built_on_device, on_device
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -27,13 +26,16 @@ from foldforge.modules.dense import confidence as scoring
 from foldforge.modules.dense import pairformer
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 from foldforge.modules.reference.composition import template_embedding_mean
+from foldforge.utils.device_constants import built_on_device, on_device
 
 _EPS = 1e-10
 
 
 def _backbone(aatype: torch.Tensor, positions: torch.Tensor, mask: torch.Tensor):
     """C, CA, N positions and their joint mask; rigid group 0 lists them in that order."""
-    group = on_device(protein_data_processing.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX, aatype.device)
+    group = on_device(
+        protein_data_processing.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX, aatype.device
+    )
     index = group[aatype.to(torch.int64)][:, 0].to(torch.int64)  # (N, 3) = [C, CA, N]
     picked = torch.gather(positions, 1, index[..., None].expand(-1, -1, 3))
     picked_mask = torch.gather(mask, 1, index)
@@ -91,7 +93,9 @@ def protenix2_template_features(
     covered = (beta_mask[:, None] * beta_mask[None] * visible)[..., None].float()
     framed = (frame_mask[:, None] * frame_mask[None] * visible)[..., None].float()
     remap = built_on_device(
-        "af3_to_of3", aatype.device, lambda: torch.tensor(_AF3_TO_OF3, device=aatype.device, dtype=torch.int64)
+        "af3_to_of3",
+        aatype.device,
+        lambda: torch.tensor(_AF3_TO_OF3, device=aatype.device, dtype=torch.int64),
     )
     restype = F.one_hot(remap[aatype.to(torch.int64)], 32).float()
     return torch.cat(
@@ -168,7 +172,9 @@ def rf3_template_features(
     ``(log(1e-4 / 16) + 1.2) / 1.5``. The condition mask gates every channel.
     """
     _, ca, _, _ = _backbone(aatype, positions, mask)
-    group = on_device(protein_data_processing.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX, aatype.device)
+    group = on_device(
+        protein_data_processing.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX, aatype.device
+    )
     ca_index = group[aatype.to(torch.int64)][:, 0, 1].to(torch.int64)
     ca_mask = torch.gather(mask, 1, ca_index[:, None])[:, 0].float()
     distance = ((ca[:, None] - ca[None]).square().sum(-1) + _EPS).sqrt()

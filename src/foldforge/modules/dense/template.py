@@ -12,7 +12,6 @@
 from dataclasses import dataclass
 
 import torch
-from foldforge.utils.device_constants import on_device
 import torch.nn as nn
 
 from foldforge.data.constants import residue_names
@@ -23,6 +22,7 @@ from foldforge.modules.dense import pairformer
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 from foldforge.modules.reference.composition import template_embedding_mean
 from foldforge.utils import dense_geometry as geometry
+from foldforge.utils.device_constants import on_device
 
 
 @dataclass
@@ -144,7 +144,7 @@ class TemplateEmbedding(nn.Module):
     ) -> torch.Tensor:
         """Compute the module output."""
         count = templates.aatype.shape[0]
-        embed = lambda index: self.single_template_embedding(  # noqa: E731
+        embed = lambda index: self.single_template_embedding(
             query_embedding, templates[index], padding_mask_2d, multichain_mask_2d
         )
         if count > 1 and self.single_template_embedding.supports_batch():
@@ -152,7 +152,7 @@ class TemplateEmbedding(nn.Module):
             batched = self.single_template_embedding.forward_batch(
                 query_embedding, templates, count, padding_mask_2d, multichain_mask_2d
             )
-            embed = lambda index: batched[index]  # noqa: E731
+            embed = lambda index: batched[index]
         return template_embedding_mean(
             count,
             embed=embed,
@@ -393,7 +393,9 @@ class SingleTemplateEmbedding(nn.Module):
         acts, coverage = [], []
         for index in range(count):
             acts.append(
-                self.construct_input(query_embedding, templates[index], multichain_mask_2d)
+                self.construct_input(
+                    query_embedding, templates[index], multichain_mask_2d
+                )
             )
             if self.spec.template_coverage_mask:
                 coverage.append(self._coverage_2d)

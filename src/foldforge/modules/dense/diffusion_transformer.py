@@ -20,12 +20,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
-from foldforge.modules.engine.attention_ops import (
-    engine_attention_supported,
-    engine_dense_attention,
-    gated_projection,
-    pair_bias_projection,
-)
 from foldforge.modules.engine.routing import (
     reference_adaln,
     reference_conditioned_transition,
@@ -178,7 +172,7 @@ class AdaLNZero(nn.Module):
         output = (
             self.transition2(x)
             if gate_logits is None
-            else gated_projection(self, self.transition2, gate_logits, x)
+            else self.transition2(torch.sigmoid(gate_logits) * x)
         )
         if self.use_single_cond is True:
             if self.c_single_cond is None:
@@ -368,12 +362,7 @@ class SelfAttention(nn.Module):
             for t in [q, k, v]
         )
 
-        if engine_attention_supported(self, q, self.qkv_dim):
-            weighted_avg = engine_dense_attention(
-                q, k, v, pair_logits, mask, num_aug=x.shape[0] if x.ndim == 3 else 1
-            )
-        else:
-            weighted_avg = dot_product_attention(q, k, v, mask=mask, bias=pair_logits)
+        weighted_avg = dot_product_attention(q, k, v, mask=mask, bias=pair_logits)
 
         if x.ndim == 2:
             weighted_avg = weighted_avg.squeeze(0)
@@ -846,9 +835,7 @@ class DiffusionCrossAttTransformer(nn.Module):
                 )
             ]
         else:
-            pair_logits = pair_bias_projection(
-                self.pair_input_layer_norm, self.pair_logits_projection, pair_cond
-            )
+            pair_logits = self.pair_logits_projection(self.pair_input_layer_norm(pair_cond))
             pair_logits = einops.rearrange(
                 pair_logits, "n q k (b h) -> b n h q k", h=self.num_head
             )

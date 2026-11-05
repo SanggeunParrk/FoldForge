@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import torch
 
-from foldforge.models.io.paths import run_directory
+from foldforge.models.io.paths import output_directory, run_directory
 
 if TYPE_CHECKING:
     from foldforge.prediction import Prediction
@@ -84,16 +84,9 @@ class Decoded:
     image_distogram: Any = None
 
 
-def write_output(
-    result: Decoded,
-    directory: Path,
-    *,
-    expected_samples: int,
-    images: tuple[str, ...] = (),
-) -> dict[str, Any]:
-    """Validate before writing and emit the same manifest for every layout."""
-    directory = run_directory(directory)
-    name = target_name(result.name)
+def validate_decoded(result: Decoded, expected_samples: int) -> dict[str, Any]:
+    """Apply the same output contract to saved and in-memory predictions."""
+    target_name(result.name)
     prediction = result.prediction
     if prediction.n_samples != expected_samples or len(result.cifs) != expected_samples:
         msg = "Decoded sample count differs from the requested count"
@@ -110,6 +103,35 @@ def write_output(
     if any(not isinstance(cif, str) or not cif.strip() for cif in result.cifs):
         msg = "Each decoded sample must provide a nonempty mmCIF"
         raise ValueError(msg)
+    return payload
+
+
+def prediction_report(result: Decoded) -> dict[str, Any]:
+    """Report units/schema without inventing file paths for in-memory results."""
+    return {
+        **result.report,
+        "prediction_schema": 1,
+        "confidence_units": {
+            "plddt": "0..1",
+            "cif_b_factor": "0..100",
+            "pae": "angstrom",
+            "pde": "angstrom",
+        },
+    }
+
+
+def write_output(
+    result: Decoded,
+    directory: Path,
+    *,
+    expected_samples: int,
+    images: tuple[str, ...] = (),
+    within_runs: bool = True,
+) -> dict[str, Any]:
+    """Validate before writing and emit the same manifest for every layout."""
+    directory = run_directory(directory) if within_runs else output_directory(directory)
+    name = target_name(result.name)
+    payload = validate_decoded(result, expected_samples)
     paths = [
         directory
         / (
@@ -120,7 +142,7 @@ def write_output(
         for i in range(expected_samples)
     ]
     report = {
-        **result.report,
+        **prediction_report(result),
         "prediction_cif": str(paths[0]),
         "prediction_cifs": [str(p) for p in paths],
         "prediction_schema": 1,

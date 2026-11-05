@@ -75,6 +75,19 @@ class BackendUnsupportedError(RuntimeError):
     """A (backend, op) combination no kernel serves, with ``engine.unsupported: error``."""
 
 
+@dataclass(frozen=True, kw_only=True)
+class Support:
+    """A support decision, separate from evidence that an operation executed."""
+
+    refusal: str | None = None
+    selection: str = "engine_internal"
+
+    @property
+    def accepted(self) -> bool:
+        """Whether the inspected conditions permit this candidate."""
+        return self.refusal is None
+
+
 @dataclass(frozen=True)
 class Resolved:
     """One op after the checks: what was asked, what runs, and why they differ."""
@@ -233,17 +246,17 @@ def _anthropic_refusal(op: str, device: object | None) -> str | None:
     if _capability(device) is None:
         return "no CUDA device"
     if op == "trimul":
-        from miniworld_engine.integrations import anthropic_trimul
+        from miniworld_engine.baselines import anthropic_trimul
 
         if not anthropic_trimul.payload_dir():
             return f"{anthropic_trimul.ENV} is not set (a payload's build/ directory)"
     elif op in {"opm", "msa_pwa"}:
-        from miniworld_engine.integrations import anthropic_msa
+        from miniworld_engine.baselines import anthropic_msa
 
         if not anthropic_msa.payload_dir():
             return f"{anthropic_msa.ENV} is not set (the release's common/opt_core)"
     else:  # triangle_attention, transition: the engine's adapter of the release's opt_core
-        from miniworld_engine.integrations import anthropic
+        from miniworld_engine.baselines import anthropic
 
         try:
             anthropic.configure()
@@ -262,9 +275,13 @@ _PAYLOAD_OPS = {
 _LOGGED: set[tuple[str, str, str]] = set()
 
 
-def call_refusal(plan_policy: str, op: str, backend: str, reason: str | None) -> bool:
+def call_refusal(
+    plan_policy: str, op: str, backend: str, reason: str | Support | None
+) -> bool:
     """A call the backend's kernel refuses: True when the caller must run the PyTorch reference, after ONE log line per
     (op, reason); raises under ``engine.unsupported: error``. ``reason`` None means the kernel serves it."""
+    if isinstance(reason, Support):
+        reason = reason.refusal
     if reason is None:
         return False
     if plan_policy == "error":

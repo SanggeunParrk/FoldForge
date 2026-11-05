@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import math
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import torch
 
@@ -22,6 +23,56 @@ from foldforge.modules.engine.backends import BACKENDS, BackendPlan
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
+
+    from foldforge.models.architectures.af3 import AlphaFold3
+    from foldforge.models.config import Config
+
+
+def load_configured(
+    name: str,
+    checkpoint: Path,
+    config: Config,
+    *,
+    samples: int = 1,
+    device: str | torch.device = "cuda",
+) -> AlphaFold3:
+    """Build the network once from the shared public inference configuration."""
+    return cast(
+        "AlphaFold3",
+        load_checkpoint(
+            name,
+            checkpoint,
+            backend=config.backend,
+            device=device,
+            dtype=torch.float32 if config.precision == "fp32" else torch.bfloat16,
+            precision_policy=config.precision,
+            recycles=config.trunk.recycles if config.trunk.recycles is not None else 10,
+            samples=samples,
+            steps=config.diffusion.steps if config.diffusion.steps is not None else 200,
+            mode=config.mode,
+            engine_skip=config.engine.skip,
+            engine_ops=config.engine.ops,
+            unsupported=config.engine.unsupported,
+            dense_spec_override=config.debug.dense_spec_override,
+        ),
+    )
+
+
+def _resolved_spec(spec: Any) -> dict[str, Any]:
+    """Serialize final model conventions, including sets and infinite bounds."""
+
+    def value(item: Any) -> Any:
+        if isinstance(item, dict):
+            return {key: value(part) for key, part in item.items()}
+        if isinstance(item, (set, frozenset)):
+            return [value(part) for part in sorted(item)]
+        if isinstance(item, (tuple, list)):
+            return [value(part) for part in item]
+        if isinstance(item, float) and not math.isfinite(item):
+            return str(item)
+        return item
+
+    return value(dataclasses.asdict(spec))
 
 
 def clear_native_compute_override(model: Any, dtype: Any) -> None:
@@ -102,10 +153,12 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
 ) -> torch.nn.Module:
     """Strictly load weights, then apply the same declared inference contract.
 
-    ``engine_skip`` (``engine.skip``) and ``dense_spec_override`` (``debug.dense_spec_override``) are the
-    config's debugging aids; both default to nothing. ``backend`` is the backend of every op, ``engine_ops``
-    (``engine.ops``) pins single ops to another one, and ``unsupported`` (``engine.unsupported``) says what an op
-    its backend has no kernel for does: ``fallback`` (the PyTorch reference, one log line) or ``error``.
+    ``recycles`` counts total trunk passes, including the first, for every family.
+
+    ``engine_skip`` and ``dense_spec_override`` are the config's debugging aids;
+    both default to nothing. ``backend`` supplies every op, while ``engine_ops``
+    pins individual ops elsewhere. ``unsupported`` determines whether a missing
+    backend kernel runs the PyTorch reference (``fallback``) or raises (``error``).
     """
     from foldforge.models.config.runtime import reject_removed_environment
 
@@ -128,7 +181,9 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         message = "af3_default requires a BF16 trunk"
         raise ValueError(message)
 
-    plan = BackendPlan.make(backend, engine_ops, unsupported).resolve(torch.device(device))
+    plan = BackendPlan.make(backend, engine_ops, unsupported).resolve(
+        torch.device(device)
+    )
     spec = entry(name)
     if spec.architecture is None:
         raise NotImplementedError(name)
@@ -163,6 +218,9 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     )
     report["family"] = dense_spec.family
     report["mode"] = mode
+    # Record the resolved spec, after family inheritance, exact-mode and debug
+    # overrides. These describe the loaded equation, not observed execution.
+    report["resolved_spec"] = _resolved_spec(dense_spec)
     report.update(
         import_jax_weights_(model, checkpoint, preserve_dtype=True)
         if precision_policy == "af3_default"
@@ -200,12 +258,15 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         model,
         dtype,
         device,
-        modules=plan.uses("miniworld", "anthropic") and torch.device(device).type == "cuda",
+        modules=plan.uses("miniworld", "anthropic")
+        and torch.device(device).type == "cuda",
         skip=engine_skip,
         plan=plan,
     )
-    # The engine's FP32 kernels run on TF32 tensor cores: the diffusion head of af3_default takes them as its
-    # atom blocks always have; everything else waits for ``execution.tf32`` (models.execution.Execution).
+    # The engine's FP32 kernels run on TF32 tensor cores: the diffusion head of
+    # af3_default takes them as its
+    # atom blocks always have; everything else waits for ``execution.tf32``
+    # (models.execution.Execution).
     set_tf32_policy(model, tf32=False, diffusion_tf32=precision_policy == "af3_default")
     if dtype == torch.bfloat16 and precision_policy != "af3_default":
         clear_native_compute_override(model, dtype)
@@ -220,7 +281,8 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
         report.update(
             precision_policy="af3_default",
             parameter_dtype="mixed (released checkpoint dtypes)",
-            # the released dtypes: AF3's trunk is BF16, Protenix's checkpoint is FP32 throughout
+            # the released dtypes: AF3's trunk is BF16, Protenix's checkpoint is FP32
+            # throughout
             trunk_parameter_dtype=sorted(
                 {str(p.dtype) for p in getattr(model, "evoformer", model).parameters()}
             ),

@@ -1,13 +1,5 @@
-# Lint and CPU tests on every push and pull request.
-#
-# GPU tests (about 180 of them skip here) and the release-reference validation
-# need a GPU and run on the cluster:
-#   pixi run pytest tests                    (on a GPU node: the full suite)
-#   tools/references/validate.sh fast        (fold vs tests/release_references/, then
-#   foldforge validate $FOLDFORGE_HOME/runs/validate-fast)
-# The test job needs read access to the private miniworld-engine repository:
-# add a deploy key that can read it as the repository secret
-# FOLDFORGE_CI_SSH_KEY. Without it the job is skipped, not failed.
+# Unit tests run without private keys. Checkpoint qualification remains a separate
+# asset-dependent gate: pytest -m checkpoints on a provisioned GPU machine.
 name: ci
 
 on:
@@ -34,19 +26,46 @@ jobs:
 
   test-cpu:
     runs-on: ubuntu-latest
-    env:
-      HAS_KEY: ${{ secrets.FOLDFORGE_CI_SSH_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
-        if: env.HAS_KEY == 'true'
-      - uses: webfactory/ssh-agent@v0.9.0
-        if: env.HAS_KEY == 'true'
-        with:
-          ssh-private-key: ${{ secrets.FOLDFORGE_CI_SSH_KEY }}
       - uses: prefix-dev/setup-pixi@v0.8.14
-        if: env.HAS_KEY == 'true'
         with:
           locked: true
-      - name: pytest (CPU; GPU tests skip)
-        if: env.HAS_KEY == 'true'
-        run: pixi run pytest tests -q -rs
+      - name: Unit tests without checkpoint assets
+        run: pixi run pytest tests -m 'not checkpoints' -q -rs --junitxml=test-results.xml
+      - name: Public API typecheck
+        run: >-
+          pixi run npx --yes --package pyright@1.1.414 pyright
+          src/foldforge/__init__.py src/foldforge/api.py src/foldforge/inputs.py
+          src/foldforge/result.py src/foldforge/stages.py
+          src/foldforge/lifecycle.py src/foldforge/errors.py src/foldforge/prediction.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cpu-test-results
+          path: test-results.xml
+
+  wheels:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0.8.14
+        with:
+          locked: true
+      - name: Build distribution wheels
+        run: |
+          pixi run python -m venv .build-venv
+          .build-venv/bin/python -m pip install build
+          .build-venv/bin/python -m build --wheel --outdir wheelhouse .
+          .build-venv/bin/python -m build --wheel --outdir wheelhouse third_party/af3-data
+      - name: Install and inspect wheels outside the source environment
+        run: |
+          pixi run python -m venv --system-site-packages .wheel-venv
+          .wheel-venv/bin/python -m pip install --no-deps --force-reinstall wheelhouse/*.whl
+          .wheel-venv/bin/python tools/check_wheel.py wheelhouse/foldforge-*.whl --installed
+          .wheel-venv/bin/python -m foldforge.cli --help
+          .wheel-venv/bin/python -m pytest tests/runtime/test_public_predict.py tests/runtime/test_staged_api.py -q
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-python312-wheels
+          path: wheelhouse/*.whl

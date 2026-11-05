@@ -9,13 +9,13 @@
 # https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md
 
 """Batch dataclass."""
+import dataclasses
 from typing import Self
 
 from alphafold3.model import features
-import chex
 
 
-@chex.dataclass(mappable_dataclass=False, frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Batch:
   """Dataclass containing batch."""
 

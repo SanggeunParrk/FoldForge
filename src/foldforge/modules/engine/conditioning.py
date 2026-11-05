@@ -5,13 +5,16 @@ from __future__ import annotations
 from copy import copy
 
 import torch
-from miniworld_engine.architecture.exceptions import ImplementationType
 from miniworld_engine.modules import AdaptiveLayerNorm, ConditionedTransition
 from miniworld_engine.modules.dispatch import KernelBackend
 from miniworld_engine.modules.exceptions import ImplementationType as EngineImpl
 from torch import nn
 
+from foldforge.layers.implementation import ImplementationType
+from foldforge.modules.engine.backends import Support
+from foldforge.modules.engine.installation import BuildResult, record_phase
 from foldforge.modules.engine.native_linear import NativeLinear
+from foldforge.modules.engine.policy import accept_support
 from foldforge.modules.engine.routing import enabled_fp32
 
 _UNBATCHED_TOKEN_RANK = 2
@@ -38,9 +41,14 @@ def _reference_copy(layer: nn.Module) -> nn.Module:
     return reference
 
 
-def _compatible(layer: nn.Module, a: torch.Tensor, s: torch.Tensor) -> bool:
+def conditioning_support(layer: nn.Module, a: torch.Tensor, s: torch.Tensor) -> Support:
+    """Retain projection operand compatibility independently of internal backend selection."""
     weight = layer.to_scale.weight
-    return a.is_cuda and a.dtype == weight.dtype and s.dtype == weight.dtype
+    if not a.is_cuda:
+        return Support(refusal="cuda_required")
+    if a.dtype != weight.dtype or s.dtype != weight.dtype:
+        return Support(refusal="conditioning_operand_dtype")
+    return Support()
 
 
 def convert_adaln(source: nn.Module) -> AdaptiveLayerNorm:
@@ -74,7 +82,11 @@ class ReleasedAdaLN(nn.Module):
         cond = s.expand(*a.shape[:-1], s.shape[-1])
         # Coordinate-derived streams may stay FP32. Preserve normalization before
         # the native projection cast; fused GEMMs require matching operand dtypes.
-        layer = self.layer if _compatible(self.layer, a, cond) else self.reference
+        layer = (
+            self.layer
+            if accept_support(self, conditioning_support(self.layer, a, cond))
+            else self.reference
+        )
         # Released AF3 passes [L,D]; engine shape keys require the semantic B axis.
         if a.ndim == _UNBATCHED_TOKEN_RANK:
             return layer(a.unsqueeze(0), cond.unsqueeze(0)).squeeze(0)
@@ -113,7 +125,11 @@ class ReleasedConditionedTransition(nn.Module):
         cond = s.expand(*a.shape[:-1], s.shape[-1])
         # Coordinate-derived streams may stay FP32. Preserve normalization before
         # the native projection cast; fused GEMMs require matching operand dtypes.
-        layer = self.layer if _compatible(self.layer, a, cond) else self.reference
+        layer = (
+            self.layer
+            if accept_support(self, conditioning_support(self.layer, a, cond))
+            else self.reference
+        )
         # Released AF3 passes [L,D]; engine shape keys require the semantic B axis.
         if a.ndim == _UNBATCHED_TOKEN_RANK:
             return layer.delta(a.unsqueeze(0), cond.unsqueeze(0)).squeeze(0)
@@ -156,14 +172,22 @@ class ReleasedTransition(nn.Module):
         self.eval().requires_grad_(requires_grad=False)
 
     def _serves(self, x: torch.Tensor) -> bool:
+        return accept_support(self, self._support(x))
+
+    def _support(self, x: torch.Tensor) -> Support:
+        """The original BF16/native-weight or explicit FP32/TF32 condition."""
         weight = self.layer.expand_a.weight.dtype
         if x.dtype == torch.float32:
             # FP32 activations and weights: the engine's TF32 tensor core kernel, where TF32 is allowed.
-            return weight == torch.float32 and enabled_fp32(self.source, x)
-        return (
-            x.is_cuda
-            and x.dtype == torch.bfloat16
-            and weight in (torch.bfloat16, torch.float32)
+            accepted = weight == torch.float32 and enabled_fp32(self.source, x)
+        else:
+            accepted = (
+                x.is_cuda
+                and x.dtype == torch.bfloat16
+                and weight in (torch.bfloat16, torch.float32)
+            )
+        return Support(
+            refusal=None if accepted else "transition_operand_or_tf32_policy"
         )
 
     def residual(self, x: torch.Tensor) -> torch.Tensor:
@@ -184,6 +208,15 @@ def install_conditioning(model: nn.Module) -> nn.Module:
         "engine_conditioned_transition": 0,
         "engine_transition": 0,
     }
+    decisions: dict[str, dict] = {}
+
+    def decision(path: str, candidate: str, result: BuildResult) -> None:
+        """Record conversion without retaining the newly constructed module."""
+        decisions[path] = {
+            "candidate": candidate,
+            "status": "converted" if result.value is not None else "refused",
+            "reason": result.refusal,
+        }
 
     def identity_scale(module: nn.Module) -> bool:
         """Whether this block scales by (s + 1) rather than sigmoid(s).
@@ -195,8 +228,9 @@ def install_conditioning(model: nn.Module) -> nn.Module:
         norm = getattr(module, "adaptive_layernorm", module)
         return bool(getattr(norm, "identity_scale", False))
 
-    def visit(parent: nn.Module) -> None:
+    def visit(parent: nn.Module, prefix: str = "") -> None:
         for name, child in list(parent.named_children()):
+            path = f"{prefix}.{name}" if prefix else name
             cls = type(child)
             # Exact class names: subclasses (the gated transition) keep their reference path.
             released_transition = cls.__name__ == "DiffusionTransition"
@@ -219,25 +253,47 @@ def install_conditioning(model: nn.Module) -> nn.Module:
                         )
                         and getattr(norm, "eps", None) == _ENGINE_TRANSITION_EPS
                     ):
-                        setattr(parent, name, ReleasedTransition(child))
+                        result = BuildResult(value=ReleasedTransition(child))
+                        decision(path, "unconditioned_transition", result)
+                        setattr(parent, name, result.value)
                         counts["engine_transition"] += 1
                     else:
-                        visit(child)
+                        decision(
+                            path,
+                            "unconditioned_transition",
+                            BuildResult(refusal="affine_norm_or_eps_mismatch"),
+                        )
+                        visit(child, path)
                     continue
                 if identity_scale(child):
-                    visit(child)
+                    decision(
+                        path,
+                        "conditioned_transition",
+                        BuildResult(refusal="identity_scale_unsupported"),
+                    )
+                    visit(child, path)
                     continue
-                setattr(parent, name, ReleasedConditionedTransition(child))
+                result = BuildResult(value=ReleasedConditionedTransition(child))
+                decision(path, "conditioned_transition", result)
+                setattr(parent, name, result.value)
                 counts["engine_conditioned_transition"] += 1
                 counts["engine_adaln"] += 1
             elif released_norm:
                 if not getattr(child, "use_single_cond", True) or identity_scale(child):
+                    decision(
+                        path,
+                        "adaln",
+                        BuildResult(refusal="unconditioned_or_identity_scale"),
+                    )
                     continue
-                setattr(parent, name, ReleasedAdaLN(child))
+                result = BuildResult(value=ReleasedAdaLN(child))
+                decision(path, "adaln", result)
+                setattr(parent, name, result.value)
                 counts["engine_adaln"] += 1
             else:
-                visit(child)
+                visit(child, path)
 
     visit(model)
+    record_phase(model, "conditioning", decisions)
     model.foldforge_load_report.update(counts)
     return model.eval().requires_grad_(requires_grad=False)

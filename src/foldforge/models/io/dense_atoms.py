@@ -20,7 +20,11 @@ if TYPE_CHECKING:
 
 
 def _language_features(
-    name: str, checkpoint: Any, tensors: dict[str, Any], dtype: Any
+    name: str,
+    checkpoint: Any,
+    tensors: dict[str, Any],
+    dtype: Any,
+    cache: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run the family's language model, as a pair or as per-token embeddings."""
     from foldforge.models.io import language
@@ -30,6 +34,7 @@ def _language_features(
         "asym_id": tensors["asym_id"],
         "mask": tensors["seq_mask"],
         "dtype": dtype,
+        "cache": cache,
     }
     if language.reads_pair(name):
         return {
@@ -65,6 +70,12 @@ def prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[
         yield from _prepare(args, database, runtime)
 
 
+def _log_checkpoint(report: Any, *, verbose: bool) -> None:
+    """Keep adapter progress optional for library callers."""
+    if verbose:
+        print("Loaded", report, flush=True)  # noqa: T201 - CLI progress
+
+
 def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator[Case]:  # noqa: PLR0915 - case tensors stay alive through the decode closure
     import contextlib
 
@@ -75,17 +86,19 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
     from alphafold3.model import feat_batch
     from alphafold3.model.atom_layout import atom_layout
 
-    from foldforge.models import load
     from foldforge.models.io.confidence import from_af3
 
-    if args.out is None or args.input is None:
-        message = "The checkpoint adapter requires input and output paths"
+    if args.input is None:
+        message = "The checkpoint adapter requires an input origin path"
         raise ValueError(message)
 
-    args.out.mkdir(parents=True, exist_ok=True)
+    from copy import deepcopy
+
     payload = (
         args.resolved_input.af3(args.trunk_seed)
         if args.resolved_input is not None
+        else deepcopy(args.input_data)
+        if args.input_data is not None
         else json.loads(args.input.read_text())
     )
     # Input/feature seed is controlled by the request, including legacy JSON.
@@ -117,29 +130,15 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
                 fold_input,
                 ccd,
                 buckets=TOKEN_SHAPES if args.execution.bucketing else None,
-                verbose=True,
+                verbose=args.verbose,
             )
         )
     dtype = torch.float32 if args.precision == "fp32" else torch.bfloat16
-    model = load(
-        args.model,
-        args.checkpoint,
-        backend=args.backend,
-        dtype=dtype,
-        precision_policy=args.precision,
-        recycles=args.recycles,
-        samples=args.samples,
-        steps=args.steps,
-        mode=args.mode,
-        engine_skip=args.engine.skip,
-        engine_ops=args.engine.ops,
-        unsupported=args.engine.unsupported,
-        dense_spec_override=args.debug.dense_spec_override,
-    )
+    model = runtime.load_model()
 
     runtime.bind(model)
 
-    print("Loaded", model.foldforge_load_report, flush=True)  # noqa: T201
+    _log_checkpoint(model.foldforge_load_report, verbose=args.verbose)
     from foldforge.data.features import dense_conventions
 
     for example_index, (seed, raw_example) in enumerate(
@@ -150,10 +149,13 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         bucket_shape = None
         if args.execution.bucketing:
             example, bucket_shape = bucket_af3(example)
-            model.evoformer.foldforge_msa_bucketing = True
+            evoformer: Any = model.evoformer
+            evoformer.foldforge_msa_bucketing = True
         if model.spec.structural_tokens:
-            # The structural tokens join the bucketed residues; the engine's token DiT serves only a
-            # multiple of 128 tokens, so a bucketed run pads them to the residue bucket's own granularity.
+            # The structural tokens join the bucketed residues; the engine's token DiT
+            # serves only a
+            # multiple of 128 tokens, so a bucketed run pads them to the residue
+            # bucket's own granularity.
             example = structural_tokens.attach(
                 example,
                 captures[example_index],
@@ -162,7 +164,7 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
         example = dense_conventions.apply_after_bucketing(example, model.spec)
         start = time.monotonic()
         tensors = {
-            k: torch.from_numpy(v).to("cuda")
+            k: torch.from_numpy(v).to(runtime.device)
             for k, v in example.items()
             if isinstance(v, np.ndarray) and v.dtype.kind in "biuf"
         }
@@ -175,7 +177,11 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
             # pair, which is a different graph rather than a different setting.
             tensors.update(
                 _language_features(
-                    model.spec.language_model, args.checkpoint, tensors, dtype
+                    model.spec.language_model,
+                    args.checkpoint,
+                    tensors,
+                    dtype,
+                    runtime.language_models,
                 )
             )
 
@@ -257,7 +263,7 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
                 "trunk_seed": seed,
                 "diffusion_seed": args.diffusion_seed,
                 "recycles": args.recycles,
-                "trunk_passes": model.num_recycles + 1,
+                "trunk_passes": model.num_recycles,
                 "samples_per_denoiser_call": model.num_samples,
                 "steps": args.steps,
                 "samples": args.samples,
@@ -287,4 +293,10 @@ def _prepare(args: Request, database: CCDDatabase, runtime: Runtime) -> Iterator
 
         # no_grad, not inference_mode: the engine caches its pair bias across solver
         # steps by tensor version, which an inference tensor does not have.
-        yield Case(lambda tensors=tensors: model(tensors), decode, inference_mode=False)
+        yield Case(
+            lambda tensors=tensors: model(tensors),
+            decode,
+            inference_mode=False,
+            run_trunk=lambda tensors=tensors: model.run_trunk(tensors),
+            sample_diffusion=model.sample_diffusion,
+        )

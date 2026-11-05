@@ -1,17 +1,20 @@
-"""Checkpoint equations, dispatch and native BF16 contracts for added fusions."""
+"""Checkpoint equations and native BF16 contracts of the dense pieces no engine module serves.
+
+FoldForge calls no engine kernel function for these: the output gate + projection, the LayerNorm + narrow
+projection and the unconditioned diffusion transition before conversion are PyTorch statements, compiled and
+graph-captured like the rest of the model.
+"""
 
 from __future__ import annotations
 
 import copy
-from unittest.mock import patch
 
 import pytest
 import torch
-from miniworld_engine import ops, settings
-from miniworld_engine.architecture.exceptions import ImplementationType
-from support import triton_ops_run
+from miniworld_engine.kernels.rmsnorm.interface import rms_norm_modulation
 from torch.nn import functional as F
 
+from foldforge.layers.implementation import ImplementationType
 from foldforge.modules.engine.configure import configure_model
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA validation")
@@ -43,86 +46,22 @@ def compile_replay(fn, args):
         compare(y, fn(*args))
 
 
-@pytest.mark.parametrize("pin", ["fused", "split"])
-def test_gate_gradient_and_graph(pin):
-    torch.manual_seed(71)
-    prior = settings.current().pin_gate_backend
-    settings.configure(pin_gate_backend=pin)
-    try:
-        g, v = [
-            torch.randn(
-                2, 128, 128, device="cuda", dtype=torch.bfloat16, requires_grad=True
-            )
-            for _ in range(2)
-        ]
-        w = (
-            torch.randn(64, 128, device="cuda", dtype=torch.bfloat16) * 0.05
-        ).requires_grad_()
-        a = ops.gated_linear(g, v, w)
-        b = F.linear(torch.sigmoid(g) * v, w)
-        compare(a, b)
-        grad = torch.randn_like(a)
-        da = torch.autograd.grad(a, (g, v, w), grad)
-        db = torch.autograd.grad(b, (g, v, w), grad)
-        for x, y in zip(da, db, strict=False):
-            compare(x, y)
-        compile_replay(ops.gated_linear, (g, v, w))
-    finally:
-        settings.configure(pin_gate_backend=prior)
-
-
-@pytest.mark.parametrize(
-    ("affine", "bias"), [(True, False), (False, False), (True, True)]
-)
-def test_layernorm_optional_affine(affine, bias):
-    x = torch.randn(
-        2, 128, 267, device="cuda", dtype=torch.bfloat16, requires_grad=True
-    )
-    w = (
-        torch.randn(267, device="cuda", dtype=torch.float32, requires_grad=True)
-        if affine
-        else None
-    )
-    b = (
-        torch.randn(267, device="cuda", dtype=torch.float32, requires_grad=True)
-        if bias
-        else None
-    )
-    y = ops.layer_norm(x, w, b, 1e-5)
-    ref = F.layer_norm(x.float(), (267,), w, b, 1e-5).to(x.dtype)
-    compare(y, ref)
-    args = tuple(v for v in (x, w, b) if v is not None)
-    grad = torch.randn_like(y)
-    for ga, gb in zip(
-        torch.autograd.grad(y, args, grad),
-        torch.autograd.grad(ref, args, grad),
-        strict=False,
-    ):
-        compare(ga, gb)
-    compile_replay(lambda x: ops.layer_norm(x, w, b, 1e-5), (x,))
-
-
 def test_af3_atom_pair_projection():
     from foldforge.modules.dense.diffusion_transformer import (
         DiffusionCrossAttTransformer,
     )
-    from foldforge.modules.engine.attention_ops import (
-        pair_bias_projection,
-    )
 
     source = DiffusionCrossAttTransformer()
+    ref = configure_model(copy.deepcopy(source), "pytorch", device="cuda")
     model = configure_model(source, "miniworld", device="cuda")
-    norm, linear = model.pair_input_layer_norm, model.pair_logits_projection
     x = torch.randn(4, 32, 128, 16, device="cuda", dtype=torch.bfloat16)
-    with (
-        torch.no_grad(),
-        patch.object(ops, "layer_norm_linear", wraps=ops.layer_norm_linear) as called,
-    ):
-        a = pair_bias_projection(norm, linear, x)
-        b = linear(norm(x))
-        assert called.call_count == triton_ops_run()
-        compare(a, b)
-    compile_replay(lambda x: pair_bias_projection(norm, linear, x), (x,))
+
+    def project(m, x):
+        return m.pair_logits_projection(m.pair_input_layer_norm(x))
+
+    with torch.no_grad():
+        compare(project(model, x), project(ref, x))
+    compile_replay(lambda x: project(model, x), (x,))
 
 
 @pytest.mark.parametrize("width", [128, 384])
@@ -133,12 +72,8 @@ def test_af3_unconditioned_transition(width):
     model = configure_model(copy.deepcopy(source), "miniworld", device="cuda")
     ref = configure_model(source, "pytorch", device="cuda")
     x = torch.randn(128, width, device="cuda", dtype=torch.bfloat16)
-    with (
-        torch.no_grad(),
-        patch.object(ops, "swiglu_ffn", wraps=ops.swiglu_ffn) as called,
-    ):
+    with torch.no_grad():
         compare(model(x), ref(x))
-        assert called.call_count == triton_ops_run()
     compile_replay(model, (x,))
 
 
@@ -157,12 +92,33 @@ def test_msa_projection():
     x = torch.randn(16, 128, 128, device="cuda", dtype=torch.bfloat16)
     mask = torch.ones(16, 128, device="cuda", dtype=torch.bfloat16)
     z = torch.randn(128, 128, 384, device="cuda", dtype=torch.bfloat16)
-    with (
-        torch.no_grad(),
-        patch.object(ops, "gated_linear", wraps=ops.gated_linear) as called,
-    ):
+    with torch.no_grad():
         compare(model(x, mask, z), ref(x, mask, z))
-        assert called.call_count == triton_ops_run()
+
+
+def test_gated_projection_gradient_and_graph():
+    """The released output gate ``linear(sigmoid(gate) * value)``: PyTorch statements, differentiable, capturable."""
+    from foldforge.modules.dense.diffusion_transformer import AdaLNZero
+
+    torch.manual_seed(71)
+    layer = configure_model(AdaLNZero(128, 64, None), "miniworld", device="cuda")
+    layer.requires_grad_(True)
+    g, v = [
+        torch.randn(2, 128, 128, device="cuda", dtype=torch.bfloat16, requires_grad=True)
+        for _ in range(2)
+    ]
+    a = layer(v, gate_logits=g)
+    b = F.linear(torch.sigmoid(g) * v, layer.transition2.weight)
+    compare(a, b)
+    grad = torch.randn_like(a)
+    for x, y in zip(
+        torch.autograd.grad(a, (g, v), grad, retain_graph=True),
+        torch.autograd.grad(b, (g, v), grad),
+        strict=True,
+    ):
+        compare(x, y)
+    layer.requires_grad_(False)
+    compile_replay(lambda g, v: layer(v, gate_logits=g), (g.detach(), v.detach()))
 
 
 def test_rms_modulation_equation_and_graph():
@@ -177,7 +133,7 @@ def test_rms_modulation_equation_and_graph():
     eps = torch.finfo(q.dtype).eps
 
     def fn(q, c) -> torch.Tensor:
-        return ops.rms_norm_modulation(q, c, *weights, eps=eps)
+        return rms_norm_modulation(q, c, *weights, eps=eps)
 
     with torch.no_grad():
         y, g = fn(q, c)

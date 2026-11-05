@@ -1,5 +1,7 @@
-"""GPU numerics, actual operator dispatch, and compile/graph checks for checkpoint
-attention."""
+"""GPU numerics and operator dispatch for checkpoint attention.
+
+A dense attention without an attached engine module runs its PyTorch statements on every card: no engine kernel
+function (the augmented-attention or LayerNorm-linear Triton ops) is called from FoldForge."""
 
 from __future__ import annotations
 
@@ -7,13 +9,8 @@ import copy
 
 import pytest
 import torch
-from support import triton_ops_run
 from torch.profiler import ProfilerActivity, profile
 
-from foldforge.modules.engine.attention_ops import (
-    engine_dense_attention,
-    pair_bias_projection,
-)
 from foldforge.modules.engine.configure import configure_model
 
 pytestmark = pytest.mark.skipif(
@@ -86,57 +83,8 @@ def test_module(kind, mask_kind):
         e.key == "miniworld_engine::augmented_attention_fwd"
         for e in prof.key_averages()
     )
-    assert ran == bool(triton_ops_run()), kind
+    assert not ran, kind
     compare(kind + "-" + mask_kind, actual, expected)
-
-
-def test_compile_graph():
-    if not triton_ops_run():
-        pytest.skip("the engine's Triton attention op is never used on H100 / B200")
-    torch.manual_seed(8)
-    q, k, v = [
-        torch.randn(2, 4, 128, 48, device="cuda", dtype=torch.bfloat16)
-        for _ in range(3)
-    ]
-    bias = torch.randn(1, 4, 128, 128, device="cuda", dtype=torch.bfloat16)
-    mask = torch.ones(2, 128, device="cuda", dtype=torch.bool)
-    mask[1] = False
-
-    def fn(q, k, v, bias, mask) -> torch.Tensor:
-        return engine_dense_attention(q, k, v, bias, mask)
-
-    compiled = torch.compile(fn, fullgraph=True)
-    with torch.no_grad():
-        expected = fn(q, k, v, bias, mask)
-        stream = torch.cuda.Stream()
-        stream.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(stream):
-            for _ in range(3):
-                compiled(q, k, v, bias, mask)
-        torch.cuda.current_stream().wait_stream(stream)
-        graph = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(graph):
-            out = compiled(q, k, v, bias, mask)
-        graph.replay()
-        torch.cuda.synchronize()
-        compare("compile-graph", out, expected)
-
-
-def test_fused_pair_projection():
-    torch.manual_seed(7)
-    norm = torch.nn.LayerNorm(128, bias=False)
-    linear = torch.nn.Linear(128, 16, bias=False)
-    container = torch.nn.Sequential(norm, linear)
-    ref = configure_model(copy.deepcopy(container), "pytorch", device="cuda")
-    model = configure_model(container, "miniworld", device="cuda")
-    x = torch.randn(2, 128, 128, 128, device="cuda", dtype=torch.bfloat16)
-    with torch.no_grad():
-        expected = ref(x)
-        with profile(activities=[ProfilerActivity.CPU]) as prof:
-            actual = pair_bias_projection(model[0], model[1], x)
-    ran = any("layernorm_linear_pair_bias_fwd" in e.key for e in prof.key_averages())
-    assert ran == bool(triton_ops_run())
-    compare("pair-ln-linear", actual, expected)
 
 
 def _token_attention(width: int, heads: int = 4) -> torch.nn.Module:
@@ -185,8 +133,6 @@ def test_unsupported_dense_preserves_reference(case):
     if case == "fp32":
         torch.testing.assert_close(actual, expected, atol=0, rtol=0)
     else:
-        # head96 attention stays reference; its compatible output gate+projection
-        # uses the engine and has BF16 rounding differences.
         compare("reference-core-fused-output-" + case, actual, expected)
 
 

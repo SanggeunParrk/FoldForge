@@ -1,10 +1,25 @@
 # Checkpoints: from a release file to a locked blob
 
+For the download CLI, model-by-model setup and offline import, see
+[Weight downloads](WEIGHTS.md): `foldforge weights download boltz2 opendde`.
+
 FoldForge runs every family from one converted blob per model
 (`<model>.bin.zst`, AF3's record format). The blobs are not in git (~17 GB) and
 must not be redistributed casually: several releases (AF3 in particular) restrict
 sharing their weights. This page is the path from each release's own file to the
 exact blob `checkpoints.lock` pins.
+
+## Current qualified conversion releases (2026-10-28)
+
+`foldforge weights download` now supports IntelliFold2, Chai1 and Protenix1
+through the reproducible `cpu-v1` profile, without JAX or Haiku. The original
+`checkpoints.lock` is preserved; additional validated hashes are recorded in
+`conversions.lock`. All three passed the existing release-reference criteria
+on 5I28, 3PTB and 1A1K (three seeds, five samples each). The per-model conversion
+results below are the historical 2026-09-26 results, not current blockers.
+Protenix2 remains an authorized local-weight exception. AF3 is now available
+directly from Google; the current official blob has its own separately pinned
+hash and is installed without conversion.
 
 ## Layout and lookup
 
@@ -60,7 +75,7 @@ ESM-C 6B (`biohub/ESMC-6B`, revision `45b0fa5d7f`) is read directly from its rel
 `$FOLDFORGE_HOME/checkpoints/esmc-6b/`; do not rely on the Hugging Face cache copy (see
 `docs/bug-reports/esmfold2-hf-esmc-random-weights.md`).
 
-Where a conversion reproduces only to fp32 rounding, the freshly converted blob
-folds the same but is refused by the lock's size check: copy the locked blob from
-a machine that has it (verify with `foldforge checkpoints verify`), or, after
-re-validating (`tools/references/validate.sh`), update the lock.
+The historical mismatches above are handled by the separately qualified CPU
+conversion releases described at the top of this page. Use `foldforge weights
+download MODEL` and `foldforge checkpoints verify`; do not edit lock entries to
+make an unqualified conversion pass.

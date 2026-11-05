@@ -1,0 +1,348 @@
+{
+  "models": {
+    "boltz2": {
+      "converter": "boltz2",
+      "files": [
+        {
+          "name": "boltz2_conf.ckpt",
+          "url": "https://huggingface.co/boltz-community/boltz-2/resolve/6fdef46d763fee7fbb83ca5501ccceff43b85607/boltz2_conf.ckpt",
+          "sha256": "090e82ac8c92f5e943fa1b39e7410a44027bea7243c0bbb3caa67a77fc1428e1",
+          "size": 2286561469,
+          "repo": "boltz-community/boltz-2",
+          "revision": "6fdef46d763fee7fbb83ca5501ccceff43b85607"
+        }
+      ],
+      "checkpoint": "boltz2_conf.ckpt",
+      "reason": null,
+      "aux": []
+    },
+    "opendde": {
+      "converter": "opendde",
+      "files": [
+        {
+          "name": "opendde.pt",
+          "url": "https://huggingface.co/aurekaresearch/OpenDDE/resolve/eddd563ce96571f784012edd8f045181c8f8627d/opendde.pt",
+          "sha256": "7b826620390afad877ee2babc6a4d0df81b94d3a0be030959853d6a7da0807cc",
+          "size": 2625249069,
+          "repo": "aurekaresearch/OpenDDE",
+          "revision": "eddd563ce96571f784012edd8f045181c8f8627d"
+        }
+      ],
+      "checkpoint": "opendde.pt",
+      "reason": null,
+      "aux": []
+    },
+    "esmfold2": {
+      "converter": "esmfold2",
+      "files": [
+        {
+          "name": "config.json",
+          "url": "https://huggingface.co/biohub/ESMFold2/resolve/8fc3ff471022fdce52c77030685eb775de0c00a3/config.json",
+          "sha256": "e9ec2496ec433a1dce18627ed4bf3785b4ce0c1d69e4bb4663dad1ab895da012",
+          "size": 2337,
+          "repo": "biohub/ESMFold2",
+          "revision": "8fc3ff471022fdce52c77030685eb775de0c00a3"
+        },
+        {
+          "name": "model.safetensors",
+          "url": "https://huggingface.co/biohub/ESMFold2/resolve/8fc3ff471022fdce52c77030685eb775de0c00a3/model.safetensors",
+          "sha256": "138fd4350d6892b81ce6be7ff9bf5a93ae9d4d3751f46a27438a3f9f0dcefa0e",
+          "size": 939505228,
+          "repo": "biohub/ESMFold2",
+          "revision": "8fc3ff471022fdce52c77030685eb775de0c00a3"
+        }
+      ],
+      "checkpoint": ".",
+      "reason": null,
+      "aux": [
+        "esmc-6b"
+      ],
+      "extras": [
+        {
+          "name": "esmfold2.lm.npz",
+          "sha256": "036510fd243e63aab141fd982c1748a23fab87373ea3994bed92308a1fb100e4",
+          "size": 3699120
+        }
+      ]
+    },
+    "esmfold2-fast": {
+      "converter": "esmfold2_fast",
+      "files": [
+        {
+          "name": "config.json",
+          "url": "https://huggingface.co/biohub/ESMFold2-Fast/resolve/c6c7958d63f5f2f1f0fed0bb9462316f8ccceea6/config.json",
+          "sha256": "d24456b797ddcfb60ac6c53621b550db5e14b1575ee2d9ab5a380eb5b09902f2",
+          "size": 2338,
+          "repo": "biohub/ESMFold2-Fast",
+          "revision": "c6c7958d63f5f2f1f0fed0bb9462316f8ccceea6"
+        },
+        {
+          "name": "model.safetensors",
+          "url": "https://huggingface.co/biohub/ESMFold2-Fast/resolve/c6c7958d63f5f2f1f0fed0bb9462316f8ccceea6/model.safetensors",
+          "sha256": "60ca19f2898188beba92944365f7b909efd9c99212f5018af75cc47cd9a6184a",
+          "size": 755416924,
+          "repo": "biohub/ESMFold2-Fast",
+          "revision": "c6c7958d63f5f2f1f0fed0bb9462316f8ccceea6"
+        }
+      ],
+      "checkpoint": ".",
+      "reason": null,
+      "aux": [
+        "esmc-6b"
+      ],
+      "extras": [
+        {
+          "name": "esmfold2_fast.lm.npz",
+          "sha256": "56af25aca96957c219828684b5c36f86f9bcb8f6a6b2724a4b8a042765bd998f",
+          "size": 3699120
+        }
+      ]
+    },
+    "openfold3": {
+      "converter": "openbind0",
+      "files": [
+        {
+          "name": "of3-ob-2025-06-30-174k.pt",
+          "url": "https://openfold3-data.s3.amazonaws.com/openfold3-parameters/of3-ob-2025-06-30-174k.pt",
+          "sha256": "bd43301c011d5f87580d3e8b548658869433e4488399feb03035ba248f8e29e4",
+          "size": 2287872989
+        }
+      ],
+      "checkpoint": "of3-ob-2025-06-30-174k.pt",
+      "reason": null,
+      "aux": []
+    },
+    "openfold3-preview2": {
+      "converter": "openfold3",
+      "files": [
+        {
+          "name": "of3-p2-155k.pt",
+          "url": "https://openfold.s3.amazonaws.com/staging/of3-p2-155k.pt",
+          "sha256": "3ae79a701f55dbc184002d010c92d347a35faabb981314c2fd1325211af40b77",
+          "size": 2287928519
+        }
+      ],
+      "checkpoint": "of3-p2-155k.pt",
+      "reason": null,
+      "aux": []
+    },
+    "rosettafold3": {
+      "converter": "rosettafold3",
+      "files": [
+        {
+          "name": "rf3_foundry_01_24_latest_remapped.ckpt",
+          "url": "https://files.ipd.uw.edu/pub/rf3/rf3_foundry_01_24_latest_remapped.ckpt",
+          "sha256": "364ef592fd8042a9cf4176d045015190f8322f961ccca38d891b20ca578d3bb0",
+          "size": 3038876446
+        }
+      ],
+      "checkpoint": "rf3_foundry_01_24_latest_remapped.ckpt",
+      "reason": null,
+      "aux": []
+    },
+    "af3": {
+      "converter": null,
+      "files": [
+        {
+          "name": "af3.bin.zst",
+          "url": "https://storage.googleapis.com/alphafold3/af3.bin.zst?generation=1780568696389861",
+          "sha256": "74d0258616917cd122f5eab6d076afe4a8930e96823851e65e4f777dfb1f33ff",
+          "size": 1020545840
+        }
+      ],
+      "checkpoint": "af3.bin.zst",
+      "reason": null,
+      "aux": [],
+      "format": "converted"
+    },
+    "intellifold2": {
+      "converter": "intellifold2",
+      "files": [
+        {
+          "name": "intellifold_v2.pt",
+          "url": "https://huggingface.co/intelligenAI/intellifold/resolve/8f5ec8ab39e89fabf1887e54fe5ce588aaaaf890/intellifold_v2.pt",
+          "repo": "intelligenAI/intellifold",
+          "revision": "8f5ec8ab39e89fabf1887e54fe5ce588aaaaf890",
+          "size": 3401386544,
+          "sha256": "8ee1c03344a94c8d3408f9579b3869f791701b7945e23255331d44fb7cc41aaa"
+        }
+      ],
+      "checkpoint": "intellifold_v2.pt",
+      "reason": null,
+      "aux": []
+    },
+    "chai1": {
+      "converter": "chai1",
+      "files": [
+        {
+          "name": "trunk.pt",
+          "url": "https://chaiassets.com/chai1-inference-depencencies/models_v2/trunk.pt",
+          "sha256": "b7a08e104455f76491088a5eeaea9bb95a08168c48969b0b892971346e51ccbc",
+          "size": 633042135
+        },
+        {
+          "name": "token_embedder.pt",
+          "url": "https://chaiassets.com/chai1-inference-depencencies/models_v2/token_embedder.pt",
+          "sha256": "60cada19fd9c77d8298131a00368d162b6bc7d3c836dd36c715db04d21f7bbde",
+          "size": 6286772
+        },
+        {
+          "name": "diffusion_module.pt",
+          "url": "https://chaiassets.com/chai1-inference-depencencies/models_v2/diffusion_module.pt",
+          "sha256": "bd77cf4095ad6b8a4eae7e390d01d24be1ebd819922ca3f28e8744f9945c9cad",
+          "size": 476546304
+        },
+        {
+          "name": "confidence_head.pt",
+          "url": "https://chaiassets.com/chai1-inference-depencencies/models_v2/confidence_head.pt",
+          "sha256": "82a4ac9f934fdd0e73870150f508cecbe010c1383234bdadcaa70d57323deb6b",
+          "size": 55259496
+        },
+        {
+          "name": "feature_embedding.pt",
+          "url": "https://chaiassets.com/chai1-inference-depencencies/models_v2/feature_embedding.pt",
+          "sha256": "58600fb282827ee105b4bf33845c2eb2dce2a7d2ba7582951f76c9290c66c019",
+          "size": 4587962
+        },
+        {
+          "name": "distogram_head.pt",
+          "url": "https://raw.githubusercontent.com/sokrypton/chai-lab/849f990db241f4ea400be287ae12e5217bb70d26/chai_lab/model/distogram_head.pt",
+          "sha256": "6ba2e198e42191378db904e798f58645dc5a08e16370ce0594cc88c531e3801a",
+          "size": 662414
+        }
+      ],
+      "checkpoint": ".",
+      "reason": null,
+      "aux": [],
+      "extras": [
+        {
+          "name": "esm/traced_sdpa_esm2_t36_3B_UR50D_fp16.pt",
+          "sha256": "074673b97e1c1ff9c3cf949294749dd446ad1c83cee50a466b4841bb4d89c27a",
+          "size": 5678940466,
+          "url": "https://chaiassets.com/chai1-inference-depencencies/esm2/traced_sdpa_esm2_t36_3B_UR50D_fp16.pt"
+        }
+      ]
+    },
+    "protenix1": {
+      "converter": "protenix1",
+      "files": [
+        {
+          "name": "protenix_base_default_v1.0.0.pt",
+          "url": "https://protenix.tos-cn-beijing.volces.com/checkpoint/protenix_base_default_v1.0.0.pt",
+          "sha256": "2b7d5a8b30494514fc47fd2271a16260528cdba170ba09cc112fdecd8f85ec04",
+          "size": 1475950125
+        }
+      ],
+      "checkpoint": "protenix_base_default_v1.0.0.pt",
+      "reason": null,
+      "aux": []
+    },
+    "protenix2": {
+      "converter": null,
+      "files": [],
+      "checkpoint": ".",
+      "reason": "Protenix v2 uses local authorized weights. Use --from-dir with a validated converted checkpoint tree; no public mirror is downloaded.",
+      "aux": []
+    }
+  },
+  "aux": {
+    "esmc-6b": [
+      {
+        "name": "config.json",
+        "url": "https://huggingface.co/biohub/ESMC-6B/resolve/45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a/config.json",
+        "sha256": "c5566fab6a17fd674141331fe75de917b7904d99fb7a410d2b1593c21e576913",
+        "size": 341,
+        "repo": "biohub/ESMC-6B",
+        "revision": "45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a"
+      },
+      {
+        "name": "model-00001-of-00006.safetensors",
+        "url": "https://huggingface.co/biohub/ESMC-6B/resolve/45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a/model-00001-of-00006.safetensors",
+        "sha256": "bd90149ff223e6ac1a0cac6147a5ae0df20d3a21df4f65356a1f19cd14f4aa8a",
+        "size": 4864457920,
+        "repo": "biohub/ESMC-6B",
+        "revision": "45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a"
+      },
+      {
+        "name": "model-00002-of-00006.safetensors",
+        "url": "https://huggingface.co/biohub/ESMC-6B/resolve/45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a/model-00002-of-00006.safetensors",
+        "sha256": "f75e2144d8269fe2eb4b3e0823fb089b94f176d8024153e85b8fb573a42294fa",
+        "size": 4971211344,
+        "repo": "biohub/ESMC-6B",
+        "revision": "45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a"
+      },
+      {
+        "name": "model-00003-of-00006.safetensors",
+        "url": "https://huggingface.co/biohub/ESMC-6B/resolve/45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a/model-00003-of-00006.safetensors",
+        "sha256": "f699f01ecc9691d9c6470492765fe54b8b5d2e9f277c139e89427433ffdfe0b2",
+        "size": 4863752992,
+        "repo": "biohub/ESMC-6B",
+        "revision": "45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a"
+      },
+      {
+        "name": "model-00004-of-00006.safetensors",
+        "url": "https://huggingface.co/biohub/ESMC-6B/resolve/45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a/model-00004-of-00006.safetensors",
+        "sha256": "46add1b7be098bbfdc3073884851ba3057f1b33ea23a158b650a37007dabd13d",
+        "size": 4971211344,
+        "repo": "biohub/ESMC-6B",
+        "revision": "45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a"
+      },
+      {
+        "name": "model-00005-of-00006.safetensors",
+        "url": "https://huggingface.co/biohub/ESMC-6B/resolve/45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a/model-00005-of-00006.safetensors",
+        "sha256": "1e1cb62f060a34e18f54a31a76683ef888b8cec59e73315f5b31d25d45a1f88c",
+        "size": 4863752992,
+        "repo": "biohub/ESMC-6B",
+        "revision": "45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a"
+      },
+      {
+        "name": "model-00006-of-00006.safetensors",
+        "url": "https://huggingface.co/biohub/ESMC-6B/resolve/45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a/model-00006-of-00006.safetensors",
+        "sha256": "56c73e13ae96e777ce65eee99364056069ef93b646470f352f83c5f1037b1b18",
+        "size": 873762296,
+        "repo": "biohub/ESMC-6B",
+        "revision": "45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a"
+      },
+      {
+        "name": "model.safetensors.index.json",
+        "url": "https://huggingface.co/biohub/ESMC-6B/resolve/45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a/model.safetensors.index.json",
+        "sha256": "6846456e20e6ee2c37461f7bfc21d316d69bdaf165b925691afcb39e583244da",
+        "size": 97349,
+        "repo": "biohub/ESMC-6B",
+        "revision": "45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a"
+      },
+      {
+        "name": "special_tokens_map.json",
+        "url": "https://huggingface.co/biohub/ESMC-6B/resolve/45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a/special_tokens_map.json",
+        "sha256": "0b7245ec86c8c3aeaf61523ba70dfa79be137e6283f127bd651adc30b4f15c74",
+        "size": 171,
+        "repo": "biohub/ESMC-6B",
+        "revision": "45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a"
+      },
+      {
+        "name": "tokenizer.json",
+        "url": "https://huggingface.co/biohub/ESMC-6B/resolve/45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a/tokenizer.json",
+        "sha256": "8d3447b278176e65fb3ef0224472927bf5fee3be46ea2bd77fad0111423cee1f",
+        "size": 2879,
+        "repo": "biohub/ESMC-6B",
+        "revision": "45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a"
+      },
+      {
+        "name": "tokenizer_config.json",
+        "url": "https://huggingface.co/biohub/ESMC-6B/resolve/45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a/tokenizer_config.json",
+        "sha256": "e8d8e40c9f92b334f0272e80bb65ed4043cb9836523cbae899e9859e8cbb8833",
+        "size": 1392,
+        "repo": "biohub/ESMC-6B",
+        "revision": "45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a"
+      }
+    ]
+  },
+  "conversion_profile": {
+    "name": "cpu-v1",
+    "numpy": "2.5.3",
+    "zstandard": "0.25.0",
+    "openblas_coretype": "Haswell",
+    "openblas_threads": 1,
+    "converter_revision": "301430b3cbf9122912663c67eb19628fd6feec3e"
+  }
+}

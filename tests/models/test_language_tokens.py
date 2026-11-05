@@ -43,3 +43,60 @@ def test_esmc_pair_path_hands_the_tower_vocabulary_ids(tmp_path, monkeypatch):
     )
     letters = [tower.ESMC_VOCAB[i] for i in seen["ids"].reshape(-1).tolist()]
     assert letters == list("AECSV")
+
+
+def test_language_tower_and_shim_are_owned_by_the_predictor_cache(
+    tmp_path, monkeypatch
+):
+    from unittest.mock import Mock
+
+    (tmp_path / "model.lm.npz").touch()
+    load = Mock(return_value=object())
+    shim = Mock(side_effect=lambda _: _Shim())
+    hidden = Mock(side_effect=lambda _model, ids, *_args: torch.ones(*ids.shape, 2, 4))
+    monkeypatch.setattr(tower, "load_esmc", load)
+    monkeypatch.setattr(tower, "compute_lm_hidden_states", hidden)
+    monkeypatch.setattr(tower, "load_pair_shim", shim)
+    cache = {}
+    common = {
+        "asym_id": torch.zeros(2, dtype=torch.long),
+        "residue_index": torch.arange(2),
+        "is_protein": torch.ones(2, dtype=torch.bool),
+        "mask": torch.ones(2, dtype=torch.bool),
+        "dtype": torch.float32,
+        "cache": cache,
+    }
+    for sequence in (torch.tensor([0, 4]), torch.tensor([4, 0])):
+        result = language.pair_representation(
+            "esmc", tmp_path, aatype=sequence, **common
+        )
+        assert result.shape == (2, 4)
+    assert load.call_count == 1
+    assert shim.call_count == 1
+    assert hidden.call_count == 2
+    assert set(cache) == {"tower", "shim"}
+
+
+def test_traced_language_tower_is_reused_for_different_inputs(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    load = Mock(return_value=object())
+    embed = Mock(side_effect=lambda _model, aatype, *_args: aatype[:, None].float())
+    monkeypatch.setattr(language, "tower_path", lambda *_args: tmp_path)
+    monkeypatch.setattr(tower, "load_traced", load)
+    monkeypatch.setattr(tower, "embed_chains", embed)
+    cache = {}
+    common = {
+        "asym_id": torch.zeros(2, dtype=torch.long),
+        "is_protein": torch.ones(2, dtype=torch.bool),
+        "mask": torch.ones(2, dtype=torch.bool),
+        "dtype": torch.float32,
+        "cache": cache,
+    }
+    outputs = [
+        language.token_embeddings("esm2", tmp_path, aatype=a, **common)
+        for a in (torch.tensor([0, 4]), torch.tensor([4, 0]))
+    ]
+    assert not torch.equal(outputs[0], outputs[1])
+    assert load.call_count == 1
+    assert embed.call_count == 2

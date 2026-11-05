@@ -48,18 +48,18 @@ TARGETS = _CORE_TARGETS + tuple(
 SEEDS = (0, 1, 2)
 
 #: How FoldForge folds each family under the references' conditions: the CLI
-#: model and its trunk passes as the config counts them.
+#: model and total trunk passes, matching the existing released reference folds.
 FAMILIES: dict[str, dict[str, Any]] = {
-    "boltz2": {"model": "boltz2", "recycles": 3},
+    "boltz2": {"model": "boltz2", "recycles": 4},
     "chai1": {"model": "chai1", "recycles": 3},
     "protenix1": {"model": "protenix1", "recycles": 4},
     "protenix2": {"model": "protenix2", "recycles": 4},
-    "openfold3": {"model": "openfold3", "recycles": 3},
-    "openfold3-preview2": {"model": "openfold3-preview2", "recycles": 3},
+    "openfold3": {"model": "openfold3", "recycles": 4},
+    "openfold3-preview2": {"model": "openfold3-preview2", "recycles": 4},
     "rosettafold3": {"model": "rosettafold3", "recycles": 4},
-    "intellifold2": {"model": "intellifold2", "recycles": 3},
+    "intellifold2": {"model": "intellifold2", "recycles": 4},
     "opendde": {"model": "opendde", "recycles": 4},
-    "esmfold2": {"model": "esmfold2", "recycles": 3},
+    "esmfold2": {"model": "esmfold2", "recycles": 4},
 }
 
 POLYMER_ATOMS = ("CA", "C1'")

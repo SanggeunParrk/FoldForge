@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import torch
 
 from foldforge.modules import language_model as lm
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 #: Vocabulary and released file name of each tower, by the name a spec declares.
 _TOWERS = {
@@ -20,6 +24,15 @@ _TOWERS = {
 #: Which families read the tower as a PAIR through a shim, rather than as one
 #: embedding per token. The two are different graphs, not two settings.
 _PAIR_TOWERS = frozenset({"esmc"})
+
+
+def _component(cache: dict[str, Any] | None, key: str, load: Callable[[], Any]) -> Any:
+    """Keep auxiliary weights with a predictor, never in a process-wide model pool."""
+    if cache is None:
+        return load()
+    if key not in cache:
+        cache[key] = load()
+    return cache[key]
 
 
 def reads_pair(name: str) -> bool:
@@ -61,19 +74,39 @@ def token_embeddings(
     mask: torch.Tensor,
     is_protein: torch.Tensor,
     dtype: torch.dtype,
+    cache: dict[str, Any] | None = None,
 ) -> torch.Tensor:
     """Run the tower once and return one embedding per protein token, zero elsewhere."""
     if checkpoint is None:
         message = f"{name} lives beside the model's weights; none were given"
         raise ValueError(message)
     vocab, _ = _TOWERS[name]
-    path = tower_path(name, Path(checkpoint))
-    model = lm.load_traced(path, device=aatype.device)
+    model = _component(
+        cache,
+        "tower",
+        lambda: lm.load_traced(
+            tower_path(name, Path(checkpoint)), device=aatype.device
+        ),
+    )
     with torch.no_grad():
         out = lm.embed_chains(model, aatype, asym_id, mask, is_protein, vocab)
     del model
-    torch.cuda.empty_cache()
+    if cache is None:
+        torch.cuda.empty_cache()
     return out.to(dtype)
+
+
+def _shim_path(name: str, checkpoint: Path) -> Path:
+    """Validate the release-specific shim before its first load."""
+    root = checkpoint if checkpoint.is_dir() else checkpoint.parent
+    shims = sorted(root.glob("*.lm.npz"))
+    if len(shims) != 1:
+        message = (
+            f"expected exactly one {name} shim (*.lm.npz) in {root}, found "
+            f"{len(shims)}; the shim is trained per release and cannot be shared"
+        )
+        raise FileNotFoundError(message)
+    return shims[0]
 
 
 def pair_representation(
@@ -86,6 +119,7 @@ def pair_representation(
     is_protein: torch.Tensor,
     mask: torch.Tensor,
     dtype: torch.dtype,
+    cache: dict[str, Any] | None = None,
 ) -> torch.Tensor:
     """Run the tower and its shim once, returning the trunk's pair injection.
 
@@ -102,18 +136,19 @@ def pair_representation(
     if checkpoint is None:
         message = f"{name}'s shim lives beside the model's weights; none were given"
         raise ValueError(message)
-    root = Path(checkpoint)
-    root = root if root.is_dir() else root.parent
-    shims = sorted(root.glob("*.lm.npz"))
-    if len(shims) != 1:
-        message = (
-            f"expected exactly one {name} shim (*.lm.npz) in {root}, found "
-            f"{len(shims)}; the shim is trained per release and cannot be shared"
-        )
-        raise FileNotFoundError(message)
 
-    model = tower.load_esmc(
-        str(checkpoints.resolve("esmc-6b")), device=aatype.device, dtype=dtype
+    shim = _component(
+        cache,
+        "shim",
+        lambda: lm.load_pair_shim(_shim_path(name, Path(checkpoint))).to(aatype.device),
+    )
+
+    model = _component(
+        cache,
+        "tower",
+        lambda: tower.load_esmc(
+            str(checkpoints.resolve("esmc-6b")), device=aatype.device, dtype=dtype
+        ),
     )
 
     # The tower is written for the sequence layout, which carries a leading
@@ -139,9 +174,9 @@ def pair_representation(
             )
     finally:
         del model
-        torch.cuda.empty_cache()
+        if cache is None:
+            torch.cuda.empty_cache()
 
-    shim = lm.load_pair_shim(shims[0]).to(aatype.device)
     with torch.no_grad():
         pair = shim(hidden.squeeze(0) if hidden.ndim == 4 else hidden)  # noqa: PLR2004 - a leading batch axis or not
     return pair.to(dtype)

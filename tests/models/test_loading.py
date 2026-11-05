@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import ast
+import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -14,6 +16,7 @@ from torch import nn
 import foldforge
 from foldforge import paths
 from foldforge.models import get_model, load, loading
+from foldforge.modules.dense.spec import SPECS, spec_for
 
 
 class TinyModel(nn.Module):
@@ -185,22 +188,23 @@ def test_haiku_assign_preserves_source_dtype_and_exact_values(dtype):
     torch.testing.assert_close(target, source.T, atol=0, rtol=0)
 
 
-@pytest.mark.parametrize("recycles", [0, 2])
+@pytest.mark.parametrize("family", sorted(SPECS))
+@pytest.mark.parametrize("recycles", [1, 2, 10])
 @pytest.mark.parametrize("reference_precision", [False, True])
-def test_af3_recycles_are_additional_trunk_passes(
-    monkeypatch, recycles, reference_precision
+def test_every_family_counts_total_trunk_passes(
+    monkeypatch, family, recycles, reference_precision
 ):
     from foldforge.models.architectures import af3
-    from foldforge.modules.dense.spec import ALPHAFOLD3
 
     batch = SimpleNamespace(
         num_res=2,
         token_features=SimpleNamespace(mask=torch.ones(2), asym_id=torch.ones(2)),
         pseudo_beta_info=SimpleNamespace(token_atoms_to_pseudo_beta=None),
+        msa=SimpleNamespace(has_alignment=lambda: True),
     )
     monkeypatch.setattr(af3.feat_batch.Batch, "from_data_dict", lambda _: batch)
     calls = []
-    expected_passes = recycles + 1
+    expected_passes = recycles
 
     class Trunk(nn.Module):
         def forward(
@@ -226,12 +230,18 @@ def test_af3_recycles_are_additional_trunk_passes(
     model = af3.AlphaFold3.__new__(af3.AlphaFold3)
     nn.Module.__init__(model)
     model.num_recycles = recycles
-    model.spec = ALPHAFOLD3
+    # Isolate recurrence from structural-token conversion and random dropout;
+    # all other family conventions still pass through the real forward.
+    model.spec = replace(
+        SPECS[family], structural_tokens=False, recycle_mc_dropout=None
+    )
     model.reference_precision = reference_precision
     model.evoformer_pair_channel = model.evoformer_seq_channel = 2
     model.evoformer = Trunk()
     monkeypatch.setattr(
-        model, "create_target_feat_embedding", lambda _: torch.ones(2, 2)
+        model,
+        "create_target_feat_embedding",
+        lambda _: (torch.ones(2, 2), torch.ones(2, 2)),
     )
     monkeypatch.setattr(
         model, "_sample_diffusion", lambda *_: {"atom_positions": torch.zeros(1, 2, 3)}
@@ -239,9 +249,29 @@ def test_af3_recycles_are_additional_trunk_passes(
     model.confidence_head = lambda **_: {"score": torch.ones(1)}
     model.distogram_head = lambda *_: {}
     model({})
-    assert len(calls) == recycles + 1
+    assert len(calls) == recycles
     expected = torch.float32 if reference_precision else torch.bfloat16
-    assert calls == [torch.float32] + [expected] * recycles
+    assert calls == [torch.float32] + [expected] * (recycles - 1)
+
+
+@pytest.mark.parametrize("recycles", [0, -1])
+def test_direct_model_construction_rejects_nonpositive_total_passes(recycles):
+    from foldforge.models.architectures.af3 import AlphaFold3
+
+    with pytest.raises(ValueError, match="total trunk passes"):
+        AlphaFold3(num_recycles=recycles)
+
+
+@pytest.mark.parametrize("family", sorted(SPECS))
+@pytest.mark.parametrize("mode", ["fast", "exact"])
+def test_resolved_spec_is_complete_and_strict_json(family, mode):
+    spec = spec_for(family, mode)
+    report = loading._resolved_spec(spec)  # noqa: SLF001 - serialization contract
+    json.dumps(report, allow_nan=False)
+    assert report["family"] == family
+    assert report["pair_channel"] == spec.pair_channel
+    assert report["atom_key_window"] == spec.atom_key_window
+    assert report["affine_norms"] == sorted(spec.affine_norms)
 
 
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32])
@@ -283,6 +313,7 @@ def test_every_registered_family_names_a_distinct_default_checkpoint():
     not paths.checkpoints().is_dir(),
     reason="weights are not downloaded on this machine",
 )
+@pytest.mark.checkpoints
 def test_every_registered_family_resolves_its_checkpoint():
     """A distinct filename is not enough; it has to be findable.
 

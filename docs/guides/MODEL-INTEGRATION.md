@@ -49,6 +49,51 @@ Current CCD and module-boundary status is recorded in
 [code unification](../archive/CODE-UNIFICATION-20260913.md). The original port validation
 below establishes execution, not complete migration to team-gm blocks.
 
+## Installation candidates — 2026-10-28
+
+`modules/engine/modules.py` declares ordered candidate chains by dense module
+class. Checked factories return `installation.BuildResult`; existing public
+factories retain their raw object/`None` API. Equation and engine-API refusals
+are recorded where the original guards execute, without rebuilding a candidate
+to explain it. Only the first constructed candidate is selected, including when
+that candidate is explicitly skipped. Unexpected checkpoint/construction errors
+still raise.
+
+`engine_installation` records attempts and actual attachments separately from
+legacy counts and runtime `engine_dispatch`. Pairformer and conditioning phases
+use the same result object for conversions and named exclusions. This preserves
+weight ownership, installation order and runtime support policy. Field semantics
+and reinstallation behavior: [installation decisions](CONFIG.md#installation-decisions).
+
+## Shared fold stages — 2026-10-28
+
+Every family keeps the same `AlphaFold3.forward` pipeline. Its stages are in
+`models/architectures/af3.py`; the split changes orchestration, not parameter names
+or the equations loaded from a checkpoint.
+
+| Stage | Contract |
+|---|---|
+| `_prepare_batch` | Build the dense batch and apply fold-level input conventions before embeddings. |
+| `_run_trunk` | Build target features and initial carry; draw the MC recycle coin once; run the total number of passes with first/last flags and existing precision conversion. |
+| `_prepare_diffusion_inputs` | Return fold-local `DiffusionInputs`. Expand/refine structural tokens only when the spec requires it; keep residue embeddings for the heads. |
+| `_sample_diffusion` → `DiffusionInputs.restore` | Sample in the selected layout, then restore residue atoms when necessary. Ordinary residue samples pass through unchanged. |
+| `_predict_heads` | Run confidence and distogram on the residue batch/trunk and restored samples. |
+
+Within each Evoformer pass, the single/pair schedule lives in
+`_single_pair_trunk`. Pair-only models build their complete LM/MSA injection in
+`_pair_only_injection` before `_pair_only_trunk` reads it. `_finalize_pair_only`
+applies readout/coda only on the last pass; the recycle retains `pair_pre_coda`.
+These schedules retain their distinct addition and normalization order.
+
+LM tower preparation already lives in `models/io/language.py`, called by the
+dense input adapter before model execution. It is still run once for input
+preparation. ESM's trunk LM encoder/dropout remains inside every pair-only pass;
+moving the tower out does not move that recurrence input out of the loop.
+
+The existing trunk/head graph sites and denoiser compile boundary remain in
+`models/execution.py`. Fold initialization and the MC coin stay outside trunk
+capture. This stage split adds no new execution setting.
+
 ## Running a fold
 
 Every family takes the same MiniWorld YAML and the same flags -- there is one
@@ -310,11 +355,12 @@ under `$FOLDFORGE_HOME/runs/release-compare-20260924/`.
   still drives the stack -- and divides by the slot count, adding a pair term
   of RMS 17 (v1) / 12 (v2) on every recycle. v1 went from CA 4.25 A off the
   release to inside its spread.
-- **Recycle counting.** Protenix (`range(N_cycle)`), OpenDDE, which inherits
-  it, and RF3 (`range(n_recycles)`) count TOTAL trunk passes, like Chai-1;
-  AF3, Boltz, OpenFold3 (`num_recycles + 1`) and IntelliFold
-  (`recycling_iters + 1`) count additional ones. `recycles_are_total` now says
-  so for each, so one setting means one number of passes.
+- **Recycle counting.** Released applications use different conventions:
+  Protenix/OpenDDE, RF3 and Chai-1 count total passes, while AF3, Boltz,
+  OpenFold3, IntelliFold and ESMFold2 count additional ones. FoldForge now
+  exposes **total trunk passes for every family**: `recycles: 10` means ten
+  executions. Reference-generation configs explicitly retain the released
+  reference workloads' total pass counts; no model-specific counting flag remains.
 
 **Three things that look like defects and are not:**
 

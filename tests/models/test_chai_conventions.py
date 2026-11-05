@@ -16,13 +16,16 @@ def _loaded(block: nn.Module) -> nn.Module:
 
 
 def test_install_keeps_a_parallel_block_on_its_own_schedule():
-    """A parallel block (every update reads the block's input) stays parallel when installed.
+    """Check install keeps a parallel block on its own schedule.
 
-    Swapping it for the sequential composition ran Chai-1's 48 trunk blocks
-    under the wrong schedule for every real fold while a harness that skipped
-    the loader matched the release, and cost 18 pLDDT points on 5I28. The
-    engine block now takes the parallel schedule: the installed block must
-    give the dense block's output, and a sequential one must still differ.
+    A parallel block (every update reads the block's input) stays parallel when
+    installed.
+
+    Swapping it for the sequential composition ran Chai-1's 48 trunk blocks under
+    the wrong schedule for every real fold while a harness that skipped the loader
+    matched the release, and cost 18 pLDDT points on 5I28. The engine block now
+    takes the parallel schedule: the installed block must give the dense block's
+    output, and a sequential one must still differ.
     """
     import copy
 
@@ -33,7 +36,9 @@ def test_install_keeps_a_parallel_block_on_its_own_schedule():
     torch.manual_seed(0)
     kwargs = {"c_pair": 16, "c_single": 32, "n_heads": 2, "n_heads_pair": 2}
     dense = PairformerBlock(spec=SPECS["chai1"], **kwargs).eval()
-    for parameter in dense.parameters():  # the zero-initialised projections would hide the schedule
+    for (
+        parameter
+    ) in dense.parameters():  # the zero-initialised projections would hide the schedule
         torch.nn.init.normal_(parameter, std=0.2)
     installed = _loaded(copy.deepcopy(dense))
     install_pairformers(installed)
@@ -52,7 +57,10 @@ def test_install_keeps_a_parallel_block_on_its_own_schedule():
         dense.parallel = False
         sequential = dense(pair.clone(), pair_mask, single.clone(), seq_mask)
     for g, w, s in zip(got, want, sequential, strict=True):
-        torch.testing.assert_close(g[:-1, :-1] if g.ndim == 3 else g[:-1], w[:-1, :-1] if w.ndim == 3 else w[:-1])
+        torch.testing.assert_close(
+            g[:-1, :-1] if g.ndim == 3 else g[:-1],
+            w[:-1, :-1] if w.ndim == 3 else w[:-1],
+        )
         assert not torch.allclose(s, w, atol=1e-3)
 
 

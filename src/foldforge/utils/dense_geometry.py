@@ -72,9 +72,7 @@ class Vec3Array:
         # To avoid NaN on the backward pass, we must use maximum before the sqrt
         norm2 = self.dot(self)
         if epsilon:
-            norm2 = torch.maximum(
-                norm2, torch.full_like(norm2, epsilon**2)
-            )
+            norm2 = torch.maximum(norm2, torch.full_like(norm2, epsilon**2))
         return torch.sqrt(norm2)
 
     def normalized(self, epsilon: float = 1e-6) -> Self:

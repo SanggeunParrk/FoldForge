@@ -130,9 +130,6 @@ class DenseSpec:
     #: The diffusion transformer norms and projects the pair conditioning in every
     #: block; AF3 norms once and projects once per super block.
     per_block_pair_layer_norm: bool = False
-    #: Whether a recycle setting counts TOTAL trunk passes rather than the
-    #: additional ones AF3 counts. Clamped at one either way.
-    recycles_are_total: bool = False
     trunk_layers: int = 48
     #: Whether the pairformer blocks carry the two pair-axis ATTENTIONS. A
     #: family that folds from a language model keeps only the triangle
@@ -623,8 +620,6 @@ BOLTZ2 = replace(
 ROSETTAFOLD3 = replace(
     OPENBIND0,
     family="rosettafold3",
-    # The release's n_recycles is the number of trunk passes (range(n_recycles)).
-    recycles_are_total=True,
     centre_ref_conformers=False,
     per_block_pair_layer_norm=True,
     msa_value_dim=32,
@@ -662,7 +657,6 @@ CHAI1 = replace(
     ALPHAFOLD3,
     family="chai1",
     input_embedder="chai1",
-    recycles_are_total=True,
     language_model="esm2",
     msa_feat_layout="chai1",
     msa_feat_columns=41,
@@ -743,8 +737,6 @@ CHAI1 = replace(
 PROTENIX2 = replace(
     OPENBIND0,
     family="protenix2",
-    # The release's N_cycle is the number of trunk passes (range(N_cycle)).
-    recycles_are_total=True,
     recycle_mc_dropout=(0.4, 0.4),
     nonprotein_msa_as_query="rows",
     chained_atom_key_norm=True,

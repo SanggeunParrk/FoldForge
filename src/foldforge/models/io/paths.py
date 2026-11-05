@@ -15,6 +15,11 @@ from foldforge import paths
 RUNS_ROOT = paths.runs()
 
 
+def output_directory(value: str | Path) -> Path:
+    """Resolve a library-owned destination relative to the caller's directory."""
+    return Path(value).expanduser().resolve()
+
+
 def run_directory(
     value: str | Path | None = None, *, model: str = "prediction"
 ) -> Path:

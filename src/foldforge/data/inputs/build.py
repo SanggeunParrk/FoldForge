@@ -39,6 +39,7 @@ class Chain:
     a3m: Path | None
     alignment: Alignment | None = None
     templates: tuple[Template, ...] = ()
+    a3m_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -97,6 +98,8 @@ class Input:
         """Compute msa text."""
         if chain.alignment is not None:
             return chain.alignment.a3m(self.msa_species)
+        if chain.a3m_text is not None:
+            return chain.a3m_text
         return chain.a3m.read_text() if chain.a3m else ""
 
     def af3(self, seed: int = 0) -> dict[str, Any]:
@@ -304,21 +307,24 @@ def write_adapter_input(target: Input, destination: Path, seed: int = 0) -> None
     destination.write_text(json.dumps(payload, indent=2) + "\n")
 
 
-def limit_msa(target: Input, depth: int, directory: Path) -> Input:
+def limit_msa(target: Input, depth: int, directory: Path | None = None) -> Input:
     """Apply an explicit input-row limit identically before model preparation."""
     from dataclasses import replace
 
     if depth < 1:
         msg = "MSA depth must be positive"
         raise ValueError(msg)
-    directory.mkdir(parents=True, exist_ok=True)
+    if directory is not None:
+        directory.mkdir(parents=True, exist_ok=True)
     paths = {}
+    texts = {}
     for chain in target.chains:
-        if chain.a3m is None or chain.a3m in paths:
+        if chain.a3m is None or chain.a3m in texts:
             continue
         rows = 0
         lines = []
-        for line in chain.a3m.read_text().splitlines(keepends=True):
+        text = chain.a3m_text if chain.a3m_text is not None else chain.a3m.read_text()
+        for line in text.splitlines(keepends=True):
             if line.startswith(">"):
                 rows += 1
                 if rows > depth:
@@ -327,13 +333,16 @@ def limit_msa(target: Input, depth: int, directory: Path) -> Input:
         if rows == 0:
             msg = f"MSA file has no FASTA records: {chain.a3m}"
             raise ValueError(msg)
-        path = (directory / f"chain-{chain.index}.a3m").resolve()
-        path.write_text("".join(lines))
-        paths[chain.a3m] = path
+        texts[chain.a3m] = "".join(lines)
+        if directory is not None:
+            path = (directory / f"chain-{chain.index}.a3m").resolve()
+            path.write_text(texts[chain.a3m])
+            paths[chain.a3m] = path
     chains = tuple(
         replace(
             chain,
-            a3m=paths.get(chain.a3m),
+            a3m=paths.get(chain.a3m) if directory is not None else chain.a3m,
+            a3m_text=texts.get(chain.a3m),
             alignment=(
                 replace(
                     chain.alignment,
@@ -348,6 +357,10 @@ def limit_msa(target: Input, depth: int, directory: Path) -> Input:
         for chain in target.chains
     )
     spec = target.spec.model_copy(
-        update={"a3m": {key: paths[value] for key, value in target.spec.a3m.items()}}
+        update={
+            "a3m": {
+                key: paths.get(value, value) for key, value in target.spec.a3m.items()
+            }
+        }
     )
     return Input(spec, chains, target.msa_species)

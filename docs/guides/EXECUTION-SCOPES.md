@@ -5,6 +5,12 @@
 signature (tensor shapes, dtypes, strides and Python scalars/bools); replay copies the inputs into
 static buffers.
 
+`max_graphs` bounds each wrapper's resident graph cache. When a new input signature
+fills the cache, the least recently used graph is evicted and the new signature is
+captured. A loaded predictor can therefore serve many input shapes without growing
+the graph cache indefinitely. Compiled callables survive between requests; graph
+replay is retained only where the existing shape and conditioning lifetime permit it.
+
 | scope | wrapped | CUDA graph |
 |---|---|---|
 | `denoiser` (default) | `diffusion_head.forward`, called once per sampler step | yes |
@@ -71,3 +77,23 @@ FoldForge does not optimise ESM-C (the language model of ESMFold2). Its speed wo
 Anthropic's ESMFold2 optimisation kit as shipped: CUDA-graph capture of the language model and MSA
 encoders (lever `eg`), ESM-C MLP through TransformerEngine (`esmc_mlp=te`), and the LM block
 streaming above 1,500 tokens (`x4`). Nothing in `scope: trunk` wraps the language model.
+
+
+## Repeated compiled predictions
+
+A 2026-10-28 H100 check with a reusable Boltz2 predictor, 5I28 real MSA/templates,
+BF16 fast mode, total trunk passes 10, diffusion steps 200, five samples and
+`benchmark_repeats: 1` reproduced coordinates exactly with eager execution and
+with CUDA graphs without compilation. With `compile: true`, the second request
+returned coordinates differing from the first by up to **2.84283 angstroms**.
+Prepared feature hashes, trunk tensors and the initial diffusion RNG states were
+identical. The difference begins during diffusion; Dynamo also reports hitting
+its recompilation limit and falling back for engine-wrapper specializations.
+The warning's causal role has not been established. Small four-step checks were
+exact in all tested modes. No numerical tolerance was relaxed to call the longer
+compiled repeat reproducible.
+
+The reusable API preserves the explicit compile policy. For reproducibility under
+this measured workload, keep `compile: false`; graphs may stay enabled. Resolving
+this compiled diffusion behavior is separate from input/model lifetime ownership.
+Raw evidence: `/home/psk6950/foldforge-scratch/reusable_api_20261028/REPORT.md`.

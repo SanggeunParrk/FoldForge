@@ -112,7 +112,7 @@ holds no card list. On a card that is not an H100 or B200:
   `UnrecordedCardWarning` and the PyTorch reference. The diffusion transformers follow the same rule through the one
   seam, `modules.engine.variant_serves` (the stacks of Boltz-2, RoseTTAFold3, Chai-1 and ESMFold2's token stack: the H100
   question first, then the engine's portable one) and the engine's per-block atom/token blocks, which route themselves.
-  Where the engine does not serve, FoldForge's dense blocks run exactly as before;
+  Where the kernels do not serve, the engine stack runs its own PyTorch statements (`serving() == "pytorch"` counts as served);
 - `cuequivariance` and `pytorch` do not depend on the card;
 - `anthropic` serves what its payload serves on that card and refuses the rest with the reason from the payload (sm_90a
   units for TriMul and the MSA cells; an sm_80 member exists for TriMul): everything else is the PyTorch reference.

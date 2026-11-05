@@ -13,13 +13,13 @@ data, and the operations on it (write, score, plot) differ per use, not per
 model.
 """
 
+# ruff: noqa: TC002 - public runtime type introspection
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    import torch
+import torch
 
 
 @dataclass(frozen=True)

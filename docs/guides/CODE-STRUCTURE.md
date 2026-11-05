@@ -9,9 +9,18 @@ A new release is a registry entry and a spec row, not new code.
 
 ```text
 src/foldforge/
-  __init__.py          public load, checkpoint discovery and Prediction API
-  cli.py               models / ccd / checkpoints / validate / fold
+  __init__.py          public load_model / load_inputs / predict, configuration and results
+  api.py               device-bound predictor, whole and staged inference
+  inputs.py            reusable input loading and early validation
+  stages.py            model-bound trunk state and lifetime
+  lifecycle.py         atomic object leases and process-wide policy serialization
+  errors.py            public lifecycle and input exceptions
+  result.py            CPU results, CIF strings and explicit saving
+  cli.py               Rich/Click commands over the public Python API
   prediction.py        common prediction result type
+  diffusion/          EDM / decoupled x-pred processes, augmentation, schedules, samplers, SE(3) helpers
+                     (self-contained: imports no other foldforge module, shared with MiniWorld)
+  blocks/, layers/                 Pairformer, backend names (ImplementationType)
   models/
     __init__.py        the registry: one Entry per released model
     architectures/     af3.py, the only network
@@ -50,10 +59,11 @@ src/foldforge/
 |---|---|
 | Add a release | `models/__init__.py` (entry), `modules/dense/spec.py` (row), `models/checkpoints/__init__.py` (default blob) |
 | A release computes something differently | a named field on `DenseSpec`, and the one place in the graph that reads it |
+| Public prediction API / result | `api.py`, `result.py`; CLI flags in `models/io/options.py` |
 | Choose backend or precision at load | `models/loading.py` |
 | Serialized weight names or packing | `models/checkpoints/`, the converter (see [checkpoints](CHECKPOINTS.md)) |
 | Input conventions a family needs | `data/features/dense_conventions.py` |
-| Shared attention, triangle, MSA, transition equations | `miniworld_engine.architecture` (blocks, layers), `modules/reference` |
+| Shared attention, triangle, MSA, transition equations | `foldforge.blocks`, `modules/reference` |
 | An accelerated kernel, or how a call picks it | `miniworld_engine`; FoldForge only routes (`modules/engine`) |
 
 ## What is not here

@@ -1,21 +1,35 @@
 from __future__ import annotations
 
-from support import production_module, triton_ops_run
+from support import production_module
 
 # Tests target private upstream equations directly without loading full checkpoints.
 # ruff: noqa: SLF001
 """Checkpoint-layout and residual regressions for the AF-family ports."""
 
+import contextlib
 import copy
 import importlib
 from unittest import mock
 
 import pytest
 import torch
-from miniworld_engine import ops
 
 from foldforge.modules.engine.configure import configure_model
+from foldforge.modules.engine.modules import engine_of, install_engine_modules
 from foldforge.modules.engine.routing import transition_residual, triangle_residual
+
+
+@contextlib.contextmanager
+def engine_calls(module):
+    """Count the forward calls of the engine module attached to ``module``."""
+    calls = [0]
+    handle = engine_of(module).register_forward_hook(
+        lambda *_: calls.__setitem__(0, calls[0] + 1)
+    )
+    try:
+        yield calls
+    finally:
+        handle.remove()
 
 
 @pytest.mark.parametrize("outgoing", [True, False])
@@ -33,18 +47,15 @@ def test_triangle_mask_and_weight_layout(outgoing):
     reference = configure_model(copy.deepcopy(layer), "pytorch")
     engine = configure_model(layer, "miniworld")
     x = torch.randn(32, 32, 128, device="cuda", dtype=torch.bfloat16)
-    mask = torch.rand(32, 32, device="cuda") > 0.2
-    with (
-        torch.inference_mode(),
-        mock.patch.object(
-            ops,
-            "triangle_multiplicative_update",
-            wraps=ops.triangle_multiplicative_update,
-        ) as call,
-    ):
+    # The dense graph's pair masks are outer products of the token mask (the engine module reads its diagonal).
+    tokens = torch.rand(32, device="cuda") > 0.2
+    mask = tokens[:, None] & tokens[None, :]
+    install_engine_modules(engine, torch.empty(0, dtype=torch.bfloat16, device="cuda"))
+    with torch.inference_mode(), engine_calls(engine) as calls:
         expected = triangle_residual(reference, x.clone(), mask)
         actual = triangle_residual(engine, x.clone(), mask)
-    assert call.call_count == triton_ops_run()
+    assert calls == [1]
+    actual, expected = actual[mask], expected[mask]
     error = (actual - expected).float()
     assert error.square().mean().sqrt() < 0.007
     assert (
@@ -65,22 +76,20 @@ def test_transition_residual_once():
                 p.normal_(0, 0.04)
     ref = configure_model(copy.deepcopy(layer), "pytorch")
     engine = configure_model(layer)
+    install_engine_modules(engine, torch.empty(0, dtype=torch.bfloat16, device="cuda"))
     x = torch.randn(1, 32, 128, device="cuda", dtype=torch.bfloat16)
-    with (
-        torch.inference_mode(),
-        mock.patch.object(ops, "transition", wraps=ops.transition) as call,
-    ):
+    with torch.inference_mode(), engine_calls(engine) as calls:
         expected = transition_residual(ref, x)
         actual = transition_residual(engine, x)
-    assert call.call_count == 1
+    assert calls == [1]
     assert (actual - expected).float().square().mean().sqrt() < 0.005
     for name, p in engine.named_parameters():
         assert p.dtype == (torch.float32 if p.ndim == 1 else torch.bfloat16), name
 
 
 def test_pairformer_single_transition_receives_backend():
-    from miniworld_engine.architecture.blocks.pairformer import PairformerBlock
-    from miniworld_engine.architecture.exceptions import ImplementationType
+    from foldforge.blocks.pairformer import PairformerBlock
+    from foldforge.layers.implementation import ImplementationType
 
     impl = ImplementationType.MINIWORLD_ENGINE
     block = PairformerBlock(implementation=impl)
@@ -125,7 +134,7 @@ def test_af3_diffusion_preserves_random_noise_field():
         predicted_structure_info=SimpleNamespace(atom_mask=torch.ones(4, 24))
     )
     with mock.patch(
-        "miniworld_engine.architecture.diffusion.augmentation.masked_dense_rigid_motion",
+        "foldforge.diffusion.augmentation.masked_dense_rigid_motion",
         side_effect=lambda positions, _mask: positions,
     ):
         result = model._sample_diffusion(batch, {})["atom_positions"]

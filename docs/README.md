@@ -1,5 +1,7 @@
 # Documentation
 
+- [Weight downloads](guides/WEIGHTS.md): multi-model download, conversion, verification, language models and offline import.
+- [Python API and CLI](guides/PYTHON-API.md): `load_model()` / `load_inputs()`, reusable models, trunk/diffusion test-time scaling, device ownership, in-memory results, optional saving and shared command-line execution.
 - [Benchmark results](benchmark_results.md): 5I28 replicated N times on A100 and A6000; five inference
   execution modes across four models at 512 tokens, and a length ladder to the out-of-memory point.
   Rendered by `scripts/render_length_benchmark.py`; [benchmark_notes.md](benchmark_notes.md) is inserted on

@@ -9,24 +9,25 @@ from __future__ import annotations
 from typing import Any
 
 import torch
-from miniworld_engine import ops
-from miniworld_engine.architecture.exceptions import ImplementationType
-from miniworld_engine.modules.dispatch import restricted_card
+from miniworld_engine.modules.exceptions import ImplementationType as EngineImpl
+from miniworld_engine.modules.primitives import LayerNorm as EngineLayerNorm
 from torch import nn
 from torch.nn import functional as F
 
+from foldforge.layers.implementation import ImplementationType
 from foldforge.modules.engine.backends import BACKENDS
 from foldforge.modules.engine.native_linear import NativeLinear
 from foldforge.modules.engine.routing import enabled
 
-_UNBATCHED_TOKEN_RANK = 2
+#: The engine ``LayerNorm`` a ``NativeLayerNorm`` hands its BF16 calls to (out of band: not a child).
+_ENGINE_NORM = "_engine_norm_module"
 
 
 def implementation_of(backend: str) -> object:
     """The ``foldforge_implementation`` a module carries for a backend name.
 
     The engine's enum has no member for ``anthropic`` (its kernels are reached through adapters, never the
-    ``miniworld_engine.ops`` entry points that ``enabled`` guards), so that backend's name stays a string.
+    engine modules that ``enabled`` guards), so that backend's name stays a string.
     """
     if backend == "miniworld":
         return ImplementationType.MINIWORLD_ENGINE
@@ -36,7 +37,13 @@ def implementation_of(backend: str) -> object:
 
 
 class NativeLayerNorm(nn.Module):
-    """FP32 parameters and reduction, original checkpoint affine names."""
+    """FP32 parameters and reduction, original checkpoint affine names.
+
+    On the ``miniworld`` backend a BF16 call is served by the engine's ``LayerNorm`` module
+    (``miniworld_engine.modules.primitives.LayerNorm``: the general CUDA LayerNorm on H100 / B200, its
+    portable kernels elsewhere), which shares this module's parameters and is attached out of band
+    (no state_dict key). Every other call runs the FP32 PyTorch statements.
+    """
 
     def __init__(self, source: nn.Module, backend: str) -> None:
         super().__init__()
@@ -46,44 +53,34 @@ class NativeLayerNorm(nn.Module):
         self.eps = source.eps
         self.weight = source.weight
         self.bias = source.bias
-        self.register_buffer(
-            "unit_scale", torch.ones(self.normalized_shape), persistent=False
-        )
-        self.register_buffer(
-            "zero_bias", torch.zeros(self.normalized_shape), persistent=False
-        )
         self.foldforge_implementation = implementation_of(backend)
+        # Built for the miniworld backend only (the engine resolves its CUDA / portable leg for the card here).
+        object.__setattr__(
+            self, _ENGINE_NORM, self._engine_norm() if backend == "miniworld" else None
+        )
+
+    def _engine_norm(self) -> nn.Module | None:
+        """The engine ``LayerNorm`` over this module's own parameters, or None for a form it does not hold."""
+        if len(self.normalized_shape) != 1 or (self.weight is None and self.bias is not None):
+            return None
+        with torch.device("meta"):
+            norm = EngineLayerNorm(
+                self.normalized_shape,
+                eps=self.eps,
+                elementwise_affine=self.weight is not None,
+                bias=self.bias is not None,
+                implementation=EngineImpl.MINIWORLD,
+            )
+        # Shared parameters: ``configure_model`` / ``.to`` replace their data in place, the engine module follows.
+        norm.weight = self.weight
+        norm.bias = self.bias
+        return norm.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Normalize in FP32 and return the original activation dtype."""
-        if enabled(self, x) and len(self.normalized_shape) == 1:
-            if restricted_card(x.device):
-                # H100 / B200 have no Triton: the engine's general CUDA LayerNorm, or the
-                # reference below for a width it does not take.
-                from miniworld_engine.kernels.layernorm.cuda.general import (
-                    layernorm_cuda,
-                    supported,
-                )
-
-                if supported(x):
-                    return layernorm_cuda(x, self.weight, self.bias, self.eps)
-                return F.layer_norm(
-                    x.float(), self.normalized_shape, self.weight, self.bias, self.eps
-                ).to(x.dtype)
-            shape = x.shape
-            value = (
-                x.reshape(1, 1, shape[-1])
-                if x.ndim == 1
-                else x.unsqueeze(0)
-                if x.ndim == _UNBATCHED_TOKEN_RANK
-                else x
-            )
-            return ops.layer_norm(
-                value,
-                self.weight if self.weight is not None else self.unit_scale,
-                self.bias if self.bias is not None else self.zero_bias,
-                self.eps,
-            ).reshape(shape)
+        engine = self.__dict__.get(_ENGINE_NORM)
+        if engine is not None and enabled(self, x):
+            return engine(x)
         return F.layer_norm(
             x.float(), self.normalized_shape, self.weight, self.bias, self.eps
         ).to(x.dtype)
@@ -140,8 +137,6 @@ def configure_model(
     for m, name, value in fixed_buffers:
         setattr(m, name, value.to(device))
     for n, w, b in saved:
-        n.unit_scale = n.unit_scale.float()
-        n.zero_bias = n.zero_bias.float()
         if w is not None:
             n.weight.data = w.to(device)
         if b is not None:

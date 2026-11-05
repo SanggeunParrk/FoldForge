@@ -106,7 +106,11 @@ def available() -> dict[str, bool]:
     """Which registered models are present on this machine."""
     names = set(_registry())
     if DEFAULT_DIR.is_dir():
-        names |= {p.name for p in DEFAULT_DIR.iterdir() if p.is_dir()}
+        names |= {
+            p.name
+            for p in DEFAULT_DIR.iterdir()
+            if p.is_dir() and not p.name.startswith(".")
+        }
     return {name: _present(name) for name in sorted(names)}
 
 

@@ -4,11 +4,11 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "foldforge-af3-data"
-version = "3.0.1"
+version = "3.0.2"
 requires-python = ">=3.12,<3.13"
 description = "Pinned AlphaFold3 CPU input features and native structure parsers for FoldForge"
 license = {file = "LICENSE"}
-dependencies = ["absl-py>=2,<3", "chex>=0.1.90,<0.2", "jax==0.8.2", "dm-tree>=0.1.9,<0.2", "numpy>=2,<3", "rdkit>=2025,<2027", "zstandard>=0.23,<1"]
+dependencies = ["absl-py>=2,<3", "dm-tree>=0.1.9,<0.2", "numpy>=2,<3", "rdkit>=2025,<2027", "zstandard>=0.23,<1"]
 
 [tool.scikit-build]
 wheel.packages = ["src/alphafold3"]

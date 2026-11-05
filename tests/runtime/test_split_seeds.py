@@ -9,9 +9,9 @@ import numpy as np
 import pytest
 import torch
 from conftest import cli
-from miniworld_engine.architecture.diffusion.edm.sampling import EulerSampler
 from torch import nn
 
+from foldforge.diffusion.edm.sampling import EulerSampler
 from foldforge.models.config import Config, ExecutionConfig
 from foldforge.models.execution import ExecutedCallable
 from foldforge.models.io.cli import parse
@@ -177,3 +177,18 @@ def test_diffusion_seed_is_independent_of_trunk_and_graph(mode):
     assert not torch.equal(first[0], other_trunk[0])
     assert torch.equal(first[0], other_diffusion[0])
     assert not torch.equal(first[1][0], first[1][1])
+
+
+def test_rebinding_diffusion_seed_keeps_one_wrapper_and_uses_latest_seed():
+    model = SimpleNamespace(_sample_diffusion=lambda: torch.rand(4))
+    before = torch.random.get_rng_state()
+    bind_sampling_seed(model, 7)
+    wrapper = model._sample_diffusion  # noqa: SLF001 - verify wrapper identity
+    first = wrapper()
+    bind_sampling_seed(model, 19)
+    assert model._sample_diffusion is wrapper  # noqa: SLF001 - verify wrapper identity
+    changed = wrapper()
+    bind_sampling_seed(model, 7)
+    torch.testing.assert_close(wrapper(), first, rtol=0, atol=0)
+    assert not torch.equal(first, changed)
+    assert torch.equal(torch.random.get_rng_state(), before)

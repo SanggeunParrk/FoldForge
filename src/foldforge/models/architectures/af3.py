@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any
 
 import torch
 import torch.nn as nn
-from miniworld_engine.architecture.diffusion.augmentation import (
-    masked_dense_rigid_motion,
-)
-from miniworld_engine.architecture.diffusion.edm.sampling import EulerSampler
-from miniworld_engine.architecture.diffusion.edm.schedules import PowerLawSchedule
 
 from foldforge.data.features import dense as features
 from foldforge.data.features import dense_batch as feat_batch
+from foldforge.diffusion.augmentation import (
+    masked_dense_rigid_motion,
+)
+from foldforge.diffusion.edm.sampling import EulerSampler
+from foldforge.diffusion.edm.schedules import PowerLawSchedule
 from foldforge.models import sampler_graph
 from foldforge.models.bucketing import MSA_SHAPES, ceiling, pad_axis
 from foldforge.modules.dense import atom_cross_attention, diffusion_head, featurization
@@ -61,7 +61,8 @@ def weighted_rigid_align(
     a = (mobile - centre_m).reshape(*lead, -1, 3)
     b = (reference - centre_r).reshape(*lead, -1, 3)
     covariance = torch.einsum("...nc,...nd->...cd", a * w.reshape(-1, 1), b).float()
-    # The optimal PROPER rotation (a reflection is never returned), by Horn's quaternion method:
+    # The optimal PROPER rotation (a reflection is never returned), by Horn's quaternion
+    # method:
     # no SVD, whose host-side status check cannot be captured in a CUDA graph.
     rotation = kabsch_rotation(covariance).to(mobile.dtype)
     return (a @ rotation).reshape(mobile.shape) + centre_r
@@ -89,6 +90,35 @@ def _to_residue_layout(
         mask = valid.reshape(1, *gather.shape, *((1,) * (value.ndim - 3)))
         out[key] = torch.where(mask, taken, torch.zeros_like(taken))
     return out
+
+
+@dataclass(frozen=True)
+class DiffusionInputs:
+    """Fold-local diffusion inputs and the optional return to residue coordinates.
+
+    The residue trunk embeddings remain with the caller for the heads; only
+    these inputs move onto structural tokens. No model parameters live here.
+    """
+
+    batch: feat_batch.Batch
+    embeddings: dict[str, torch.Tensor]
+    residue_layout: dict[str, torch.Tensor] | None = None
+    num_res: int = 0
+
+    def restore(self, samples: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        """Restore structural samples, or retain the existing residue tensors."""
+        if self.residue_layout is None:
+            return samples
+        return _to_residue_layout(samples, self.residue_layout, self.num_res)
+
+
+@dataclass(frozen=True)
+class TrunkOutput:
+    """Residue head inputs and prepared diffusion inputs for repeated sampling."""
+
+    batch: feat_batch.Batch
+    embeddings: dict[str, torch.Tensor]
+    diffusion: DiffusionInputs
 
 
 class Evoformer(nn.Module):
@@ -549,9 +579,14 @@ class Evoformer(nn.Module):
         recycled = prev.get("pair_pre_coda", prev["pair"]).to(
             dtype=pair_activations.dtype
         )
-        if self.spec.recycle_from_initial and first_pass and not self.spec.ssm_random_init:
+        if (
+            self.spec.recycle_from_initial
+            and first_pass
+            and not self.spec.ssm_random_init
+        ):
             recycled = pair_activations
-        # With `ssm_random_init` the first pass reads the recurrent state `forward` drew (see `_ssm_state`).
+        # With `ssm_random_init` the first pass reads the recurrent state `forward` drew
+        # (see `_ssm_state`).
         projected = self.prev_embedding(
             self.prev_embedding_layer_norm(pair_activations)
         )
@@ -568,10 +603,9 @@ class Evoformer(nn.Module):
             pair_activations = block(pair_activations, pair_mask)
 
         pair_pre_coda = pair_activations
-        if self.parcae_readout is not None and last_pass:
-            pair_activations = self.parcae_readout(pair_activations)
-            for block in self.trunk_coda:
-                pair_activations = block(pair_activations, pair_mask)
+        pair_activations = self._finalize_pair_only(
+            pair_activations, pair_mask, last_pass=last_pass
+        )
 
         return {
             "single": single_activations,
@@ -580,6 +614,37 @@ class Evoformer(nn.Module):
             "target_feat": target_feat,
             "structure_target_feat": prev["structure_target_feat"],
         }
+
+    def _finalize_pair_only(
+        self, pair: torch.Tensor, mask: torch.Tensor, *, last_pass: bool
+    ) -> torch.Tensor:
+        """Apply readout/coda only after the final pair-only recurrence."""
+        if self.parcae_readout is not None and last_pass:
+            pair = self.parcae_readout(pair)
+            for block in self.trunk_coda:
+                pair = block(pair, mask)
+        return pair
+
+    def _pair_only_injection(
+        self,
+        batch: feat_batch.Batch,
+        pair: torch.Tensor,
+        pair_mask: torch.Tensor,
+        target_feat: torch.Tensor,
+    ) -> torch.Tensor:
+        """Build the full LM/MSA injection before the pair-only recurrence reads it."""
+        pair = self._relative_encoding(batch, pair)
+        if not self.spec.no_bond_embedding:
+            pair = self._embed_bonds(batch=batch, pair_activations=pair)
+        if self.msa_stack_num_layer:
+            pair = self._embed_process_msa(
+                msa_batch=batch.msa,
+                pair_activations=pair,
+                pair_mask=pair_mask,
+                token_features=batch.token_features,
+                target_feat=target_feat,
+            )
+        return self._embed_lm_pair(batch, pair, pair_mask)
 
     def _recycle_pair(self, recycled: torch.Tensor, dropout: float) -> torch.Tensor:
         """Project the recycled pair, under the fold's MC dropout if it has one."""
@@ -624,20 +689,9 @@ class Evoformer(nn.Module):
             # gets normalised and projected. Running the MSA encoder afterwards
             # would feed it the recycled term instead of z_init, and that term
             # would then be re-injected every pass rather than decaying.
-            pair_activations = self._relative_encoding(batch, pair_activations)
-            if not self.spec.no_bond_embedding:
-                pair_activations = self._embed_bonds(
-                    batch=batch, pair_activations=pair_activations
-                )
-            if self.msa_stack_num_layer:
-                pair_activations = self._embed_process_msa(
-                    msa_batch=batch.msa,
-                    pair_activations=pair_activations,
-                    pair_mask=pair_mask,
-                    token_features=batch.token_features,
-                    target_feat=target_feat,
-                )
-            pair_activations = self._embed_lm_pair(batch, pair_activations, pair_mask)
+            pair_activations = self._pair_only_injection(
+                batch, pair_activations, pair_mask, target_feat
+            )
             return self._pair_only_trunk(
                 prev=prev,
                 pair_activations=pair_activations,
@@ -648,6 +702,32 @@ class Evoformer(nn.Module):
                 last_pass=last_pass,
             )
 
+        return self._single_pair_trunk(
+            batch,
+            prev,
+            target_feat,
+            single_init,
+            pair_activations,
+            pair_mask,
+            pair_init,
+            first_pass=first_pass,
+            recycle_dropout=recycle_dropout,
+        )
+
+    def _single_pair_trunk(
+        self,
+        batch: feat_batch.Batch,
+        prev: dict[str, Any],
+        target_feat: torch.Tensor,
+        single_init: torch.Tensor,
+        pair_activations: torch.Tensor,
+        pair_mask: torch.Tensor,
+        pair_init: torch.Tensor | None,
+        *,
+        first_pass: bool,
+        recycle_dropout: float,
+    ) -> dict[str, Any]:
+        """Run the single/pair schedule, retaining its recycle/addition order."""
         recycled = prev["pair"]
         if self.spec.recycle_from_initial and first_pass:
             # The carry starts at the INITIAL representations rather than zeros,
@@ -727,6 +807,9 @@ class AlphaFold3(nn.Module):
     ) -> None:
         super().__init__()
 
+        if num_recycles < 1:
+            message = "num_recycles must be positive (total trunk passes)"
+            raise ValueError(message)
         self.spec = spec
 
         self.reference_precision = False
@@ -798,18 +881,22 @@ class AlphaFold3(nn.Module):
         return both, both
 
     def _ssm_state(self, num_res: int, device: torch.device) -> torch.Tensor:
-        """The pair state the first trunk pass reads: zeros, or for the SSM recurrence the release's truncated-normal noise.
+        """Initialize the pair state read by the first trunk pass.
 
-        The release starts the recurrent state from truncated-normal noise (std sqrt(2 / 5c), cut at 3 std), not zeros; the decay
-        carries it through every pass. Drawn from the trunk seed. Drawn here, outside the trunk pass, because the rejection loop of
-        ``trunc_normal_`` reads the device on the host, which a CUDA-graph capture of the pass forbids.
+        The SSM recurrence starts from truncated-normal noise (std sqrt(2 / 5c),
+        cut at 3 std); its decay carries this state through every pass. Draw it
+        from the trunk seed outside the pass: ``trunc_normal_`` has a rejection
+        loop that reads the device on the host and cannot be graph-captured.
         """
         shape = [num_res, num_res, self.evoformer_pair_channel]
         if not (self.spec.ssm_random_init and not self.spec.trunk_single_track):
             return torch.zeros(shape, device=device, dtype=torch.float32)
         std = (2.0 / (5.0 * self.evoformer_pair_channel)) ** 0.5
         return torch.nn.init.trunc_normal_(
-            torch.empty(shape, device=device, dtype=torch.float32), std=std, a=-3 * std, b=3 * std
+            torch.empty(shape, device=device, dtype=torch.float32),
+            std=std,
+            a=-3 * std,
+            b=3 * std,
         )
 
     def _sample_diffusion(
@@ -852,7 +939,9 @@ class AlphaFold3(nn.Module):
         sampler = EulerSampler(sampler_config)
 
         def denoise(
-            coords: torch.Tensor, sigma: torch.Tensor, single_cond: torch.Tensor | None = None
+            coords: torch.Tensor,
+            sigma: torch.Tensor,
+            single_cond: torch.Tensor | None = None,
         ) -> torch.Tensor:
             """Compute denoise."""
             return self.diffusion_head(
@@ -894,8 +983,11 @@ class AlphaFold3(nn.Module):
                     align=realign if self.spec.realign_sampler else None,
                     coordinate_dims=2,
                     scopes=scope,
-                    # the engine's fused rigid-motion glue is miniworld's (`backends.SERVES["sampler_ops"]`)
-                    rigid_mask=mask if getattr(self, "foldforge_sampler_ops", True) else None,
+                    # the engine's fused rigid-motion glue is miniworld's
+                    # (`backends.SERVES["sampler_ops"]`)
+                    rigid_mask=mask
+                    if getattr(self, "foldforge_sampler_ops", True)
+                    else None,
                     conditioning=lambda levels: self.diffusion_head.conditioning_table(
                         batch, embeddings, levels
                     ),
@@ -914,7 +1006,7 @@ class AlphaFold3(nn.Module):
                 )
         finally:
             # The fold's conditioning is not needed once its steps are done.
-            self.diffusion_head._fold = None
+            self.diffusion_head._fold = None  # noqa: SLF001 - release fold-scoped conditioning
         if not isinstance(positions, torch.Tensor):
             message = "Sampling without trajectories must return a Tensor"
             raise TypeError(message)
@@ -960,15 +1052,17 @@ class AlphaFold3(nn.Module):
             for key in outputs[0]
         }
 
-    def forward(
-        self, batch: dict[str, torch.Tensor]
-    ) -> dict[str, torch.Tensor | dict[str, torch.Tensor]]:
-        """Compute the module output."""
+    def _prepare_batch(self, batch: dict[str, torch.Tensor]) -> feat_batch.Batch:
+        """Apply fold-level input conventions before embedding or RNG draws."""
         batch_data = feat_batch.Batch.from_data_dict(batch)
         if self.spec.empty_msa_without_alignment and not batch_data.msa.has_alignment():
             # Exact mode (Chai-1): its profile would otherwise be a one-hot of
             # the sequence, which moves every token of the initial single.
             batch_data = replace(batch_data, msa=batch_data.msa.without_alignment())
+        return batch_data
+
+    def _run_trunk(self, batch_data: feat_batch.Batch) -> dict[str, torch.Tensor]:
+        """Initialize and recycle the trunk, drawing its MC decision once per fold."""
         num_res = batch_data.num_res
 
         target_feat, structure_feat = self.create_target_feat_embedding(batch_data)
@@ -984,15 +1078,8 @@ class AlphaFold3(nn.Module):
             "structure_target_feat": structure_feat,
         }
 
-        # AF3 counts ADDITIONAL passes, so ten recycles run the trunk eleven
-        # times; a family that counts TOTAL passes runs it ten. Getting this
-        # wrong is invisible -- by then the recycle has nearly converged and an
-        # extra pass only perturbs the output.
-        passes = (
-            max(1, self.num_recycles)
-            if self.spec.recycles_are_total
-            else self.num_recycles + 1
-        )
+        # FoldForge counts total trunk passes for every family, including the first.
+        passes = self.num_recycles
         # One coin per fold decides whether this fold's recycles run under MC
         # dropout (see DenseSpec.recycle_mc_dropout); the trunk seed owns it.
         recycle_dropout = 0.0
@@ -1013,7 +1100,15 @@ class AlphaFold3(nn.Module):
             if self.reference_precision:
                 embeddings["pair"] = embeddings["pair"].float()
                 embeddings["single"] = embeddings["single"].float()
+        return embeddings
 
+    def _prepare_diffusion_inputs(
+        self,
+        batch: dict[str, torch.Tensor],
+        batch_data: feat_batch.Batch,
+        embeddings: dict[str, torch.Tensor],
+    ) -> DiffusionInputs:
+        """Select the diffusion layout without replacing the residue head inputs."""
         # OpenDDE folds on STRUCTURAL tokens: the trunk stays on residues and
         # the denoiser runs on each residue's backbone and sidechain subtokens,
         # built from a second feature set the featurisation attached alongside.
@@ -1040,10 +1135,20 @@ class AlphaFold3(nn.Module):
                 batch_data.token_features.asym_id,
             )
 
-        samples = self._sample_diffusion(diffusion_batch, diffusion_embeddings)
-        if self.spec.structural_tokens:
-            samples = _to_residue_layout(samples, batch, num_res)
+        return DiffusionInputs(
+            batch=diffusion_batch,
+            embeddings=diffusion_embeddings,
+            residue_layout=batch if self.spec.structural_tokens else None,
+            num_res=batch_data.num_res,
+        )
 
+    def _predict_heads(
+        self,
+        batch_data: feat_batch.Batch,
+        embeddings: dict[str, torch.Tensor],
+        samples: dict[str, torch.Tensor],
+    ) -> dict[str, torch.Tensor | dict[str, torch.Tensor]]:
+        """Predict heads on the residue trunk and restored residue samples."""
         confidence_output = self._confidence_over_samples(
             samples["atom_positions"], embeddings, batch_data
         )
@@ -1055,3 +1160,26 @@ class AlphaFold3(nn.Module):
             "distogram": distogram,
             **confidence_output,
         }
+
+    def run_trunk(self, batch: dict[str, torch.Tensor]) -> TrunkOutput:
+        """Prepare residue/structural representations once for repeated sampling."""
+        batch_data = self._prepare_batch(batch)
+        embeddings = self._run_trunk(batch_data)
+        diffusion = self._prepare_diffusion_inputs(batch, batch_data, embeddings)
+        return TrunkOutput(batch_data, embeddings, diffusion)
+
+    def sample_diffusion(
+        self, trunk: TrunkOutput
+    ) -> dict[str, torch.Tensor | dict[str, torch.Tensor]]:
+        """Sample and decode heads from a retained trunk without rerunning it."""
+        samples = self._sample_diffusion(
+            trunk.diffusion.batch, trunk.diffusion.embeddings
+        )
+        samples = trunk.diffusion.restore(samples)
+        return self._predict_heads(trunk.batch, trunk.embeddings, samples)
+
+    def forward(
+        self, batch: dict[str, torch.Tensor]
+    ) -> dict[str, torch.Tensor | dict[str, torch.Tensor]]:
+        """Use the same trunk/sampling boundaries as staged inference."""
+        return self.sample_diffusion(self.run_trunk(batch))

@@ -1,8 +1,8 @@
 """Dense modules reach the engine's ``nn.Module`` ops (hand-CUDA legs) and stay equal.
 
-Each test installs the engine module on a configured BF16 dense module, then checks that
-(a) the result is as close to an FP32 truth as the same module's PyTorch reference path
-is, up to bf16 rounding, and (b) the engine module is what ran.
+Each test installs the engine module on a configured BF16 dense module, then checks
+that (a) the result is as close to an FP32 truth as the same module's PyTorch
+reference path is, up to bf16 rounding, and (b) the engine module is what ran.
 """
 
 from __future__ import annotations
@@ -18,8 +18,6 @@ import torch
 from foldforge.modules.dense.spec import ALPHAFOLD3
 from foldforge.modules.engine.configure import configure_model
 from foldforge.modules.engine.modules import (
-    _ENGINE_HAS_ATOM_VARIANT,
-    _ENGINE_HAS_BIAS_ORIENTATION,
     engine_of,
     install_engine_modules,
 )
@@ -56,9 +54,14 @@ def install(module: torch.nn.Module):
 
 
 @contextlib.contextmanager
-def force_portable(on: bool = True):
-    """The engine's A/B switch (``settings.force_portable_kernels``): on an H100 it sends the portable Triton paths what the CUDA
-    paths would take, so that they can be tested and timed there. A test and bench device only; FoldForge has no such key."""
+def force_portable(*, on: bool = True):
+    """Select portable engine kernels for an isolated test.
+
+    The engine's A/B switch (``settings.force_portable_kernels``): on an H100 it
+    sends the portable Triton paths what the CUDA paths would take, so that they can
+    be tested and timed there. A test and bench device only; FoldForge has no such
+    key.
+    """
     from miniworld_engine import settings
 
     previous = settings.current().force_portable_kernels
@@ -116,7 +119,11 @@ def test_triangle_multiplication(length, outgoing):
 
 
 def test_engine_skip_leaves_the_module_dense():
-    """``engine.skip`` of the config: the named engine_* key counts its module but attaches nothing."""
+    """Check engine skip leaves the module dense.
+
+    ``engine.skip`` of the config: the named engine_* key counts its module but
+    attaches nothing.
+    """
     from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
 
     torch.manual_seed(1)
@@ -181,8 +188,6 @@ def test_template_triangle_attention(ending):
 def test_triangle_attention(ending, transposed_column_pair_bias):
     from foldforge.modules.dense.attention import GridSelfAttention
 
-    if ending and not transposed_column_pair_bias and not _ENGINE_HAS_BIAS_ORIENTATION:
-        pytest.skip("this engine has no ending-node bias orientation option")
     torch.manual_seed(2)
     # A large bias projection makes a wrong orientation visible.
     spec = dataclasses.replace(
@@ -212,7 +217,7 @@ def test_triangle_attention_af3_ending_node_bias():
 
     _, _, engine, counts = install(GridSelfAttention(128, 4, transpose=True))
     assert not engine.transposed_bias
-    expected = 1 if _ENGINE_HAS_BIAS_ORIENTATION else 0
+    expected = 1
     assert counts["engine_triangle_attention"] == expected
     assert (engine_of(engine) is not None) == bool(expected)
 
@@ -267,9 +272,13 @@ def test_outer_product_mean(rows, length):
 
 @pytest.mark.parametrize("outgoing", [True, False])
 def test_length_divided_triangle_multiplication(outgoing):
-    """RoseTTAFold3: the contraction divided by the real length, on the engine with W_left / L.
+    """Check length divided triangle multiplication.
 
-    Two calls at different real lengths: the scale is the call's, not the first call's.
+    RoseTTAFold3: the contraction divided by the real length, on the engine with
+    W_left / L.
+
+    Two calls at different real lengths: the scale is the call's, not the first
+    call's.
     """
     from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
     from foldforge.modules.engine.routing import triangle_residual
@@ -297,8 +306,11 @@ def test_length_divided_triangle_multiplication(outgoing):
 @pytest.mark.parametrize("ending", [False, True])
 @pytest.mark.parametrize("variant", ["rosettafold3", "chai1", "chai1_dual"])
 def test_released_triangle_attention_variants(ending, variant):
-    """RoseTTAFold3's gate / out biases, Chai-1's untransposed ending node and its confidence
-    head's second out-projection: each on the engine module."""
+    """Check released triangle attention variants.
+
+    RoseTTAFold3's gate / out biases, Chai-1's untransposed ending node and its
+    confidence head's second out-projection: each on the engine module.
+    """
     from foldforge.modules.dense.attention import GridSelfAttention
     from foldforge.modules.dense.spec import SPECS
 
@@ -319,8 +331,10 @@ def test_released_triangle_attention_variants(ending, variant):
                 linear.bias.normal_(0, 0.3)
     truth, ref, engine, counts = install(layer)
     assert counts["engine_triangle_attention"] == 1
-    # The trunk's pair scale: a residual output there hides an update error under the pair
-    # itself, so the updates are compared (an out bias added after the bf16 residual sum was
+    # The trunk's pair scale: a residual output there hides an update error under
+    # the pair
+    # itself, so the updates are compared (an out bias added after the bf16
+    # residual sum was
     # a second rounding at this scale, 1.4x the reference's error).
     x = (20 * torch.randn(256, 256, 128, device="cuda")).to(torch.bfloat16)
     residues, mask = residue_and_pair_mask(256)
@@ -342,7 +356,11 @@ def test_released_triangle_attention_variants(ending, variant):
 def test_released_outer_product_mean_variants(
     projection_bias, groups, channels, rows, length
 ):
-    """RoseTTAFold3's projection biases and Chai-1's eight LayerNorm'd groups on the engine."""
+    """Check released outer product mean variants.
+
+    RoseTTAFold3's projection biases and Chai-1's eight LayerNorm'd groups on the
+    engine.
+    """
     from foldforge.modules.dense.primitives import OuterProductMean
 
     torch.manual_seed(9)
@@ -416,7 +434,11 @@ def test_diffusion_transformer(per_block_pair):
 
 
 def test_diffusion_transformer_extra_pair_bias():
-    """OpenDDE's structural-token bias ([L, L], every head, every block) is folded into the engine's hoisted bias."""
+    """Check diffusion transformer extra pair bias.
+
+    OpenDDE's structural-token bias ([L, L], every head, every block) is folded into
+    the engine's hoisted bias.
+    """
     from foldforge.modules.dense.diffusion_transformer import DiffusionTransformer
 
     torch.manual_seed(7)
@@ -439,11 +461,15 @@ def test_diffusion_transformer_extra_pair_bias():
     extra = 2 * torch.randn(length, length, device="cuda", dtype=torch.bfloat16)
     residues = torch.rand(length, device="cuda") > 0.15
     with torch.no_grad(), engine_calls(engine) as calls:
-        expected = truth(act.float(), residues, single.float(), pair.float(), extra.float())
+        expected = truth(
+            act.float(), residues, single.float(), pair.float(), extra.float()
+        )
         reference = ref(act.clone(), residues, single, pair, extra)
         actual = engine(act.clone(), residues, single, pair, extra)
         without = engine(act.clone(), residues, single, pair)
-    assert calls[0] == 8  # both calls reached the engine blocks, the biased one included
+    assert (
+        calls[0] == 8
+    )  # both calls reached the engine blocks, the biased one included
     assert rms_error(actual[:, residues], expected[:, residues]) <= (
         rms_error(reference[:, residues], expected[:, residues]) + BF16_ROUNDING
     )
@@ -469,14 +495,20 @@ def test_installer_covers_the_released_graph():
     blocks = 48 + 4 + 2 + 4
     assert counts["engine_trimul"] == 2 * blocks
     assert counts["engine_triangle_attention"] == (
-        2 * blocks if _ENGINE_HAS_BIAS_ORIENTATION else blocks
+        2 * blocks
     )
     assert counts["engine_msa_pwa"] == 4
     assert counts["engine_opm"] == 4
     assert counts["engine_dit_blocks"] == 24
     assert counts["engine_atom_blocks"] == (
-        9 if _ENGINE_HAS_ATOM_VARIANT else 0
+        9
     )  # 3 atom transformers of 3 blocks
+    # Every pair, single and MSA transition of the trunk, template and confidence stacks.
+    transitions = sum(
+        type(m).__name__ == "Transition" and hasattr(m, "transition1")
+        for m in model.modules()
+    )
+    assert counts["engine_trunk_transition"] == transitions > 0
 
 
 def test_pairformer_single_attention():
@@ -543,8 +575,6 @@ def test_atom_transformer(family, real, samples, portable):
     )
     from foldforge.modules.dense.spec import SPECS
 
-    if not _ENGINE_HAS_ATOM_VARIANT:
-        pytest.skip("this engine has no AF3 atom attention variant")
     torch.manual_seed(7)
     layer = DiffusionCrossAttTransformer(spec=SPECS[family])
     with torch.no_grad():
@@ -581,7 +611,7 @@ def test_atom_transformer(family, real, samples, portable):
             pair_cond=pair.to(dtype),
         )
 
-    with torch.no_grad(), engine_calls(engine) as calls, force_portable(portable):
+    with torch.no_grad(), engine_calls(engine) as calls, force_portable(on=portable):
         expected = run(truth, torch.float32)
         reference = run(ref, torch.bfloat16)
         if portable:  # the block's attention core is the engine's Triton window kernel
@@ -598,7 +628,8 @@ def test_atom_transformer(family, real, samples, portable):
 @pytest.mark.parametrize("samples", [None, 3])
 def test_esmfold2_atom_transformer(real, samples, portable):
     """ESMFold2's atom stack on the engine: RMS / SiLU AdaLN, raw gates, rotary q / k,
-    32 queries x 192 keys under the rank-based +/- 64 window."""
+    32 queries x 192 keys under the rank-based +/- 64 window.
+    """
     from foldforge.modules.dense.atom_cross_attention import (
         build_atom_rope,
         sliding_window_mask,
@@ -655,7 +686,7 @@ def test_esmfold2_atom_transformer(real, samples, portable):
             rope_k=rope_k,
         )
 
-    with torch.no_grad(), engine_calls(engine) as calls, force_portable(portable):
+    with torch.no_grad(), engine_calls(engine) as calls, force_portable(on=portable):
         expected = run(truth, torch.float32)
         reference = run(ref, torch.bfloat16)
         if portable:
@@ -706,7 +737,7 @@ def test_the_loader_order_keeps_the_diffusion_blocks_on_the_engine():
     model = loaded_model()
     report = model.foldforge_load_report
     assert report["engine_dit_blocks"] == 24
-    assert report["engine_atom_blocks"] == (9 if _ENGINE_HAS_ATOM_VARIANT else 0)
+    assert report["engine_atom_blocks"] == (9)
 
 
 def test_fp32_master_weights_stay_fp32_in_the_diffusion_blocks():
@@ -816,18 +847,21 @@ def test_variant_diffusion_transformer(family, mode, monkeypatch):
         rms_error(reference[:, residues], expected[:, residues]) + BF16_ROUNDING
     )
     assert rms_error(actual[:, residues], reference[:, residues]) < 0.02
-    # Not served (a gradient, inference mode): the dense blocks run, not the stack.
+    # A gradient and inference mode: the engine stack serves them with its PyTorch statements (serving() == "pytorch").
     with engine_calls(engine) as calls:
         graded = engine(act.clone(), residues, single, pair)
     with torch.inference_mode(), engine_calls(engine) as calls_inference:
         fallback = engine(act.clone(), residues, single, pair)
-    assert calls[0] == calls_inference[0] == 0
     assert rms_error(graded[:, residues], expected[:, residues]) < 0.02
     assert rms_error(fallback[:, residues], expected[:, residues]) < 0.02
 
 
 def test_esmfold2_wide_diffusion_transformer(monkeypatch):
-    """ESMFold2's token DiT is AF3's at a 768-wide conditioning and a 256-wide pair: the engine's variant stack serves it."""
+    """Check esmfold2 wide diffusion transformer.
+
+    ESMFold2's token DiT is AF3's at a 768-wide conditioning and a 256-wide pair:
+    the engine's variant stack serves it.
+    """
     pytest.importorskip("miniworld_engine.modules.dit_variant")
     from miniworld_engine.kernels.dit_variants import interface
 
@@ -994,46 +1028,75 @@ def test_variant_atom_circular_window_stays_dense():
     assert engine_of(engine) is None
 
 
-# --- the portable path: what `miniworld` runs on a card that is not H100 / B200 ------------------------------
+# --- the portable path: what `miniworld` runs on a card that is not H100 / B200
+# ------------------------------
 #
-# The engine routes a variant stack itself (H100 CUDA, else its portable Triton path, else the reference);
-# `variant_serves` only asks. On the H100 here the portable path is reached through the engine's A/B switch
-# (`force_portable`) or through a faked card (`fake_card`), which is what the engine's own routing tests do.
+# The engine routes a variant stack itself (H100 CUDA, else its portable Triton path,
+# else the reference);
+# `variant_serves` only asks. On the H100 here the portable path is reached through
+# the engine's A/B switch
+# (`force_portable`) or through a faked card (`fake_card`), which is what the engine's
+# own routing tests do.
 
 
 @contextlib.contextmanager
-def fake_card(monkeypatch, tmp_path, name: str, capability: tuple[int, int], *, recorded: bool):
-    """`torch.cuda` reports another card; ``recorded`` gives it a manifest with every Triton kernel of the DiT ops `ok`."""
+def fake_card(
+    monkeypatch, tmp_path, name: str, capability: tuple[int, int], *, recorded: bool
+):
+    """Run fake card.
+
+    `torch.cuda` reports another card; ``recorded`` gives it a manifest with every
+    Triton kernel of the DiT ops `ok`.
+    """
     import csv
 
     from miniworld_engine.autotune import records
     from miniworld_engine.modules import dispatch
 
     tmp_path.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(torch.cuda, "get_device_name", lambda index=None: name)
-    monkeypatch.setattr(torch.cuda, "get_device_capability", lambda index=None: capability)
-    for cache in (dispatch._card_cache, dispatch._unrecorded_warned, dispatch._refused_warned):  # noqa: SLF001
+    monkeypatch.setattr(torch.cuda, "get_device_name", lambda _index=None: name)
+    monkeypatch.setattr(
+        torch.cuda, "get_device_capability", lambda _index=None: capability
+    )
+    for cache in (
+        dispatch._card_cache,  # noqa: SLF001 - reset dispatch test state
+        dispatch._unrecorded_warned,  # noqa: SLF001 - reset dispatch test state
+        dispatch._refused_warned,  # noqa: SLF001 - reset dispatch test state
+    ):
         cache.clear()
     if recorded:
-        rows = [["kernel", "backend", "family", "file", "status", "detail", "dtype"], ["#provenance", "0", "0", "clean", "t", "t", ""]]
+        rows = [
+            ["kernel", "backend", "family", "file", "status", "detail", "dtype"],
+            ["#provenance", "0", "0", "clean", "t", "t", ""],
+        ]
         seen = set()
         for op in ("local_dit", "dit_variant", "dit_variant_atom"):
             for kernel in records.triton_kernels(op, "bf16", "training"):
                 if kernel not in seen:
                     seen.add(kernel)
                     rows.append([kernel, "triton", "x", "x.py", "ok", "", "bf16"])
-        with (tmp_path / f"{records.card_key(name, capability)}.csv").open("w", newline="") as handle:
+        with (tmp_path / f"{records.card_key(name, capability)}.csv").open(
+            "w", newline=""
+        ) as handle:
             csv.writer(handle).writerows(rows)
     with records.use_manifest_dir(tmp_path):
         try:
             yield
         finally:
-            for cache in (dispatch._card_cache, dispatch._unrecorded_warned, dispatch._refused_warned):  # noqa: SLF001
+            for cache in (
+                dispatch._card_cache,  # noqa: SLF001 - reset dispatch test state
+                dispatch._unrecorded_warned,  # noqa: SLF001 - reset dispatch test state
+                dispatch._refused_warned,  # noqa: SLF001 - reset dispatch test state
+            ):
                 cache.clear()
 
 
 def count_portable(monkeypatch, name: str) -> list[int]:
-    """Count the calls of the engine's portable stack forward (``stack_forward`` / ``atom_stack_forward``)."""
+    """Run count portable.
+
+    Count the calls of the engine's portable stack forward (``stack_forward`` /
+    ``atom_stack_forward``).
+    """
     from miniworld_engine.kernels.dit_variants.triton import portable
 
     calls = [0]
@@ -1053,21 +1116,29 @@ def variant_token_case(family: str):
 
     options = variant_options(family)
     torch.manual_seed(11)
-    layer = DiffusionTransformer(768, options["d_cond"], options["d_pair"], 16, 4, spec=spec_for(family, "fast"))
+    layer = DiffusionTransformer(
+        768, options["d_cond"], options["d_pair"], 16, 4, spec=spec_for(family, "fast")
+    )
     randomize_distinct(layer, 0.04)
     truth, ref, engine, counts = install(layer)
     assert counts["engine_dit_variant_blocks"] == 4
     length = 384
     act = torch.randn(5, length, 768, device="cuda", dtype=torch.bfloat16)
     single = torch.randn(length, options["d_cond"], device="cuda", dtype=torch.bfloat16)
-    pair = torch.randn(length, length, options["d_pair"], device="cuda", dtype=torch.bfloat16)
+    pair = torch.randn(
+        length, length, options["d_pair"], device="cuda", dtype=torch.bfloat16
+    )
     residues = torch.rand(length, device="cuda") > 0.15
     return truth, ref, engine, act, single, pair, residues
 
 
 @pytest.mark.parametrize("family", VARIANT_FAMILIES)
 def test_variant_diffusion_transformer_portable(family, monkeypatch):
-    """The A/B switch sends the H100 to the portable stack; its output is the dense blocks' and the reference's up to bf16 rounding."""
+    """Check variant diffusion transformer portable.
+
+    The A/B switch sends the H100 to the portable stack; its output is the dense
+    blocks' and the reference's up to bf16 rounding.
+    """
     pytest.importorskip("miniworld_engine.modules.dit_variant")
     truth, ref, engine, act, single, pair, residues = variant_token_case(family)
     key_mask = residues[None]
@@ -1082,13 +1153,18 @@ def test_variant_diffusion_transformer_portable(family, monkeypatch):
         rms_error(reference[:, residues], expected[:, residues]) + BF16_ROUNDING
     )
     assert rms_error(actual[:, residues], reference[:, residues]) < 0.02
-    # A call that needs a gradient is the portable path's too (the H100 kernels are inference-only).
+    # A call that needs a gradient is the portable path's too (the H100 kernels
+    # are inference-only).
     with force_portable(), engine_calls(engine) as graded_calls:
         graded = engine(act.clone(), residues, single, pair, key_mask=key_mask)
     assert graded_calls[0] == 1
     assert rms_error(graded[:, residues], expected[:, residues]) < 0.02
     # Inference mode stays the dense blocks' (the engine caches by tensor version).
-    with torch.inference_mode(), force_portable(), engine_calls(engine) as inference_calls:
+    with (
+        torch.inference_mode(),
+        force_portable(),
+        engine_calls(engine) as inference_calls,
+    ):
         engine(act.clone(), residues, single, pair)
     assert inference_calls[0] == 0
 
@@ -1098,7 +1174,9 @@ def test_variant_diffusion_transformer_portable(family, monkeypatch):
 @pytest.mark.parametrize("samples", [None, 3])
 def test_variant_atom_transformer_portable(family, samples, padded, real, monkeypatch):
     pytest.importorskip("miniworld_engine.modules.dit_variant")
-    from foldforge.modules.dense.diffusion_transformer import DiffusionCrossAttTransformer
+    from foldforge.modules.dense.diffusion_transformer import (
+        DiffusionCrossAttTransformer,
+    )
     from foldforge.modules.dense.spec import SPECS
     from foldforge.utils import atom_layout
 
@@ -1119,21 +1197,27 @@ def test_variant_atom_transformer_portable(family, samples, padded, real, monkey
     keys_uid = atom_layout.convert(gather, uid, layout_axes=(-2, -1))
     same_conformer = family == "chai1"
     pair_mask = (
-        (uid[:, :, None] == keys_uid[:, None, :]) & atoms[:, :, None] & keys_mask[:, None, :]
+        (uid[:, :, None] == keys_uid[:, None, :])
+        & atoms[:, :, None]
+        & keys_mask[:, None, :]
         if same_conformer
         else None
     )
     flat_uid = uid.reshape(padded) if same_conformer else None
     engine_inputs = (pair[None], atoms.reshape(1, padded), flat_uid, None)
 
-    def run(module: torch.nn.Module, dtype: torch.dtype, **extra: object) -> torch.Tensor:
+    def run(
+        module: torch.nn.Module, dtype: torch.dtype, **extra: object
+    ) -> torch.Tensor:
         return module(
             queries_act=act.to(dtype).clone(),
             queries_mask=atoms,
             queries_to_keys=gather,
             keys_mask=keys_mask,
             queries_single_cond=cond.to(dtype),
-            keys_single_cond=atom_layout.convert(gather, cond.to(dtype), layout_axes=(-3, -2)),
+            keys_single_cond=atom_layout.convert(
+                gather, cond.to(dtype), layout_axes=(-3, -2)
+            ),
             pair_cond=pair.to(dtype),
             pair_mask=pair_mask,
             **extra,
@@ -1152,9 +1236,17 @@ def test_variant_atom_transformer_portable(family, samples, padded, real, monkey
 
 
 @pytest.mark.parametrize("family", VARIANT_FAMILIES)
-def test_variant_serves_asks_the_portable_path_on_another_card(family, monkeypatch, tmp_path):
-    """A recorded card that is not an H100 is served by the portable path; an unrecorded one warns (the engine's warning) and keeps the
-    dense blocks; an H100 / B200 never asks for it without the A/B switch."""
+def test_variant_serves_asks_the_portable_path_on_another_card(
+    family, monkeypatch, tmp_path
+):
+    """Check variant serves asks the portable path on another card.
+
+    A recorded card that is not an H100 is served by the portable path; an
+    unrecorded one warns (the engine's warning) and the engine's PyTorch statements
+    run (``serving() == "pytorch"`` counts as served: the dense blocks are never the
+    fallback of a built stack); an H100 / B200 never asks for the portable path
+    without the A/B switch.
+    """
     pytest.importorskip("miniworld_engine.modules.dit_variant")
     from miniworld_engine.kernels.dit_variants import interface
     from miniworld_engine.modules.dispatch import UnrecordedCardWarning
@@ -1162,7 +1254,7 @@ def test_variant_serves_asks_the_portable_path_on_another_card(family, monkeypat
     from foldforge.modules.engine.modules import variant_serves
     from foldforge.modules.engine.transformers import serve_token
 
-    truth, ref, engine, act, single, pair, residues = variant_token_case(family)
+    _truth, _ref, engine, act, single, pair, residues = variant_token_case(family)
     stack = engine_of(engine)
     key_mask = residues
     token_args = (act, single, pair, key_mask)
@@ -1170,28 +1262,53 @@ def test_variant_serves_asks_the_portable_path_on_another_card(family, monkeypat
     with fake_card(monkeypatch, tmp_path, "NVIDIA RTX A6000", (8, 6), recorded=True):
         with torch.no_grad():
             assert not interface.serves(stack, *token_args)
-            assert variant_serves(stack, *token_args)  # the stack then routes itself: portable, as interface.serves is False
-        assert variant_serves(stack, *token_args)  # a gradient is served as well (the manifest holds the backward kernels)
+            assert variant_serves(
+                stack, *token_args
+            )  # the stack then routes itself: portable, as interface.serves is False
+        assert variant_serves(
+            stack, *token_args
+        )  # a gradient is served as well (the manifest holds the backward kernels)
 
-    with fake_card(monkeypatch, tmp_path / "empty", "NVIDIA RTX A6000", (8, 6), recorded=False), torch.no_grad():
+    with (
+        fake_card(
+            monkeypatch, tmp_path / "empty", "NVIDIA RTX A6000", (8, 6), recorded=False
+        ),
+        torch.no_grad(),
+    ):
         with pytest.warns(UnrecordedCardWarning):
-            assert not variant_serves(stack, *token_args)
+            assert stack.serving(*token_args) == "pytorch"
+        assert variant_serves(stack, *token_args)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            assert serve_token(engine, act, residues, single, pair, key_mask[None], None) is None  # the dense blocks run
+            assert (
+                serve_token(engine, act, residues, single, pair, key_mask[None], None)
+                is not None
+            )  # the engine's PyTorch statements run, not the dense blocks
 
-    for name, capability in (("NVIDIA H100 80GB HBM3", (9, 0)), ("NVIDIA B200", (10, 0))):
-        with fake_card(monkeypatch, tmp_path / name[7:11], name, capability, recorded=True):
+    for name, capability in (
+        ("NVIDIA H100 80GB HBM3", (9, 0)),
+        ("NVIDIA B200", (10, 0)),
+    ):
+        with fake_card(
+            monkeypatch, tmp_path / name[7:11], name, capability, recorded=True
+        ):
             with warnings.catch_warnings():
                 warnings.simplefilter("error")
-                assert not variant_serves(stack, *token_args)  # a gradient: not the CUDA path either
+                assert stack.serving(*token_args) == "pytorch"
+                assert variant_serves(
+                    stack, *token_args
+                )  # a gradient: not the CUDA path either, the PyTorch statements serve
             with force_portable():
-                assert variant_serves(stack, *token_args)
+                assert stack.serving(*token_args) == "portable"
 
 
-def test_variant_atom_stack_asks_the_portable_path_on_another_card(monkeypatch, tmp_path):
+def test_variant_atom_stack_asks_the_portable_path_on_another_card(
+    monkeypatch, tmp_path
+):
     pytest.importorskip("miniworld_engine.modules.dit_variant")
-    from foldforge.modules.dense.diffusion_transformer import DiffusionCrossAttTransformer
+    from foldforge.modules.dense.diffusion_transformer import (
+        DiffusionCrossAttTransformer,
+    )
     from foldforge.modules.dense.spec import SPECS
     from foldforge.modules.engine.modules import variant_serves
 
@@ -1203,23 +1320,38 @@ def test_variant_atom_stack_asks_the_portable_path_on_another_card(monkeypatch, 
     cond = torch.randn(512, 128, device="cuda", dtype=torch.bfloat16)
     pair = torch.randn(16, 32, 128, 16, device="cuda", dtype=torch.bfloat16)
     mask = torch.ones(512, device="cuda", dtype=torch.bool)
-    with fake_card(monkeypatch, tmp_path, "NVIDIA RTX A6000", (8, 6), recorded=True), torch.no_grad():
-        assert variant_serves(stack, x, cond, pair, mask, None)
-        assert not variant_serves(stack, x, cond, pair[:, :, :64], mask, None)  # keys other than the atom window's
+    with (
+        fake_card(monkeypatch, tmp_path, "NVIDIA RTX A6000", (8, 6), recorded=True),
+        torch.no_grad(),
+    ):
+        assert stack.serving(x, cond, pair, mask, None) == "portable"
+        assert stack.serving(
+            x, cond, pair[:, :, :64], mask, None
+        ) == "pytorch"  # keys other than the atom window's: the engine's PyTorch statements
+        assert variant_serves(stack, x, cond, pair[:, :, :64], mask, None)
     with force_portable():
         assert variant_serves(stack, x, cond, pair, mask, None)
 
 
-# --- FP32 (TF32 tensor core) diffusion transformers: precision: fp32 / af3_default -------------------------
+# --- FP32 (TF32 tensor core) diffusion transformers: precision: fp32 / af3_default
+# -------------------------
 #
-# The engine's FP32 token DiT and atom blocks multiply on TF32 tensor cores, so the check is against the
-# dense FP32 statements run with TF32 allowed (the same rounding), with exact FP32 as the truth.
+# The engine's FP32 token DiT and atom blocks multiply on TF32 tensor cores, so the
+# check is against the
+# dense FP32 statements run with TF32 allowed (the same rounding), with exact FP32 as
+# the truth.
 
 TF32_ROUNDING = 8e-3
 
 
-def install_fp32(module: torch.nn.Module, *, tf32: bool = True, diffusion_tf32: bool = False):
-    """FP32 truth, dense FP32 module, FP32 module with the engine modules installed (``precision: fp32``)."""
+def install_fp32(
+    module: torch.nn.Module, *, tf32: bool = True, diffusion_tf32: bool = False
+):
+    """Install FP32 engine modules alongside independent reference copies.
+
+    FP32 truth, dense FP32 module, FP32 module with the engine modules installed
+    (``precision: fp32``).
+    """
     from foldforge.modules.engine.routing import set_tf32_policy
 
     truth = copy.deepcopy(module).cuda().float()
@@ -1233,7 +1365,7 @@ def install_fp32(module: torch.nn.Module, *, tf32: bool = True, diffusion_tf32: 
 
 
 @contextlib.contextmanager
-def tf32_matmul(on: bool = True):
+def tf32_matmul(*, on: bool = True):
     previous = torch.get_float32_matmul_precision()
     torch.set_float32_matmul_precision("high" if on else "highest")
     try:
@@ -1260,7 +1392,11 @@ def fp32_token_layer(blocks: int = 4):
 
 @pytest.mark.parametrize("length", [128, 384, 1024])
 def test_fp32_diffusion_transformer(length):
-    """FP32 activations take the engine's TF32 token DiT at every multiple of 128 (not only 128 .. 768)."""
+    """Check fp32 diffusion transformer.
+
+    FP32 activations take the engine's TF32 token DiT at every multiple of 128 (not
+    only 128 .. 768).
+    """
     layer = fp32_token_layer()
     truth, ref, engine, counts = install_fp32(layer)
     assert counts["engine_dit_blocks"] == 4
@@ -1282,7 +1418,11 @@ def test_fp32_diffusion_transformer(length):
 
 
 def test_fp32_diffusion_transformer_needs_tf32_and_whole_tiles():
-    """Without TF32 allowed, or at a length the kernels do not tile, the dense FP32 statements run."""
+    """Check fp32 diffusion transformer needs tf32 and whole tiles.
+
+    Without TF32 allowed, or at a length the kernels do not tile, the dense FP32
+    statements run.
+    """
     layer = fp32_token_layer(4)
     truth, _, engine, _ = install_fp32(layer, tf32=False)
     samples = 3
@@ -1294,7 +1434,7 @@ def test_fp32_diffusion_transformer_needs_tf32_and_whole_tiles():
         single = torch.randn(samples, length, 384, device="cuda")
         pair = torch.randn(length, length, 128, device="cuda")
         residues = torch.ones(length, dtype=torch.bool, device="cuda")
-        with torch.no_grad(), tf32_matmul(tf32), engine_calls(engine) as calls:
+        with torch.no_grad(), tf32_matmul(on=tf32), engine_calls(engine) as calls:
             expected = truth(act, residues, single, pair)
             actual = engine(act.clone(), residues, single, pair)
         assert calls[0] == 0
@@ -1302,7 +1442,11 @@ def test_fp32_diffusion_transformer_needs_tf32_and_whole_tiles():
 
 
 def test_fp32_diffusion_transformer_extra_pair_bias_stays_dense():
-    """The structural-token bias is a BF16 feature of the engine's token DiT: FP32 keeps the dense statements."""
+    """Check fp32 diffusion transformer extra pair bias stays dense.
+
+    The structural-token bias is a BF16 feature of the engine's token DiT: FP32
+    keeps the dense statements.
+    """
     layer = fp32_token_layer(4)
     _, _, engine, _ = install_fp32(layer)
     length = 256
@@ -1325,8 +1469,6 @@ def test_fp32_atom_transformer(family, real):
     from foldforge.modules.dense.spec import SPECS
     from foldforge.utils import atom_layout
 
-    if not _ENGINE_HAS_ATOM_VARIANT:
-        pytest.skip("this engine has no AF3 atom attention variant")
     torch.manual_seed(7)
     layer = DiffusionCrossAttTransformer(spec=SPECS[family])
     with torch.no_grad():
@@ -1372,14 +1514,18 @@ def test_fp32_atom_transformer(family, real):
     from foldforge.modules.engine.routing import set_tf32_policy
 
     set_tf32_policy(engine, tf32=False)
-    with torch.no_grad(), tf32_matmul(False), engine_calls(engine) as calls:
+    with torch.no_grad(), tf32_matmul(on=False), engine_calls(engine) as calls:
         dense = run(engine)
     assert calls[0] == 0
     assert rms_error(dense[..., atoms, :], expected[..., atoms, :]) < 1e-3
 
 
 def fp32_loaded_model(family: str = "protenix1", *, af3_default: bool = False):
-    """A model after the loader's installs: ``precision: fp32`` (FP32 everywhere) or af3_default (BF16 trunk)."""
+    """Build the loaded-model FP32 or AF3-default precision layout.
+
+    A model after the loader's installs: ``precision: fp32`` (FP32 everywhere) or
+    af3_default (BF16 trunk).
+    """
     from foldforge.models.architectures.af3 import AlphaFold3
     from foldforge.modules.dense.spec import SPECS
     from foldforge.modules.engine.install import install_engine
@@ -1392,7 +1538,8 @@ def fp32_loaded_model(family: str = "protenix1", *, af3_default: bool = False):
     dtype = torch.bfloat16 if af3_default else torch.float32
     model = configure_model(model, "miniworld", dtype, "cuda")
     if af3_default:
-        # AF3's release: BF16 trunk, FP32 diffusion (what loading.py restores with preserve_dtype)
+        # AF3's release: BF16 trunk, FP32 diffusion (what loading.py restores
+        # with preserve_dtype)
         for name, p in model.named_parameters():
             if name.startswith("diffusion_head"):
                 p.data = p.data.float()
@@ -1402,10 +1549,14 @@ def fp32_loaded_model(family: str = "protenix1", *, af3_default: bool = False):
 
 
 def test_fp32_model_attaches_the_diffusion_transformers_only():
-    """precision: fp32 -- only the modules with an FP32 engine kernel get an engine module."""
+    """Check fp32 model attaches the diffusion transformers only.
+
+    precision: fp32 -- only the modules with an FP32 engine kernel get an engine
+    module.
+    """
     report = fp32_loaded_model().foldforge_load_report
     assert report["engine_dit_blocks"] == 24
-    assert report["engine_atom_blocks"] == (9 if _ENGINE_HAS_ATOM_VARIANT else 0)
+    assert report["engine_atom_blocks"] == (9)
     for trunk in (
         "engine_trimul",
         "engine_triangle_attention",
@@ -1417,7 +1568,11 @@ def test_fp32_model_attaches_the_diffusion_transformers_only():
 
 
 def test_af3_default_trunk_attaches_like_bf16_and_the_diffusion_serves_fp32():
-    """af3_default (AF3's release): the BF16 trunk is on the engine as in bf16 mode, the FP32 diffusion on its TF32 kernels."""
+    """Check af3 default trunk attaches like bf16 and the diffusion serves fp32.
+
+    af3_default (AF3's release): the BF16 trunk is on the engine as in bf16 mode,
+    the FP32 diffusion on its TF32 kernels.
+    """
     from foldforge.modules.engine.routing import enabled, enabled_fp32
 
     model = fp32_loaded_model("alphafold3", af3_default=True)
@@ -1437,36 +1592,56 @@ def test_af3_default_trunk_attaches_like_bf16_and_the_diffusion_serves_fp32():
     x16 = x32.bfloat16()
     dit = next(m for m in model.modules() if type(m).__name__ == "DiffusionTransformer")
     atoms = next(
-        m for m in model.diffusion_head.modules() if type(m).__name__ == "DiffusionCrossAttTransformer"
+        m
+        for m in model.diffusion_head.modules()
+        if type(m).__name__ == "DiffusionCrossAttTransformer"
     )
-    tri = next(m for m in model.modules() if type(m).__name__ == "TriangleMultiplication")
-    assert dit.foldforge_engine_fp32 and enabled_fp32(dit, x32) and not enabled(dit, x32)
-    assert atoms.foldforge_engine_fp32 and enabled_fp32(atoms, x32)
-    # the trunk: BF16 activations on the BF16 path, and no FP32 engine route (exact FP32 trunk modules stay dense)
-    assert enabled(tri, x16) and not enabled_fp32(tri, x32)
+    tri = next(
+        m for m in model.modules() if type(m).__name__ == "TriangleMultiplication"
+    )
+    assert dit.foldforge_engine_fp32
+    assert enabled_fp32(dit, x32)
+    assert not enabled(dit, x32)
+    assert atoms.foldforge_engine_fp32
+    assert enabled_fp32(atoms, x32)
+    # the trunk: BF16 activations on the BF16 path, and no FP32 engine route
+    # (exact FP32 trunk modules stay dense)
+    assert enabled(tri, x16)
+    assert not enabled_fp32(tri, x32)
 
 
 def test_fp32_transition_takes_the_engine_where_tf32_is_allowed():
-    from foldforge.modules.engine.routing import set_tf32_policy, transition_residual
     from foldforge.modules.dense.primitives import Transition
+    from foldforge.modules.engine.routing import set_tf32_policy, transition_residual
 
     torch.manual_seed(3)
     layer = Transition(128, 4)
     layer = randomize(layer).cuda().eval()
     layer = configure_model(layer, "miniworld", torch.float32, "cuda")
+    counts = install_engine_modules(
+        layer, torch.empty(0, dtype=torch.float32, device="cuda")
+    )
+    assert counts["engine_trunk_transition"] == 1
+    assert engine_of(layer).expand_a.weight.dtype == torch.float32
     x = torch.randn(1, 256, 256, 128, device="cuda")
-    with torch.no_grad(), tf32_matmul():
+    with torch.no_grad(), tf32_matmul(), engine_calls(layer) as calls:
         set_tf32_policy(layer, tf32=False)
         dense = transition_residual(layer, x)
+        assert calls[0] == 0
         set_tf32_policy(layer, tf32=True)
         served = transition_residual(layer, x)
+        assert calls[0] == 1
     assert rms_error(served, dense) < TF32_ROUNDING
 
 
 @pytest.mark.parametrize("family", ["alphafold3", "protenix1"])
 @pytest.mark.parametrize("length", [96, 200])
 def test_confidence_head_runs_the_samples_as_one_batch(family, length):
-    """S diffusion samples in one head call equal S sequential calls (shared trunk, own distances)."""
+    """Check confidence head runs the samples as one batch.
+
+    S diffusion samples in one head call equal S sequential calls (shared trunk, own
+    distances).
+    """
     from foldforge.modules.dense.head import ConfidenceHead
     from foldforge.modules.dense.spec import SPECS
     from foldforge.modules.engine.pairformer import install_pairformers
@@ -1500,12 +1675,12 @@ def test_confidence_head_runs_the_samples_as_one_batch(family, length):
     }
     asym_id = (torch.arange(length, device="cuda") // (length // 2)).to(torch.int32)
     positions = 12.0 * torch.randn(samples, length, atoms, 3, device="cuda")
-    kwargs = dict(
-        embeddings=embeddings,
-        seq_mask=residues,
-        token_atoms_to_pseudo_beta=gather,
-        asym_id=asym_id,
-    )
+    kwargs = {
+        "embeddings": embeddings,
+        "seq_mask": residues,
+        "token_atoms_to_pseudo_beta": gather,
+        "asym_id": asym_id,
+    }
     calls = [0]
     for block in head.confidence_pairformer:
         block.block.tri_atten_starting.register_forward_hook(
@@ -1518,9 +1693,178 @@ def test_confidence_head_runs_the_samples_as_one_batch(family, length):
         sequential_calls = calls[0]
         batched = head(dense_atom_positions=positions, **kwargs)
     assert sequential_calls == samples * 2
-    assert calls[0] == sequential_calls + 2  # one batched call per block, not per sample
+    assert (
+        calls[0] == sequential_calls + 2
+    )  # one batched call per block, not per sample
     assert batched.keys() == sequential[0].keys()
     for key, value in batched.items():
         expected = torch.stack([out[key] for out in sequential])
         assert value.shape == expected.shape, key
         assert rms_error(value, expected) <= BF16_ROUNDING, key
+
+
+# ---------------------------------------------------------------------------
+# Transition and LayerNorm on the engine modules (branch migrate/engine-modules)
+# ---------------------------------------------------------------------------
+
+
+@contextlib.contextmanager
+def h100_transition_kernel():
+    """Count the engine's sm_90a Transition kernel calls that returned an output (H100: the CUDA leg served the call)."""
+    from miniworld_engine.kernels.transition import cuda as transition_cuda
+
+    original = transition_cuda.transition_sm90a
+    served = [0]
+
+    def spy(*args, **kwargs):
+        out = original(*args, **kwargs)
+        served[0] += out is not None
+        return out
+
+    transition_cuda.transition_sm90a = spy
+    try:
+        yield served
+    finally:
+        transition_cuda.transition_sm90a = original
+
+
+def on_h100() -> bool:
+    return torch.cuda.get_device_capability() == (9, 0)
+
+
+@pytest.mark.parametrize(
+    ("width", "factor", "shape"),
+    [
+        (128, 4, (256, 256)),  # trunk pair transition
+        (384, 4, (301,)),  # single transition, ragged rows
+        (64, 4, (16, 256)),  # MSA transition / template pair
+        (128, 2, (128, 128)),  # a stack that narrows its pair transition
+    ],
+)
+def test_transition(width, factor, shape):
+    from foldforge.modules.dense.primitives import Transition
+    from foldforge.modules.engine.routing import transition_residual
+
+    torch.manual_seed(13)
+    layer = randomize(Transition(width, factor), 0.05)
+    with torch.no_grad():
+        layer.input_layer_norm.weight.normal_(1.0, 0.1)
+        layer.input_layer_norm.bias.normal_(0.0, 0.1)
+    truth, ref, engine, counts = install(layer)
+    assert counts["engine_trunk_transition"] == 1
+    x = torch.randn(*shape, width, device="cuda", dtype=torch.bfloat16)
+    with torch.no_grad(), engine_calls(engine) as calls, h100_transition_kernel() as cuda:
+        expected = transition_residual(truth, x.float())
+        reference = transition_residual(ref, x.clone())
+        actual = transition_residual(engine, x.clone())
+    assert calls[0] == 1
+    if on_h100():
+        assert cuda[0] == 1, "the engine Transition did not take its sm_90a CUDA leg"
+    # the residual hides the update: compare the updates
+    delta = lambda y: y.double() - x.double()  # noqa: E731
+    assert rms_error(delta(actual), delta(expected)) <= (
+        rms_error(delta(reference), delta(expected)) + BF16_ROUNDING
+    )
+
+
+def test_transition_twin_keeps_state_dict_and_skip():
+    from foldforge.modules.dense.primitives import Transition
+
+    layer = randomize(Transition(128, 4))
+    engine = configure_model(copy.deepcopy(layer), "miniworld")
+    keys = set(engine.state_dict())
+    like = torch.empty(0, dtype=torch.bfloat16, device="cuda")
+    skipped = install_engine_modules(engine, like, skip=("engine_trunk_transition",))
+    assert skipped["engine_trunk_transition"] == 0
+    assert engine_of(engine) is None
+    install_engine_modules(engine, like)
+    assert engine_of(engine) is not None
+    assert set(engine.state_dict()) == keys
+
+
+@pytest.mark.parametrize("shape", [(5, 128), (2, 7, 384), (64, 64, 128), (3, 331)])
+def test_native_layernorm_takes_the_engine_layernorm(shape):
+    """``NativeLayerNorm`` hands a BF16 call to the engine ``LayerNorm`` (H100: its general CUDA kernel)."""
+    from miniworld_engine.kernels.layernorm.cuda import general
+
+    width = shape[-1]
+    torch.manual_seed(19)
+    source = torch.nn.Sequential(torch.nn.LayerNorm(width))
+    with torch.no_grad():
+        source[0].weight.normal_(1, 0.1)
+        source[0].bias.normal_(0, 0.1)
+    model = configure_model(copy.deepcopy(source), "miniworld")
+    reference = configure_model(source, "pytorch")
+    assert model[0].__dict__["_engine_norm_module"] is not None
+    assert reference[0].__dict__["_engine_norm_module"] is None
+    assert set(model.state_dict()) == {"0.weight", "0.bias"}
+    x = torch.randn(*shape, device="cuda", dtype=torch.bfloat16)
+    original, served = general.layernorm_cuda, [0]
+
+    def spy(*args, **kwargs):
+        served[0] += 1
+        return original(*args, **kwargs)
+
+    general.layernorm_cuda = spy
+    try:
+        with torch.no_grad():
+            actual = model(x)
+            expected = reference(x)
+    finally:
+        general.layernorm_cuda = original
+    if on_h100():
+        assert served[0] == 1
+    assert rms_error(actual, expected) < 0.01
+
+
+def test_parallel_msa_block_sums_engine_residuals():
+    """Chai-1's parallel Evoformer block: with engine modules attached, both stages sum the parts' residual outputs."""
+    from foldforge.modules.dense.pairformer import EvoformerBlock
+    from foldforge.modules.dense.spec import SPECS
+
+    torch.manual_seed(1)
+    layer = EvoformerBlock(spec=SPECS["chai1"])
+    with torch.no_grad():
+        for name, p in layer.named_parameters():
+            if p.ndim > 1:
+                p.normal_(0, 0.05)
+            elif "norm" in name and name.endswith("weight"):
+                p.normal_(1.0, 0.05)
+    assert layer.parallel
+    truth, ref, engine, counts = install(layer)
+    for key in ("engine_trimul", "engine_triangle_attention", "engine_trunk_transition"):
+        assert counts[key] >= 1, key
+    length = 128
+    residues = torch.rand(length, device="cuda") > 0.1
+    seq_mask = residues.float()
+    pair_mask = (residues[:, None] & residues[None, :]).float()
+    msa = torch.randn(16, length, 64, device="cuda", dtype=torch.bfloat16)
+    pair = torch.randn(length, length, 128, device="cuda", dtype=torch.bfloat16)
+    msa_mask = (torch.rand(16, length, device="cuda") > 0.1).float() * seq_mask
+    msa_mask[0] = seq_mask
+    parts = [
+        m for m in engine.modules() if engine_of(m) is not None and not isinstance(engine_of(m), list)
+    ]
+    handles = []
+    calls = [0]
+    for m in parts:
+        handles.append(
+            engine_of(m).register_forward_hook(lambda *_: calls.__setitem__(0, calls[0] + 1))
+        )
+    try:
+        with torch.no_grad():
+            exact = truth(msa.float(), pair.float(), msa_mask, pair_mask)
+            expected = ref(msa.clone(), pair.clone(), msa_mask, pair_mask)
+            actual = engine(msa.clone(), pair.clone(), msa_mask, pair_mask)
+    finally:
+        for handle in handles:
+            handle.remove()
+    assert calls[0] >= 5  # trimul x2, triangle attention x2, pair transition (+ MSA parts)
+
+    def pick(t: torch.Tensor, index: int) -> torch.Tensor:
+        return t[:, residues] if index == 0 else t[residues][:, residues]
+
+    for index in (0, 1):  # msa, pair
+        got = rms_error(pick(actual[index], index), pick(exact[index], index))
+        base = rms_error(pick(expected[index], index), pick(exact[index], index))
+        assert got <= base + 0.01, (index, got, base)

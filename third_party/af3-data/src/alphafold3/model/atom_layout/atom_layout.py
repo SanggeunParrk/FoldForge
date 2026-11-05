@@ -24,12 +24,11 @@ from alphafold3.constants import mmcif_names
 from alphafold3.constants import residue_names
 from alphafold3.data.tools import rdkit_utils
 from alphafold3.structure import chemical_components as struc_chem_comps
-import jax.numpy as jnp
 import numpy as np
 from rdkit import Chem
 
 
-xnp_ndarray: TypeAlias = np.ndarray | jnp.ndarray  # pylint: disable=invalid-name
+xnp_ndarray: TypeAlias = np.ndarray  # pylint: disable=invalid-name
 NumpyIndex: TypeAlias = Any
 
 

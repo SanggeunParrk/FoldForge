@@ -115,11 +115,11 @@ def _static_inputs(on: bool):
     """
     if not on:
         return contextlib.nullcontext()
-    from miniworld_engine.kernels import _capture
+    from miniworld_engine.modules import runtime
 
     stack = contextlib.ExitStack()
-    stack.enter_context(_capture.static_weights())
-    stack.enter_context(_capture.static_inputs())
+    stack.enter_context(runtime.static_weights())
+    stack.enter_context(runtime.static_inputs())
     return stack
 
 
@@ -137,9 +137,12 @@ class _Graph:
         _, self.inputs = _flatten((self.args, self.kwargs))
         # Warmup/autotuning must not consume the sampler's random stream.
         # Replay itself advances any generator used by the captured callable.
-        # `static_inputs`: the engine hoists tables made from per-item inputs (a pair's bias, an
-        # atom block's conditioning) out of the replay. Valid here because the callable's pair and
-        # conditioning inputs keep their contents for the life of the graph (see `epoch_key`).
+        # `static_inputs`: the engine hoists tables made from per-item inputs (a pair's
+        # bias, an
+        # atom block's conditioning) out of the replay. Valid here because the
+        # callable's pair and
+        # conditioning inputs keep their contents for the life of the graph (see
+        # `epoch_key`).
         hoist = _static_inputs(static_inputs)
         with hoist, torch.random.fork_rng(devices=[torch.cuda.current_device()]):
             stream = torch.cuda.Stream()
@@ -159,9 +162,12 @@ class _Graph:
             segment["total_size"]
             for segment in torch.cuda.memory_snapshot(self.graph.pool())
         ) + sum(value.numel() * value.element_size() for value in self.inputs)
-        # The tensor object and version last copied into each static input: a caller that passes
-        # the very same, unmodified tensor again (a fold's conditioning, the batch features)
-        # needs no copy. Identity, not address: a freed tensor's address is reused at once.
+        # The tensor object and version last copied into each static input: a caller
+        # that passes
+        # the very same, unmodified tensor again (a fold's conditioning, the batch
+        # features)
+        # needs no copy. Identity, not address: a freed tensor's address is reused at
+        # once.
         self._copied = [None] * len(self.inputs)
 
     def __call__(self, args, kwargs):
@@ -199,15 +205,19 @@ class ExecutedCallable:
         epoch_fn: Callable[[], object] | None = None,
         static_inputs: bool = False,
     ):
-        # `epoch_fn` is the same idea for a callable whose fold is not an argument: it is asked at each
+        # `epoch_fn` is the same idea for a callable whose fold is not an argument: it
+        # is asked at each
         # call, and a changed answer drops the graphs.
         self.epoch_fn = epoch_fn
         self.max_graph_tokens = max_graph_tokens
-        # >0 while an enclosing capture owns this callable: it then runs `fn` directly, so the
-        # compiled function is traced into the outer graph instead of starting a graph of its own.
+        # >0 while an enclosing capture owns this callable: it then runs `fn` directly,
+        # so the
+        # compiled function is traced into the outer graph instead of starting a graph
+        # of its own.
         self.bypass = 0
         # `epoch_key` names a keyword argument that changes when the callable's per-fold
-        # inputs were remade: the graphs of an older epoch are dropped, not kept beside the new.
+        # inputs were remade: the graphs of an older epoch are dropped, not kept beside
+        # the new.
         self.epoch_key = epoch_key
         self.epoch = None
         self.static_inputs = static_inputs
@@ -261,7 +271,8 @@ class ExecutedCallable:
         if torch.is_grad_enabled():
             raise RuntimeError("Inference execution requires no_grad or inference_mode")
         self.calls += 1
-        # The epoch keys the graphs only: the wrapped callable (and the compiler) never see it,
+        # The epoch keys the graphs only: the wrapped callable (and the compiler) never
+        # see it,
         # or every new fold would recompile.
         epoch = kwargs.pop(self.epoch_key, None) if self.epoch_key is not None else None
         if self.bypass or not self.config.cuda_graph:
@@ -274,7 +285,9 @@ class ExecutedCallable:
             return self.fn(*args, **kwargs)
         if self.epoch_fn is not None:
             epoch = self.epoch_fn()
-        if (self.epoch_key is not None or self.epoch_fn is not None) and epoch != self.epoch:
+        if (
+            self.epoch_key is not None or self.epoch_fn is not None
+        ) and epoch != self.epoch:
             if self.graphs:
                 torch.cuda.synchronize()
                 self.graphs.clear()
@@ -282,9 +295,9 @@ class ExecutedCallable:
         signature, _ = _flatten((args, kwargs))
         if signature not in self.graphs:
             if len(self.graphs) >= self.config.max_graphs:
-                raise RuntimeError(
-                    f"{self.label}: max_graphs={self.config.max_graphs} exceeded; use a separate runner for this shape"
-                )
+                torch.cuda.synchronize()
+                self.graphs.popitem(last=False)
+                self.evictions += 1
             try:
                 self.graphs[signature] = _Graph(
                     self.fn, args, kwargs, static_inputs=self.static_inputs
@@ -294,6 +307,7 @@ class ExecutedCallable:
                     f"CUDA graph capture failed at {self.label}: {exc}"
                 ) from exc
             self.captures += 1
+        self.graphs.move_to_end(signature)
         self.replays += 1
         return self.graphs[signature](args, kwargs)
 
@@ -310,7 +324,7 @@ class SamplerScope:
     def __call__(self):
         self.denoiser.bypass += 1
         try:
-            with _static_inputs(True):
+            with _static_inputs(True):  # noqa: FBT003 - engine context enable flag
                 yield
         finally:
             self.denoiser.bypass -= 1
@@ -326,9 +340,14 @@ class Execution:
     def __init__(
         self, model: torch.nn.Module, family: str, config: ExecutionConfig
     ) -> None:
+        from foldforge.modules.engine.serving import reset_observations
+
+        self.model = model
+        reset_observations(model)
         tf32 = bool(config.tf32 or getattr(model, "reference_tf32", False))
         torch.set_float32_matmul_precision("high" if tf32 else "highest")
-        # The engine's FP32 kernels are TF32 tensor core kernels: they serve where TF32 is allowed, and in the
+        # The engine's FP32 kernels are TF32 tensor core kernels: they serve where TF32
+        # is allowed, and in the
         # diffusion head of the af3_default policy (``reference_precision``).
         from foldforge.modules.engine.routing import set_tf32_policy
 
@@ -345,6 +364,8 @@ class Execution:
         self.wrappers = []
         self.sampler_scope = None
         self.initial_graphs = counters["stats"]["unique_graphs"]
+        self.compiled_seen = False
+        self.compiled_before_request = False
         # Bucketing by PADDING the denoiser belonged to the flat layout, which
         # no family is on any more: the dense graph buckets its own inputs.
         if not (config.compile or config.cuda_graph):
@@ -353,7 +374,12 @@ class Execution:
             sites = [(model, "forward", "model", config.compile)]
         else:
             sites = [
-                (model.get_submodule("diffusion_head"), "_step", "denoiser", config.compile)
+                (
+                    model.get_submodule("diffusion_head"),
+                    "_step",
+                    "denoiser",
+                    config.compile,
+                )
             ]
             if config.scope == "trunk" and getattr(model.spec, "trunk_graph", True):
                 # One graph per trunk pass (first / middle / last differ in their
@@ -387,20 +413,52 @@ class Execution:
             self.sampler_scope = SamplerScope(self.wrappers[0])
         model.foldforge_sampler_scope = self.sampler_scope
 
-    def report(self) -> dict[str, Any]:
+    def begin_request(self) -> None:
+        """Reset observations while preserving compiled callables and graph caches."""
+        from foldforge.modules.engine.serving import reset_observations
+
+        reset_observations(self.model)
+        self.initial_graphs = counters["stats"]["unique_graphs"]
+        self.compiled_before_request = self.compiled_seen
+        tf32 = bool(self.config.tf32 or getattr(self.model, "reference_tf32", False))
+        torch.set_float32_matmul_precision("high" if tf32 else "highest")
+        for wrapped in self.wrappers:
+            for name in ("calls", "replays", "captures", "evictions", "uncaptured"):
+                setattr(wrapped, name, 0)
+        if self.sampler_scope is not None:
+            self.sampler_scope.captures = self.sampler_scope.replays = 0
+
+    def report(self, *, require_compile: bool = True) -> dict[str, Any]:
         """Report observed compiler graphs and successful manual replays."""
+        from foldforge.modules.engine.serving import report_observations
+
         compiled = int(counters["stats"]["unique_graphs"] - self.initial_graphs)
-        if self.config.compile and self.wrappers and compiled == 0:
+        self.compiled_seen = self.compiled_seen or compiled > 0
+        if (
+            require_compile
+            and self.config.compile
+            and self.wrappers
+            and not self.compiled_seen
+        ):
             message = "Compilation was requested but no compiled graph executed"
             raise RuntimeError(message)
         replays = sum(x.replays for x in self.wrappers)
         return {
+            **(
+                {"trunk_passes": self.model.num_recycles}
+                if hasattr(self.model, "num_recycles")
+                else {}
+            ),
+            "engine_dispatch": report_observations(self.model),
             "autocast": bool(self.autocast_scopes),
             "autocast_scopes": self.autocast_scopes,
             "float32_matmul_precision": torch.get_float32_matmul_precision(),
             "compile_requested": self.config.compile,
             "cuda_graph_requested": self.config.cuda_graph,
-            "compile": self.config.compile and compiled > 0,
+            "compile": self.config.compile and self.compiled_seen,
+            "compile_observation_scope": "predictor_lifetime",
+            "compiled_wrappers_reused": self.config.compile
+            and self.compiled_before_request,
             "cuda_graph": replays > 0 or getattr(self.sampler_scope, "replays", 0) > 0,
             "execution_scope": self.config.scope,
             "compiled_graphs": compiled,

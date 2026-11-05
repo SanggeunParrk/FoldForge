@@ -10,10 +10,8 @@
 # https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md
 
 
-
 import einops
 import torch
-from foldforge.utils.device_constants import built_on_device
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -23,6 +21,7 @@ from foldforge.modules.dense import featurization, pairformer, template
 from foldforge.modules.dense.pair_init import ContactConditioning, token_bond_types
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 from foldforge.utils import atom_layout
+from foldforge.utils.device_constants import built_on_device
 
 _CONTACT_THRESHOLD = 8.0
 _CONTACT_EPSILON = 1e-3
@@ -616,7 +615,13 @@ class ConfidenceHead(nn.Module):
         if self.reembed_pair or self.row_pool_attn is not None:
             outputs = [
                 type(self).forward(
-                    self, sample, embeddings, seq_mask, token_atoms_to_pseudo_beta, asym_id, batch
+                    self,
+                    sample,
+                    embeddings,
+                    seq_mask,
+                    token_atoms_to_pseudo_beta,
+                    asym_id,
+                    batch,
                 )
                 for sample in dense_atom_positions
             ]

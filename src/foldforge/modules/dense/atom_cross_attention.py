@@ -23,16 +23,17 @@ from foldforge.modules.dense.diffusion_transformer import (
     DiffusionCrossAttTransformer,
 )
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
-from foldforge.modules.engine.attention_ops import (
-    layernorm_projection,
-)
 from foldforge.utils import atom_layout
 
 
 def _pool_engine(queries_act, gather, atom_mask):
-    """The pooled token activation from the engine's one-pass gather + relu + masked mean, or None where it does not serve.
+    """Run  pool engine.
 
-    It serves bf16 atom features ``[samples, subsets, queries, C]`` on an H100 whose engine ships ``sampler_ops``.
+    The pooled token activation from the engine's one-pass gather + relu + masked
+    mean, or None where it does not serve.
+
+    It serves bf16 atom features ``[samples, subsets, queries, C]`` on an H100 whose
+    engine ships ``sampler_ops``.
     """
     try:
         from miniworld_engine.kernels.sampler_ops import interface
@@ -72,7 +73,11 @@ class AtomCrossAttEncoderOutput:
 
 @dataclasses.dataclass(frozen=True)
 class AtomFoldState:
-    """What the atom encoder builds from the batch and the trunk alone: the same at every sampler step of a fold."""
+    """Run AtomFoldState.
+
+    What the atom encoder builds from the batch and the trunk alone: the same at
+    every sampler step of a fold.
+    """
 
     query_base: torch.Tensor  # (num_subsets, num_queries, ch)
     queries_mask: torch.Tensor
@@ -84,14 +89,18 @@ class AtomFoldState:
     rope_q: tuple[torch.Tensor, torch.Tensor] | None = None
     rope_k: tuple[torch.Tensor, torch.Tensor] | None = None
     #: The engine's layout of the atom pair and key mask, made once per fold: the engine
-    #: hoists its pair bias per tensor OBJECT, and a view made at every call is a new object.
+    #: hoists its pair bias per tensor OBJECT, and a view made at every call is a
+    #:new object.
     engine_pair: torch.Tensor | None = None
     engine_key_mask: torch.Tensor | None = None
-    #: The atoms' reference-conformer ids in the engine's flat layout, for a family whose pair
+    #: The atoms' reference-conformer ids in the engine's flat layout, for a
+    #:family whose pair
     #: mask is same-conformer (the engine's variant stack rebuilds the mask from them).
     engine_uid: torch.Tensor | None = None
-    #: The same three with one empty window appended, when the atoms make an odd number of
-    #: 32-atom windows: the variant stack's window kernel takes pairs of windows, and padding
+    #: The same three with one empty window appended, when the atoms make an odd
+    #:number of
+    #: 32-atom windows: the variant stack's window kernel takes pairs of windows,
+    #:and padding
     #: inside its call would be a new tensor (a new pair bias) at every step.
     engine_even: tuple[torch.Tensor | None, ...] | None = None
 
@@ -104,11 +113,10 @@ def build_atom_rope(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """A 3D rotary from the reference conformer, in whatever layout it is given.
 
-    Three spatial axes times `n_spatial` pairs, plus `n_uid` pairs of the
-    reference space uid. Queries and keys must be built SEPARATELY: they are
-    different subsets of the same flat atom list, so one rotation does not serve
-    both -- passing the query table for the keys rotates them as if they sat at
-    the query positions.
+    Three spatial axes times `n_spatial` pairs, plus `n_uid` pairs of the reference
+    space uid. Queries and keys must be built SEPARATELY: they are different subsets
+    of the same flat atom list, so one rotation does not serve both -- passing the
+    query table for the keys rotates them as if they sat at the query positions.
     """
 
     def inverse(count: int, base: float) -> torch.Tensor:
@@ -279,7 +287,8 @@ class AtomCrossAttEncoder(nn.Module):
                 self.per_atom_pair_channels, self.per_atom_pair_channels, bias=False
             )
 
-        # The distogram bin edges as a buffer: building them in forward is a host-to-device
+        # The distogram bin edges as a buffer: building them in forward is a
+        # host-to-device
         # copy, which a CUDA graph capture refuses.
         self.register_buffer(
             "atom_pair_edges", torch.tensor(self.ATOM_PAIR_BINS), persistent=False
@@ -331,8 +340,8 @@ class AtomCrossAttEncoder(nn.Module):
     ) -> torch.Tensor | float:
         """Embed the chiral-centre dihedral-error gradient of the noisy positions.
 
-        Taken on the same scaled noisy coordinates the position embedding reads,
-        in float32 whatever the trunk runs in, as the release does.
+        Taken on the same scaled noisy coordinates the position embedding reads, in
+        float32 whatever the trunk runs in, as the release does.
         """
         ref = batch.ref_structure
         if ref.chiral_centres is None or ref.chiral_centres.shape[0] == 0:
@@ -420,7 +429,7 @@ class AtomCrossAttEncoder(nn.Module):
 
         return act, pair_act
 
-    def forward(  # noqa: PLR0915 - single reference attention equation sequence
+    def forward(
         self,
         batch: feat_batch.Batch,
         token_atoms_act: torch.Tensor | None = None,
@@ -437,17 +446,20 @@ class AtomCrossAttEncoder(nn.Module):
         state = self.prepare(batch, trunk_single_cond, trunk_pair_cond)
         return self.step(batch, token_atoms_act, state)
 
-    def prepare(
+    def prepare(  # noqa: PLR0915 - keep fold-invariant tensor preparation together
         self,
         batch: feat_batch.Batch,
         trunk_single_cond: torch.Tensor | None = None,
         trunk_pair_cond: torch.Tensor | None = None,
     ) -> AtomFoldState:
-        """Everything the encoder builds from the batch and the trunk -- not from the noisy coordinates.
+        """Run prepare.
 
-        The atom conditioning, the atom-pair activations (trunk pair, reference offsets, MLP),
-        the masks and the rotary tables are the same at every sampler step of a fold; the
-        coordinates enter only through ``step``.
+        Everything the encoder builds from the batch and the trunk -- not from the
+        noisy coordinates.
+
+        The atom conditioning, the atom-pair activations (trunk pair, reference
+        offsets, MLP), the masks and the rotary tables are the same at every sampler
+        step of a fold; the coordinates enter only through ``step``.
         """
         if (trunk_single_cond is not None) != self.with_trunk_single_cond:
             message = (
@@ -483,11 +495,7 @@ class AtomCrossAttEncoder(nn.Module):
         query_base = queries_single_cond.clone()
         # If provided, broadcast single conditioning from trunk to all queries
         if trunk_single_cond is not None:
-            trunk_single_cond = layernorm_projection(
-                self.lnorm_trunk_single_cond,
-                self.embed_trunk_single_cond,
-                trunk_single_cond,
-            )
+            trunk_single_cond = self.embed_trunk_single_cond(self.lnorm_trunk_single_cond(trunk_single_cond))
             queries_single_cond += atom_layout.convert(
                 batch.atom_cross_att.tokens_to_queries,
                 trunk_single_cond,
@@ -529,9 +537,7 @@ class AtomCrossAttEncoder(nn.Module):
         pair_act = row_act[:, :, None, :] + col_act[:, None, :, :]
 
         if trunk_pair_cond is not None:
-            trunk_pair_cond = layernorm_projection(
-                self.lnorm_trunk_pair_cond, self.embed_trunk_pair_cond, trunk_pair_cond
-            )
+            trunk_pair_cond = self.embed_trunk_pair_cond(self.lnorm_trunk_pair_cond(trunk_pair_cond))
 
             # Create the GatherInfo into a flattened trunk_pair_cond from the
             # queries and keys gather infos.
@@ -756,7 +762,9 @@ class AtomCrossAttEncoder(nn.Module):
 
         token_act = (
             _pool_engine(
-                queries_act, batch.atom_cross_att.queries_to_token_atoms, token_atoms_mask
+                queries_act,
+                batch.atom_cross_att.queries_to_token_atoms,
+                token_atoms_mask,
             )
             if getattr(self, "foldforge_sampler_ops", True)
             else None
@@ -887,11 +895,7 @@ class AtomCrossAttDecoder(nn.Module):
         )
 
         queries_act *= enc.queries_mask[..., None]
-        queries_position_update = layernorm_projection(
-            self.atom_features_layer_norm,
-            self.atom_features_to_position_update,
-            queries_act,
-        )
+        queries_position_update = self.atom_features_to_position_update(self.atom_features_layer_norm(queries_act))
         position_update = atom_layout.convert(
             batch.atom_cross_att.queries_to_token_atoms,
             queries_position_update,

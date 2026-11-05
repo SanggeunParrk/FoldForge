@@ -1,158 +1,103 @@
-# Optional chemistry/GPU backends load at the selected execution boundary.
-# ruff: noqa: PLC0415
-"""One MiniWorld-format data/config entry point for every released predictor."""
+"""CLI-to-library adaptation; prediction orchestration belongs to foldforge.api."""
+# ruff: noqa: PLC0415 - selected CLI execution imports optional backends lazily
 
 from __future__ import annotations
 
-import argparse
 import json
-from pathlib import Path
 from typing import TYPE_CHECKING
 
-import yaml
-
-from foldforge.data.ccd import CCDDatabase
-from foldforge.data.inputs.build import Input, limit_msa, load, write_adapter_input
-from foldforge.models.config import Config
+from foldforge.api import (
+    _validate_target as _validate_input,  # noqa: F401 - legacy helper export
+)
+from foldforge.api import predict, resolve_config
+from foldforge.data.inputs.build import load
 from foldforge.models.io.paths import run_directory
-from foldforge.models.msa_policy import PREPARED_ROWS
 
 if TYPE_CHECKING:
-    from foldforge.modules.dense.spec import DenseSpec
+    from foldforge.models.config import Config
+    from foldforge.models.io.options import FoldArguments
 
 
-def _family(model: str) -> DenseSpec:
-    """Return the dense family row for ``model``, whichever layout serves it."""
-    from foldforge.models import entry
-    from foldforge.modules.dense.spec import SPECS
+def _explicit(arguments: FoldArguments, names: tuple[str, ...]) -> dict:
+    """Collect explicit overrides without replacing omitted or false values."""
+    return {
+        name: getattr(arguments, name)
+        for name in names
+        if getattr(arguments, name) is not None
+    }
 
-    return SPECS[entry(model).family or "alphafold3"]
 
-
-def _validate_input(model: str, target: Input) -> None:
-    """Validate checkpoint capabilities before creating output artifacts."""
-    if not _family(model).template_layers and target.spec.template:
-        msg = f"the {model} checkpoint has no template conditioning path"
-        raise ValueError(msg)
-    if target.spec.save_trajectory:
-        msg = "Released adapters write final structures; set save_trajectory: false"
-        raise ValueError(msg)
-    if target.spec.n_trunk_samples != 1:
-        msg = "Released adapters currently require n_trunk_samples=1"
-        raise ValueError(msg)
-    if target.spec.diffusion_batch_size != target.spec.n_diffusion_samples:
-        msg = (
-            "Set diffusion_batch_size=n_diffusion_samples; these adapters do "
-            "not chunk sampling"
+def resolve_cli_config(arguments: FoldArguments) -> Config:
+    """Merge explicit options; omitted booleans never overwrite YAML."""
+    data = resolve_config(arguments.config).model_dump()
+    data.update(
+        _explicit(
+            arguments, ("backend", "precision", "mode", "trunk_seed", "diffusion_seed")
         )
-        raise ValueError(msg)
+    )
+    if arguments.seed is not None:
+        data.update(trunk_seed=arguments.seed, diffusion_seed=arguments.seed)
+    data["execution"].update(
+        _explicit(
+            arguments,
+            (
+                "compile",
+                "cuda_graph",
+                "bucketing",
+                "tf32",
+                "max_graphs",
+                "benchmark_repeats",
+            ),
+        )
+    )
+    if arguments.execution_scope is not None:
+        data["execution"]["scope"] = arguments.execution_scope
+    data["trunk"].update(_explicit(arguments, ("recycles", "msa_depth")))
+    if arguments.steps is not None:
+        data["diffusion"]["steps"] = arguments.steps
+    if arguments.save_images:
+        data["output"]["images"] = arguments.save_images
+    return resolve_config(data)
+
+
+def execute(arguments: FoldArguments) -> int:
+    """Call the public API used by external Python applications."""
+    output = run_directory(arguments.out, model=arguments.model)
+    config = resolve_cli_config(arguments)
+    inputs = load(arguments.spec) if arguments.spec is not None else arguments.input
+    if inputs is None:
+        message = "Choose exactly one of --spec or --input"
+        raise ValueError(message)
+    samples = arguments.samples
+    if arguments.input is not None and samples is None:
+        samples = 5
+    result = predict(
+        inputs,
+        config,
+        model=arguments.model,
+        checkpoint=arguments.checkpoint,
+        out=output,
+        samples=samples,
+        ccd_db=arguments.ccd_db,
+        engine_cache_dir=arguments.engine_cache_dir,
+        verbose=True,
+        device=arguments.device,
+    )
+    print(json.dumps(result.report, indent=2, allow_nan=False), flush=True)  # noqa: T201 - CLI contract
+    return 0
 
 
 def run(model: str, argv: list[str]) -> int:
-    """Run the configured operation."""
-    parser = argparse.ArgumentParser(prog=f"foldforge fold {model}")
-    parser.add_argument("--spec", required=True, type=Path)
-    parser.add_argument("--config", type=Path)
-    parser.add_argument("--checkpoint", type=Path)
-    parser.add_argument(
-        "--trunk-seed", type=int, help="Input/conformer/MSA/trunk randomness"
-    )
-    parser.add_argument(
-        "--diffusion-seed", type=int, help="Diffusion noise and rigid augmentation"
-    )
-    from foldforge.models.config.runtime import IMAGE_KINDS
+    """Compatibility entry point through the shared parser."""
+    import rich_click as click
+    import yaml
 
-    parser.add_argument(
-        "--save-images",
-        nargs="+",
-        choices=(*IMAGE_KINDS, "all"),
-        help="Save selected diagnostic PNGs (or all); disabled by default",
-    )
-    parser.add_argument("--out", type=Path, help="Run name or path inside runs/")
-    parser.add_argument("--engine-cache-dir", type=Path)
-    args = parser.parse_args(argv)
+    from foldforge.models.io.options import parse
+
+    arguments = parse(model, argv)
     try:
-        args.out = run_directory(args.out, model=model)
-    except ValueError as error:
-        parser.error(str(error))
-    if args.engine_cache_dir is not None:
-        if not args.engine_cache_dir.is_dir():
-            parser.error("--engine-cache-dir must be an existing cache directory")
-        from miniworld_engine.autotune import cache
-
-        cache._CACHE_ROOT = args.engine_cache_dir.resolve()  # noqa: SLF001 - shared runtime integration hook
-        cache._load_cache.clear()  # noqa: SLF001 - shared runtime integration hook
-    config = (
-        Config.model_validate(yaml.safe_load(args.config.read_text()) or {})
-        if args.config
-        else Config()
-    )
-    overrides = {
-        name: getattr(args, name)
-        for name in ("trunk_seed", "diffusion_seed")
-        if getattr(args, name) is not None
-    }
-    if args.save_images is not None:
-        overrides["output"] = {"images": args.save_images}
-    config = Config.model_validate({**config.model_dump(), **overrides})
-    target = load(args.spec)
-    _validate_input(model, target)
-    db = CCDDatabase(target.spec.ccd_db)
-    for chain in target.chains:
-        for ccd in set(chain.ccds):
-            db.lookup[ccd]  # Fail before loading weights if input chemistry is missing.
-    args.out.mkdir(parents=True, exist_ok=True)
-    target = limit_msa(
-        target, config.trunk.msa_depth or PREPARED_ROWS, args.out / "prepared-msa"
-    )
-    (args.out / "msa-species-aliases.json").write_text(
-        json.dumps(target.msa_species, indent=2) + "\n"
-    )
-    (args.out / "input.resources.json").write_text(
-        json.dumps(target.resources(), indent=2) + "\n"
-    )
-    (args.out / "input.spec.json").write_text(
-        target.spec.model_dump_json(indent=2) + "\n"
-    )
-    (args.out / "model.config.json").write_text(config.model_dump_json(indent=2) + "\n")
-    (args.out / "chain-map.json").write_text(
-        json.dumps(
-            [{"index": c.index, "id": c.id, "letter": c.letter} for c in target.chains],
-            indent=2,
-        )
-        + "\n"
-    )
-    from foldforge.models.io.request import Request
-    from foldforge.models.io.runtime import run as predict
-
-    checkpoint = args.checkpoint
-    if checkpoint is None:
-        from foldforge.models.checkpoints import DEFAULT_FILES, resolve
-
-        checkpoint = resolve(model, DEFAULT_FILES[model])
-    path = args.out / "input.adapter.json"
-    write_adapter_input(target, path, config.trunk_seed)
-    return predict(
-        Request(
-            model=model,
-            ccd_db=db.root,
-            out=args.out,
-            checkpoint=checkpoint,
-            resolved_input=target,
-            input=path,
-            target=target.spec.name or path.stem,
-            backend=config.backend,
-            precision=config.precision,
-            trunk_seed=config.trunk_seed,
-            diffusion_seed=config.diffusion_seed,
-            samples=target.spec.n_diffusion_samples,
-            recycles=config.trunk.recycles or 10,
-            steps=config.diffusion.steps or 200,
-            msa_depth=config.trunk.msa_depth or PREPARED_ROWS,
-            mode=config.mode,
-            execution=config.execution,
-            output=config.output,
-            engine=config.engine,
-            debug=config.debug,
-        )
-    )
+        return execute(arguments)
+    except (OSError, ValueError, yaml.YAMLError) as error:
+        failure = click.ClickException(str(error))
+        failure.show()
+        raise SystemExit(failure.exit_code) from error

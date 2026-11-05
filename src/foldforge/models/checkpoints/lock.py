@@ -7,8 +7,9 @@ relative encoding grew nine columns on 2026-09-25 -- a machine that still
 holds the old blob must fail at load with a message that says so, not deep in
 a strict load with a shape error, or silently if the shapes happen to agree.
 
-Loading checks the size, which is free; ``foldforge checkpoints verify``
-checks the hashes.
+Original releases retain their size gate. Separately qualified releases in
+``conversions.lock`` additionally require a full hash at load. ``foldforge
+checkpoints verify`` checks the full hash of either explicitly approved release.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 LOCK = Path(__file__).with_name("checkpoints.lock")
+CONVERSIONS_LOCK = Path(__file__).with_name("conversions.lock")
 
 
 @dataclass(frozen=True)
@@ -29,15 +31,35 @@ class Pin:
     path: str  # relative to model_checkpoints/
 
 
-def pins() -> dict[str, Pin]:
-    """Every locked blob, by its file name."""
+def _read_pins(path: Path) -> dict[str, Pin]:
     out = {}
-    for line in LOCK.read_text().splitlines():
+    for line in path.read_text().splitlines():
         if not line.strip() or line.startswith("#"):
             continue
-        sha, size, path = line.split()
-        out[Path(path).name] = Pin(sha, int(size), path)
+        sha, size, relative = line.split()
+        out[Path(relative).name] = Pin(sha, int(size), relative)
     return out
+
+
+def pins() -> dict[str, Pin]:
+    """Every original, validated checkpoint; retained for existing installations."""
+    return _read_pins(LOCK)
+
+
+def conversion_pins() -> dict[str, Pin]:
+    """Separately qualified CPU conversion releases, never inferred from a file."""
+    return _read_pins(CONVERSIONS_LOCK) if CONVERSIONS_LOCK.is_file() else {}
+
+
+def accepted_pins(filename: str) -> tuple[Pin, ...]:
+    """Explicitly qualified versions of one logical checkpoint path."""
+    original = pins().get(filename)
+    converted = conversion_pins().get(filename)
+    if original is None:
+        return ()
+    if converted is not None and converted.path == original.path:
+        return (original, converted)
+    return (original,)
 
 
 class CheckpointMismatchError(RuntimeError):
@@ -50,13 +72,19 @@ def check_size(path: Path) -> None:
     pin = pins().get(path.name)
     if pin is None or not path.is_file():
         return
-    size = path.stat().st_size
+    stat = path.stat()
+    size = stat.st_size
+    if size == pin.size:
+        return
+    for qualified in accepted_pins(path.name)[1:]:
+        if size == qualified.size and sha256(path) == qualified.sha256:
+            return
     if size != pin.size:
         message = (
             f"{path} is {size} bytes; this code was validated with the "
             f"{pin.size}-byte blob (sha256 {pin.sha256[:16]}...). The blob is "
             "from another version of the converter: regenerate it with "
-            "scripts/convert_dense_checkpoint.py or copy the matching one."
+            "foldforge weights download or copy the matching one."
         )
         raise CheckpointMismatchError(message)
 
@@ -77,10 +105,16 @@ def verify(root: Path, *, quick: bool = False) -> list[str]:
         path = root / pin.path
         if not path.is_file():
             problems.append(f"missing  {pin.path}")
-        elif path.stat().st_size != pin.size:
-            problems.append(f"size     {pin.path}")
-        elif not quick and sha256(path) != pin.sha256:
-            problems.append(f"sha256   {pin.path}")
+        else:
+            matching = [
+                version
+                for version in accepted_pins(path.name)
+                if path.stat().st_size == version.size
+            ]
+            if not matching:
+                problems.append(f"size     {pin.path}")
+            elif not quick and sha256(path) not in {v.sha256 for v in matching}:
+                problems.append(f"sha256   {pin.path}")
     return problems
 
 

@@ -6,39 +6,33 @@ Pairformer operations is owned by the engine, the numerics by the wrapped dense 
 
 from __future__ import annotations
 
-import inspect
 from contextvars import ContextVar
-from typing import Any
+from typing import Any, cast
 
 import torch
-from miniworld_engine.architecture.blocks.pairformer import PairformerBlock
-from miniworld_engine.architecture.exceptions import ImplementationType
 from torch import nn
 
-from foldforge.modules.engine.modules import engine_of
+from foldforge.blocks.pairformer import PairformerBlock
+from foldforge.modules.engine.installation import record_phase
+from foldforge.modules.engine.modules import engine_of, token_mask
+from foldforge.modules.engine.policy import accept_support, backend_support
 from foldforge.modules.engine.routing import (
     cueq_single_attention,
-    enabled,
     served_by,
+    single_attention_support,
     transition_residual,
     triangle_residual,
 )
-
-#: The engine's block takes the parallel schedule (Chai-1; 2.3.8).
-_ENGINE_HAS_PARALLEL = (
-    "parallel" in inspect.signature(PairformerBlock.from_components).parameters
+from foldforge.modules.engine.serving import (
+    ADAPTER_ATTR,
+    Dispatch,
+    EngineAdapter,
+    observe,
 )
 
 #: A bias over every head that the stack supplying it builds (a statement about token
 #: pairs, not about heads); scoped to one block call.
 _EXTRA_PAIR_BIAS = ContextVar("released_pairformer_extra_pair_bias", default=None)
-
-
-def _token_masks(mask: torch.Tensor | None) -> torch.Tensor | None:
-    """Token masks ``[B, L]`` (bool) from outer-product pair masks ``[B, L, L]``."""
-    if mask is None:
-        return None
-    return (mask.diagonal(dim1=-2, dim2=-1) > 0).contiguous()
 
 
 def _per_sample(single, x: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
@@ -72,7 +66,7 @@ class _TriangleMultiplication(nn.Module):
         # B > 1 (the template slots): one batched engine call, else B one-sample calls.
         built = served_by(self.source, x)
         if built is not None and not getattr(self.source, "divide_by_length", False):
-            return built(x, _token_masks(mask))
+            return built(x, token_mask(mask))
         return _per_sample(lambda v, m: triangle_residual(self.source, v, m), x, mask)
 
 
@@ -86,7 +80,7 @@ class _TriangleAttention(nn.Module):
             return self.source.residual(x[0], None if mask is None else mask[0])[None]
         built = served_by(self.source, x)
         if built is not None:
-            return built(x, _token_masks(mask))
+            return built(x, token_mask(mask))
         return _per_sample(self.source.residual, x, mask)
 
 
@@ -95,20 +89,18 @@ class _SingleAttention(nn.Module):
         super().__init__()
         self.norm = source.single_pair_logits_norm
         self.projection = source.single_pair_logits_projection
-        self.attention = source.single_attention_
+        self.attention = cast("nn.Module", source.single_attention_)
 
     def forward(
         self, single: torch.Tensor, pair: torch.Tensor, mask: torch.Tensor | None
     ) -> torch.Tensor:
         bias = _EXTRA_PAIR_BIAS.get()
         built = engine_of(self)
-        if built is not None and bias is None and enabled(self.attention, single):
+        supported = accept_support(self, single_attention_support(self, single, bias))
+        if built is not None and supported:
             # The engine module owns the residual and reaches the hand-CUDA legs.
             return built(single, pair, None if mask is None else mask > 0)
-        if (
-            bias is None
-            and getattr(self.attention, "foldforge_implementation", None) == ImplementationType.CUEQUIVARIANCE
-        ):
+        if bias is None and backend_support(self.attention, "cuequivariance").accepted:
             served = cueq_single_attention(self, single, pair, mask)
             if served is not None:
                 return served
@@ -116,7 +108,11 @@ class _SingleAttention(nn.Module):
             # B samples (the confidence head's diffusion samples) without an engine module.
             return torch.stack(
                 [
-                    self(single[i : i + 1], pair[i : i + 1], None if mask is None else mask[i : i + 1])
+                    self(
+                        single[i : i + 1],
+                        pair[i : i + 1],
+                        None if mask is None else mask[i : i + 1],
+                    )
                     for i in range(single.shape[0])
                 ]
             ).squeeze(1)
@@ -127,6 +123,13 @@ class _SingleAttention(nn.Module):
             single[0], None if mask is None else mask[0], pair_logits=logits
         )
         return single + delta[None]
+
+
+def _serve_pairformer(
+    _built: nn.Module, module: AF3Pairformer, *inputs: Any
+) -> Dispatch:
+    """Run the existing composition; constituent kernels retain their own routing."""
+    return Dispatch(module._forward(*inputs), selection="engine_composition")
 
 
 class AF3Pairformer(nn.Module):
@@ -167,9 +170,29 @@ class AF3Pairformer(nn.Module):
             else None,
             **({"parallel": True} if getattr(source, "parallel", False) else {}),
         )
+        object.__setattr__(
+            self,
+            ADAPTER_ATTR,
+            EngineAdapter(self.block, "pairformer", _serve_pairformer),
+        )
         self.eval()
 
     def forward(
+        self,
+        pair: torch.Tensor,
+        pair_mask: torch.Tensor,
+        single: torch.Tensor | None = None,
+        seq_mask: torch.Tensor | None = None,
+        extra_pair_bias: torch.Tensor | None = None,
+    ) -> Any:
+        """Use the shared adapter result and host observation contract."""
+        adapter = self.__dict__[ADAPTER_ATTR]
+        return observe(
+            self,
+            adapter.try_run(self, pair, pair_mask, single, seq_mask, extra_pair_bias),
+        )
+
+    def _forward(
         self,
         pair: torch.Tensor,
         pair_mask: torch.Tensor,
@@ -261,26 +284,29 @@ class AF3Pairformer(nn.Module):
 def install_pairformers(model: nn.Module) -> nn.Module:
     """Replace released Pairformer compositions after strict checkpoint loading."""
     converted = 0
+    decisions: dict[str, Any] = {}
 
-    def visit(parent: nn.Module) -> None:
+    def visit(parent: nn.Module, prefix: str = "") -> None:
         nonlocal converted
         for name, child in list(parent.named_children()):
+            path = f"{prefix}.{name}" if prefix else name
             # The shared block threads each update through the running
             # activation, or (``parallel``, Chai-1) has every update read the
-            # representation ENTERING it. An engine without the parallel
-            # schedule keeps such a block on its own forward: swapping it would
-            # silently run the weights under the wrong composition.
-            own_schedule = getattr(child, "parallel", False) and not _ENGINE_HAS_PARALLEL
-            if (
-                type(child).__name__ == "PairformerBlock"
-                and hasattr(child, "triangle_multiplication_outgoing")
-                and not own_schedule
+            # representation ENTERING it: both schedules are the block's.
+            if type(child).__name__ == "PairformerBlock" and hasattr(
+                child, "triangle_multiplication_outgoing"
             ):
+                decisions[path] = {
+                    "candidate": "pairformer_composition",
+                    "status": "converted",
+                    "reason": None,
+                }
                 setattr(parent, name, AF3Pairformer(child))
                 converted += 1
             else:
-                visit(child)
+                visit(child, path)
 
     visit(model)
+    record_phase(model, "pairformers", decisions)
     model.foldforge_load_report["engine_pairformer_blocks"] = converted
     return model

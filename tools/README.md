@@ -79,7 +79,10 @@ AF3, OpenDDE, ESMFold2 and Protenix v2:
 AF3 reference precision is `precision: af3_default`: input atom encoder and
 diffusion FP32, trunk and confidence Pairformers BF16, norms and final confidence/
 distogram projections FP32. Released FP32 weights are never rounded through BF16.
-The AF3 `recycles` option means additional trunk passes: 10 gives 11 passes.
+`recycles` means total trunk passes for every model: 10 gives 10 passes.
+Historical AF3 measurements used the former additional-pass convention
+(setting 10 ran 11); use 11 to reproduce that workload. Historical records and
+their renderers retain the original measurement contracts.
 The benchmark retains token buckets in multiples of 128, disabled templates,
 five batched diffusion samples, and denoiser-only compile/graph scope. This is
 a FoldForge backend comparison, not a measurement of the official JAX runtime.

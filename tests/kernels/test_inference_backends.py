@@ -5,21 +5,23 @@ from unittest import mock
 
 import pytest
 import torch
-from miniworld_engine.architecture.exceptions import ImplementationType
 
+from foldforge.layers.implementation import ImplementationType
 from foldforge.models.config import Config
 from foldforge.modules.dense.attention import GridSelfAttention
 from foldforge.modules.engine.configure import configure_model
 from foldforge.modules.engine.routing import triangle_residual
 
 
-@pytest.mark.parametrize("backend", ["pytorch", "cuequivariance", "miniworld", "anthropic"])
+@pytest.mark.parametrize(
+    "backend", ["pytorch", "cuequivariance", "miniworld", "anthropic"]
+)
 def test_backend_reaches_the_executed_operator(backend):
     """The requested backend reaches the layer, not only the config object."""
     expected = (
         ImplementationType.MINIWORLD_ENGINE
         if backend == "miniworld"
-        else backend  # the engine's enum has no member for anthropic: its name stays a string
+        else backend  # Anthropic remains a string outside the engine enum
         if backend == "anthropic"
         else ImplementationType(backend)
     )
@@ -81,28 +83,3 @@ def test_af3_grid_vendor_preserves_projection_and_mask(ending, length):
     assert actual.shape == expected.shape
     assert (actual - expected).float().square().mean().sqrt() < 0.02
 
-
-@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-@pytest.mark.parametrize("affine", [True, False])
-def test_cueq_norm_uses_reference_with_fp32_affine(dtype, affine):
-    from miniworld_engine.architecture.primitives import LayerNorm
-
-    norm = LayerNorm(
-        32, elementwise_affine=affine, implementation=ImplementationType.CUEQUIVARIANCE
-    ).to(dtype)
-    x = torch.randn(2, 7, 32, dtype=dtype, requires_grad=True)
-    reference = copy.deepcopy(norm)
-    reference.implementation = ImplementationType.PYTORCH
-    ref_x = x.detach().clone().requires_grad_()
-    output = norm(x)
-    expected = reference(ref_x)
-    torch.testing.assert_close(output, expected, atol=0, rtol=0)
-    assert output.dtype == dtype
-    output.float().square().sum().backward()
-    expected.float().square().sum().backward()
-    torch.testing.assert_close(x.grad, ref_x.grad, atol=0, rtol=0)
-    if affine:
-        assert norm.weight.dtype == torch.float32
-        torch.testing.assert_close(
-            norm.weight.grad, reference.weight.grad, atol=0, rtol=0
-        )

@@ -22,3 +22,8 @@ slurm-*.err
 # pixi environments
 .pixi/
 .cutlass/
+
+# Isolated package build and installation checks
+.build-venv/
+.wheel-venv/
+wheelhouse/

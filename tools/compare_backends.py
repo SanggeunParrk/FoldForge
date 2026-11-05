@@ -1,17 +1,25 @@
-"""Run one model on one input under each backend and compare them with the PyTorch backend.
+"""Compare each backend with PyTorch for one model and input.
 
-One command, one config: the same ``foldforge fold`` (the spec and the runtime config you give) runs once per backend in
-its own process, so the Anthropic payload locations are present only for the Anthropic run and the engine's JIT state
-is not shared. Each row records the backend, the backend of every op, the warm median model time, the cold time, the
-mean pLDDT and the difference of the predicted coordinates from the PyTorch run: max and rms of the per-atom
-displacement as they come out, and after the best rigid superposition (the part of the difference that is a
-different pose rather than a different structure). A run that refuses, is out of memory or crashes is a row too.
+Run one model on one input under each backend and compare them with the PyTorch
+backend.
 
-    python tools/compare_backends.py af3 --spec input.yaml --config runtime.yaml --out compare/af3-n1
-    python tools/compare_backends.py af3 --spec input.yaml --config runtime.yaml --out compare/af3-n1 --backends pytorch miniworld
+One command, one config: the same ``foldforge fold`` (the spec and the runtime
+config you give) runs once per backend in its own process, so the Anthropic payload
+locations are present only for the Anthropic run and the engine's JIT state is not
+shared. Each row records the backend, the backend of every op, the warm median model
+time, the cold time, the mean pLDDT and the difference of the predicted coordinates
+from the PyTorch run: max and rms of the per-atom displacement as they come out, and
+after the best rigid superposition (the part of the difference that is a different
+pose rather than a different structure). A run that refuses, is out of memory or
+crashes is a row too.
 
-Run it inside a Slurm GPU allocation. ``--config`` is any runtime config (docs/guides/CONFIG.md); its ``backend`` is
-replaced by each backend in turn and its ``engine.ops`` / ``engine.unsupported`` are kept.
+python tools/compare_backends.py af3 --spec input.yaml --config runtime.yaml --out
+compare/af3-n1 python tools/compare_backends.py af3 --spec input.yaml --config
+runtime.yaml --out compare/af3-n1 --backends pytorch miniworld
+
+Run it inside a Slurm GPU allocation. ``--config`` is any runtime config
+(docs/guides/CONFIG.md); its ``backend`` is replaced by each backend in turn and its
+``engine.ops`` / ``engine.unsupported`` are kept.
 """
 
 from __future__ import annotations
@@ -30,7 +38,8 @@ import yaml
 from foldforge.modules.engine.backends import BACKENDS
 
 REFERENCE = "pytorch"
-#: Locations the Anthropic backend reads; only its own run sees them (the engine's miniworld modules use a named payload).
+#: Locations the Anthropic backend reads; only its own run sees them (the engine's
+#:miniworld modules use a named payload).
 PAYLOAD_VARIABLES = (
     "MINIWORLD_ANTHROPIC_ROOT",
     "OPT_CORE_DIR",
@@ -39,7 +48,11 @@ PAYLOAD_VARIABLES = (
 
 
 def superpose(moving: np.ndarray, fixed: np.ndarray) -> np.ndarray:
-    """``moving`` rigidly superposed on ``fixed`` (Kabsch, equal weights), both ``[atoms, 3]``."""
+    """Kabsch-align moving coordinates onto fixed coordinates.
+
+    ``moving`` rigidly superposed on ``fixed`` (Kabsch, equal weights), both
+    ``[atoms, 3]``.
+    """
     a = moving - moving.mean(0)
     b = fixed - fixed.mean(0)
     u, _, vt = np.linalg.svd(a.T @ b)
@@ -51,7 +64,11 @@ def superpose(moving: np.ndarray, fixed: np.ndarray) -> np.ndarray:
 def coordinate_difference(
     coordinates: np.ndarray, reference: np.ndarray
 ) -> dict[str, float]:
-    """Max / rms per-atom displacement over all samples, raw and after superposition, in the arrays' unit (Angstrom)."""
+    """Run coordinate difference.
+
+    Max / rms per-atom displacement over all samples, raw and after superposition,
+    in the arrays' unit (Angstrom).
+    """
     if coordinates.shape != reference.shape:
         return {"shape_mismatch": float("nan")}
     raw, fitted = [], []
@@ -83,7 +100,10 @@ def run_backend(args: argparse.Namespace, backend: str, base: dict) -> dict:
     command = [
         sys.executable,
         "-c",
-        "import sys; from foldforge.models.inference import run; raise SystemExit(run(sys.argv[1], sys.argv[2:]))",
+        (
+            "import sys; from foldforge.models.inference import run; "
+            "raise SystemExit(run(sys.argv[1], sys.argv[2:]))"
+        ),
         args.model,
         "--spec",
         str(args.spec),
@@ -117,7 +137,11 @@ def run_backend(args: argparse.Namespace, backend: str, base: dict) -> dict:
         row.update(
             status="ok",
             cold=round(report["model_seconds_cold"], 3),
-            warm_median=round(report["model_seconds_warm_median"], 3),
+            warm_median=(
+                round(report["model_seconds_warm_median"], 3)
+                if report["model_seconds_warm_median"] is not None
+                else float("nan")
+            ),
             warm=[round(x, 3) for x in report["model_seconds_warm"]],
             plddt=round(report["mean_plddt"], 3),
             ops=loaded.get("ops"),
@@ -186,12 +210,16 @@ def main() -> int:
         for row in rows:
             handle.write(json.dumps(row) + "\n")
     print(  # noqa: T201
-        f"{'backend':16}{'status':9}{'warm median s':>14}{'pLDDT':>8}{'rms A':>8}{'max A':>8}{'rms A fit':>10}"
+        f"{'backend':16}{'status':9}{'warm median s':>14}{'pLDDT':>8}"
+        f"{'rms A':>8}{'max A':>8}{'rms A fit':>10}"
     )
     for row in rows:
         print(  # noqa: T201
-            f"{row['backend']:16}{row['status']:9}{row.get('warm_median', float('nan')):14.3f}{row.get('plddt', float('nan')):8.2f}"
-            f"{row.get('coord_rms', float('nan')):8.3f}{row.get('coord_max', float('nan')):8.3f}"
+            f"{row['backend']:16}{row['status']:9}"
+            f"{row.get('warm_median', float('nan')):14.3f}"
+            f"{row.get('plddt', float('nan')):8.2f}"
+            f"{row.get('coord_rms', float('nan')):8.3f}"
+            f"{row.get('coord_max', float('nan')):8.3f}"
             f"{row.get('coord_rms_superposed', float('nan')):10.3f}"
         )
     return 0 if all(row["status"] == "ok" for row in rows) else 1

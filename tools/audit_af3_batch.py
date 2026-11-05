@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from miniworld_engine import ops
+from miniworld_engine.kernels.augmented_attention import whole_op
 
 from foldforge.models.inference import run
 from foldforge.models.io import runtime
@@ -20,7 +20,7 @@ def main() -> int:
     assert torch.cuda.is_available()
     report = {"calls": [], "attention_shapes": []}
     original_bind = runtime.Runtime.bind
-    original_attention = ops.augmented_attention_pair_bias
+    original_attention = whole_op.augmented_attention_pair_bias
     recording = False
 
     def attention(
@@ -76,7 +76,7 @@ def main() -> int:
         return original_bind(owner, model)
 
     runtime.Runtime.bind = bind
-    ops.augmented_attention_pair_bias = attention
+    whole_op.augmented_attention_pair_bias = attention
     try:
         status = run("af3", sys.argv[2:])
         assert len(report["calls"]) == report["steps"]
@@ -91,7 +91,7 @@ def main() -> int:
         return status
     finally:
         runtime.Runtime.bind = original_bind
-        ops.augmented_attention_pair_bias = original_attention
+        whole_op.augmented_attention_pair_bias = original_attention
         Path(sys.argv[1]).write_text(json.dumps(report, indent=2) + "\n")
 
 

@@ -19,19 +19,53 @@ actual compilation/CUDA graph boundaries and remaining deployment requirements.
 [The follow-up](docs/archive/CLOSEOUT-20260914.md) records operational DB reads, A5000
 execution and the large-input AF3 compiler numerical regression that did not pass.
 
+Weight setup: `foldforge weights download --all-public`; see the
+[weight download guide](docs/guides/WEIGHTS.md) for all models, language-model
+weights and offline installation. Inference uses PyTorch and CPU input preparation
+uses NumPy. FoldForge does not use JAX, Haiku or Chex in inference,
+input preparation or weight conversion.
+
 ## Code and loading
+
+Use the [Python prediction API](docs/guides/PYTHON-API.md) from notebooks,
+services or another package:
+
+```python
+import foldforge as ff
+
+inputs = ff.load_inputs("input.yaml")
+with ff.load_model("boltz2", config="config.yaml", device="cuda:0") as model:
+    result = model(inputs)
+result.save("./results/my-run")
+```
+
+For test-time scaling, retain the trunk and sample diffusion repeatedly:
+
+```python
+import foldforge as ff
+
+inputs = ff.load_inputs("input.yaml")
+with ff.load_model("boltz2", config="config.yaml") as model:
+    with model.run_trunk(inputs, recycles=10, seed=0) as trunk:
+        for seed in range(10):
+            result = model.sample_diffusion(trunk, samples=5, steps=200, seed=seed)
+            result.save(f"./results/seed-{seed}")
+```
+
+The CLI calls this same API:
+`foldforge fold boltz2 --spec input.yaml --config config.yaml --out my-run`.
 
 Start with [the directory guide](docs/guides/CODE-STRUCTURE.md).
 `foldforge.load(model, checkpoint, backend=..., dtype=..., device=...)` is the
-single loading API. Model directories and `ported/` packages have been removed;
+lower-level network loading API. Model directories and `ported/` packages have been removed;
 architecture assembly, configuration, weight mapping and feature processing each
 have their own owner.
 
 ```python
 import torch
-from foldforge import load
+import foldforge as ff
 
-model = load("protenix2", backend="miniworld", dtype=torch.bfloat16, device="cuda")
+model = ff.load("protenix2", backend="miniworld", dtype=torch.bfloat16, device="cuda")
 ```
 
 `backend` is `miniworld` (the default), `cuequivariance`, `anthropic` or `pytorch`; single ops can be pinned to another
@@ -46,7 +80,7 @@ a layer down:
 
 | layer | repo | holds |
 |---|---|---|
-| engine | miniworld-engine | fused kernels, the ops that wrap them, the representative AF3 **blocks**, diffusion and the checkpoint-attention helpers (`miniworld_engine.architecture`) |
+| engine | miniworld-engine | fused kernels, the modules that wrap them (`miniworld_engine.modules`) and the single-op kernel entry points (`miniworld_engine.kernels`); since 2.4.2 no model architecture, diffusion process or checkpoint adapter |
 | terminal | **FoldForge** | the **full models**, the checkpoint installers, data pipeline, eval, CLI |
 
 Nothing here defines an op or a general-purpose block. If you are writing one,
@@ -73,11 +107,33 @@ The pinned Biohub ESMFold2 processor requires **Python 3.12**. On
 A5000/A6000/A100 add FlashAttention-2 (`FOLDFORGE_FLASH2=1 sbatch tools/setup_env.sbatch`).
 Before running Python directly: `source tools/activate_env.sh`.
 
+### Standard Python installation
+
+The package declares its runtime engine dependency. The native AF3 data component
+is built as a separate wheel; it must be installed alongside FoldForge. From a
+source checkout with Python 3.12 and a C++20 build toolchain:
+
+```bash
+python -m pip install ./third_party/af3-data
+python -m pip install '.[language]'
+```
+
+The `language` extra supplies Transformers for the vendored ESM-C tower; models
+without that tower do not require it. The Biohub `esm` fork is a Pixi-only reference
+validation dependency and is not required to run FoldForge's inference API.
+
+To build distributable artifacts, run `python -m build --wheel --outdir wheelhouse`
+for both the root project and `third_party/af3-data`. Install the resulting wheels
+with `python -m pip install --find-links wheelhouse 'foldforge[language]'`.
+Checkpoints and CCD/MSA/template databases remain separate resources. Inference
+requires a supported CUDA runtime; installing the Python package does not qualify
+all model/backend combinations on a new GPU.
+
 ### The engine pin
 
-`miniworld-engine` is a git dependency pinned by `rev` in `pyproject.toml`
-(`[tool.pixi.pypi-dependencies]`); `pixi.lock` records the resolved commit. Bump
-both together, then re-run the tests: the engine changes contracts between
+`miniworld-engine` is pinned once in the package runtime dependencies; Pixi
+resolves that same requirement and `pixi.lock` records its wheel. Update the pin,
+refresh the lock and re-run the tests: the engine changes contracts between
 releases (for example, since the 2026-10 release every `x = x + f(x)` module
 returns the residual itself — use `.delta` for the bare update).
 
@@ -139,7 +195,8 @@ $FOLDFORGE_HOME/
 | the unit | lives in |
 |---|---|
 | wraps a kernel, one PyTorch reference | miniworld-engine |
-| representative AF3 block (Pairformer, MSA module, template, diffusion transformer) | miniworld-engine (`architecture`) |
+| diffusion process (EDM, decoupled x-prediction, augmentation, schedules, samplers) | `foldforge.diffusion` (self-contained: movable into its own package) |
+| block shared with MiniWorld (Pairformer) | `foldforge.blocks`, backend names `foldforge.layers` |
 | specific to one predictor | `models/architectures/<name>.py` |
 | needed by two or more predictors, no reason for the engine to carry it | `modules/` |
 

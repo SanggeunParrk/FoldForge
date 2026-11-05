@@ -17,26 +17,37 @@ from pydantic import (
 from foldforge.data.inputs.validation import validate_inference_seed
 from foldforge.modules.engine.backends import BACKENDS, validate_ops
 
-#: Environment variables that used to steer behaviour and are now config keys (or gone). Setting one is an
-#: error, not a silent no-op: the run would otherwise differ from what its environment says.
+#: Environment variables that used to steer behaviour and are now config keys (or gone).
+#: Setting one is an
+#: error, not a silent no-op: the run would otherwise differ from what its environment
+#: says.
 REMOVED_ENVIRONMENT = {
     "FF_ENGINE_SKIP": "set `engine.skip` in the config (docs/guides/CONFIG.md)",
-    "FF_TRUNK_BF16": "removed: the experiment is concluded (af3_default keeps the released dtypes)",
-    "FOLDFORGE_DENSE_SPEC_OVERRIDE": "set `debug.dense_spec_override` in the config (docs/guides/CONFIG.md)",
-    "FOLDFORGE_CONFIDENCE_SAMPLE_CHUNK": "set `execution.confidence_sample_chunk` in the config (docs/guides/CONFIG.md)",
+    "FF_TRUNK_BF16": (
+        "removed: the experiment is concluded (af3_default keeps the released dtypes)"
+    ),
+    "FOLDFORGE_DENSE_SPEC_OVERRIDE": (
+        "set `debug.dense_spec_override` in the config (docs/guides/CONFIG.md)"
+    ),
+    "FOLDFORGE_CONFIDENCE_SAMPLE_CHUNK": (
+        "set `execution.confidence_sample_chunk` in the config (docs/guides/CONFIG.md)"
+    ),
 }
 
 
 def reject_removed_environment() -> None:
     """Raise when an environment variable that used to change behaviour is still set."""
-    stale = {name: hint for name, hint in REMOVED_ENVIRONMENT.items() if name in os.environ}
+    stale = {
+        name: hint for name, hint in REMOVED_ENVIRONMENT.items() if name in os.environ
+    }
     if stale:
         lines = "; ".join(f"{name}: {hint}" for name, hint in stale.items())
         message = f"environment variables no longer read -- {lines}"
         raise RuntimeError(message)
 
 
-#: Parts of the engine install that ``engine.skip`` can leave dense (the keys of the load report's counts).
+#: Parts of the engine install that ``engine.skip`` can leave dense (the keys of the
+#: load report's counts).
 ENGINE_SKIP_KEYS = (
     "pairformers",
     "conditioning",
@@ -44,6 +55,7 @@ ENGINE_SKIP_KEYS = (
     "engine_triangle_attention",
     "engine_msa_pwa",
     "engine_opm",
+    "engine_trunk_transition",
     "engine_dit_blocks",
     "engine_single_attention",
     "engine_atom_blocks",
@@ -53,14 +65,17 @@ ENGINE_SKIP_KEYS = (
 
 
 class EngineConfig(BaseModel):
-    """What the engine install touches: the debugging ``skip`` and the per-op backend choice."""
+    """Configure engine skips and per-op backend choices."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    #: Parts left dense (PyTorch) instead of engine-served; each is one of ``ENGINE_SKIP_KEYS``.
+    #: Parts left dense (PyTorch) instead of engine-served; each is one of
+    #: ``ENGINE_SKIP_KEYS``.
     skip: tuple[Literal[ENGINE_SKIP_KEYS], ...] = ()  # type: ignore[valid-type]
-    #: Ops that take another backend than ``Config.backend``: ``{op: backend}``, ops from ``backends.OPS``.
+    #: Ops that take another backend than ``Config.backend``: ``{op: backend}``, ops
+    #: from ``backends.OPS``.
     ops: dict[str, str] = Field(default_factory=dict)
-    #: An op the backend has no kernel for: ``fallback`` runs the PyTorch reference and logs one line, ``error`` raises.
+    #: An op the backend has no kernel for: ``fallback`` runs the PyTorch reference and
+    #: logs one line, ``error`` raises.
     unsupported: Literal["fallback", "error"] = "fallback"
 
     @field_validator("ops")
@@ -74,8 +89,10 @@ class DebugConfig(BaseModel):
     """Porting aids; empty by default."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    #: ``DenseSpec`` fields replaced after the family's spec is chosen, to price one forward
-    #: convention at a time. Fields that change a parameter shape make the strict load fail loudly.
+    #: ``DenseSpec`` fields replaced after the family's spec is chosen, to price one
+    #: forward
+    #: convention at a time. Fields that change a parameter shape make the strict load
+    #: fail loudly.
     dense_spec_override: dict[str, Any] | None = None
 
 
@@ -83,7 +100,13 @@ class TrunkConfig(BaseModel):
     """Released trunk recurrence and alignment depth overrides."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    recycles: int | None = Field(default=None, ge=1)
+    recycles: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Total trunk passes, including the first; default 10 for every model"
+        ),
+    )
     msa_depth: int | None = Field(default=None, ge=1)
 
 
@@ -100,27 +123,37 @@ class ExecutionConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     compile: bool = False
     cuda_graph: bool = False
-    # Pad tokens, atoms and MSA rows up a fixed ladder (models.bucketing). On by default: without it the
-    # dense atom layout (24 slots per token) makes the atom blocks compute ~3x the real atoms.
+    # Pad tokens, atoms and MSA rows up a fixed ladder (models.bucketing). On by
+    # default: without it the
+    # dense atom layout (24 slots per token) makes the atom blocks compute ~3x the real
+    # atoms.
     bucketing: bool = True
-    # float32 matmuls on TF32 tensor cores (torch "high") instead of full FP32 ("highest").
+    # float32 matmuls on TF32 tensor cores (torch "high") instead of full FP32
+    # ("highest").
     tf32: bool = False
     scope: Literal["denoiser", "trunk", "model"] = "denoiser"
     max_graphs: int = Field(default=4, ge=1, le=32)
-    # scope=trunk only: above this many tokens the trunk and head sites run uncaptured (same kernels).
-    # There the GPU is already full and the graph pools would only take memory from the denoiser.
+    # scope=trunk only: above this many tokens the trunk and head sites run uncaptured
+    # (same kernels).
+    # There the GPU is already full and the graph pools would only take memory from the
+    # denoiser.
     trunk_graph_max_tokens: int = Field(default=512, ge=0)
-    # scope=trunk only: the sampler step (re-pose, re-noise, denoise, align, update) as one graph.
+    # scope=trunk only: the sampler step (re-pose, re-noise, denoise, align, update) as
+    # one graph.
     sampler_graph: bool = True
     # scope=trunk only: which trunk-side callables get a graph of their own.
-    trunk_sites: tuple[Literal["evoformer", "confidence_head", "distogram_head"], ...] = (
+    trunk_sites: tuple[
+        Literal["evoformer", "confidence_head", "distogram_head"], ...
+    ] = (
         "evoformer",
         "confidence_head",
         "distogram_head",
     )
     benchmark_repeats: int = Field(default=0, ge=0, le=20)
-    # Samples per confidence-head call; None = the head's own rule (all while their pair stream is small,
-    # one per call at large token counts; ConfidenceHead.sample_chunk). 1 is the sequential path.
+    # Samples per confidence-head call; None = the head's own rule (all while their pair
+    # stream is small,
+    # one per call at large token counts; ConfidenceHead.sample_chunk). 1 is the
+    # sequential path.
     confidence_sample_chunk: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")

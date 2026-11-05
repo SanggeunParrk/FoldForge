@@ -1,15 +1,8 @@
 """Native geometry and conditioning projections retain their precision contract."""
 
-from unittest.mock import patch
-
 import pytest
 import torch
-from miniworld_engine import ops
-from support import triton_ops_run
 
-from foldforge.modules.engine.attention_ops import (
-    layernorm_projection,
-)
 from foldforge.modules.engine.configure import configure_model
 from foldforge.modules.engine.native_linear import NativeLinear
 
@@ -36,20 +29,18 @@ def test_native_projection(width, out_width, compute):
         torch.nn.Sequential(norm, linear), "miniworld", device="cuda"
     )
     x = torch.randn(128, width, device="cuda", dtype=torch.bfloat16)
-    with (
-        torch.no_grad(),
-        patch.object(ops, "layer_norm_linear", wraps=ops.layer_norm_linear) as called,
-    ):
-        a = layernorm_projection(model[0], model[1], x)
-        b = model[1](model[0](x))
-        assert called.call_count == (1 if out_width <= 16 else 0) * triton_ops_run()
+    reference = torch.nn.functional.linear(
+        torch.nn.functional.layer_norm(x.float(), (width,), model[0].weight, None, model[0].eps),
+        model[1].weight.float(),
+    )
+    with torch.no_grad():
+        a = model(x)
+        b = reference
         error = (
             a.float() - b.float()
         ).square().mean().sqrt() / b.float().square().mean().sqrt()
         assert torch.isfinite(a).all(), error
         assert error < 0.025, error
-    compiled = torch.compile(
-        lambda x: layernorm_projection(model[0], model[1], x), fullgraph=True
-    )
+    compiled = torch.compile(model, fullgraph=True)
     with torch.no_grad():
         torch.testing.assert_close(compiled(x), a, atol=0, rtol=0)

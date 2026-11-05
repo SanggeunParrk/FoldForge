@@ -7,12 +7,11 @@ from typing import Any
 
 import pytest
 import torch
-from miniworld_engine.architecture.diffusion.augmentation import (
-    masked_dense_rigid_motion,
-)
-from support import triton_ops_run
 from torch import nn
 
+from foldforge.diffusion.augmentation import (
+    masked_dense_rigid_motion,
+)
 from foldforge.models.architectures.af3 import AlphaFold3
 from foldforge.modules.dense.diffusion_transformer import CrossAttention, SelfAttention
 from foldforge.modules.dense.spec import ALPHAFOLD3
@@ -60,9 +59,7 @@ def test_sampler_calls_one_batched_denoiser_per_step():
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("backend", ["pytorch", "miniworld"])
-def test_token_attention_batched_matches_separate_and_routes_aug(monkeypatch, backend):
-    from miniworld_engine import ops
-
+def test_token_attention_batched_matches_separate(backend):
     torch.manual_seed(7)
     model = configure_model(SelfAttention(192, 96, 4, use_single_cond=True), backend)
     x = torch.randn(5, 128, 192, device="cuda", dtype=torch.bfloat16)
@@ -70,19 +67,8 @@ def test_token_attention_batched_matches_separate_and_routes_aug(monkeypatch, ba
     mask = torch.ones(128, device="cuda", dtype=torch.bool)
     mask[-8:] = False
     bias = torch.randn(4, 128, 128, device="cuda", dtype=torch.bfloat16)
-    shapes = []
-    original = ops.augmented_attention_pair_bias
-
-    def observe(q, k, v, pair, mask) -> torch.Tensor:
-        shapes.append((tuple(q.shape), tuple(pair.shape)))
-        return original(q, k, v, pair, mask)
-
-    monkeypatch.setattr(ops, "augmented_attention_pair_bias", observe)
     with torch.inference_mode():
         actual = model(x, mask, bias, cond)
-        if backend == "miniworld":
-            served = [((5, 1, 4, 128, 48), (1, 4, 128, 128))]
-            assert shapes == (served if triton_ops_run() else [])
         expected = torch.stack([model(sample, mask, bias, cond) for sample in x])
     torch.testing.assert_close(actual, expected, atol=0.01, rtol=0.03)
 

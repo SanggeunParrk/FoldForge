@@ -1,0 +1,10 @@
+# cpu-v1: NumPy 2.5.3, OpenBLAS Haswell / 1 thread, zstandard 0.25.0.
+# Separate qualified releases; original checkpoints.lock remains unchanged.
+# Converted models: three targets x three seeds x five samples for each model.
+6e1e584768b3c9cb40fa5c7c6737ed152ee2b7f637a68798a95a4bf91d862f94 3156742845 intellifold2/intellifold2.bin.zst
+f614f9a971afb6395f1d62272f0facab0ce01d199f4191b3146ed55c9fa26f76 1196980066 chai1/chai1.bin.zst
+81c583496f9c2bc6cc45d53ab091b9dbab9098185616c84a0a9dd5d8f9486159 989817168 protenix/protenix1.bin.zst
+a23367c2a8719d8a564bdd89733b5211c19fd461fb3da46e4fc61c1798df5081 1333353900 protenix/protenix2.bin.zst
+
+# Official Google release, unmodified: source CRC32C/SHA-256, strict load, CPU/GPU smoke.
+74d0258616917cd122f5eab6d076afe4a8930e96823851e65e4f777dfb1f33ff 1020545840 af3/af3.bin.zst

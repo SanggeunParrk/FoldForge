@@ -151,8 +151,8 @@ def test_masked_global_norm_ignores_padding_and_counts_missing_columns():
 def test_openfold3_lineage_writes_each_bond_both_ways():
     """AF3 trained on one direction, the OpenFold3 lineage on both.
 
-    Unifying this moved no protein metric and broke every ligand's bond
-    geometry (3PTB's benzamidine: 0.01 A to 0.8 A RMS off ideal on protenix2).
+    Unifying this moved no protein metric and broke every ligand's bond geometry
+    (3PTB's benzamidine: 0.01 A to 0.8 A RMS off ideal on protenix2).
     """
     from types import SimpleNamespace
 
@@ -209,8 +209,8 @@ def test_protenix_recycles_under_the_release_s_mc_dropout():
     """Protenix drops its pair recycle at inference on 40% of seeds; OpenDDE never.
 
     Missed, seed 101 of 1A1K read 78 pLDDT against the release's 86 with the
-    confidence head exactly the release's (fed the release's trunk, it gave
-    the release's numbers to the decimal).
+    confidence head exactly the release's (fed the release's trunk, it gave the
+    release's numbers to the decimal).
     """
     assert SPECS["protenix1"].recycle_mc_dropout == (0.4, 0.4)
     assert SPECS["protenix2"].recycle_mc_dropout == (0.4, 0.4)
@@ -301,7 +301,11 @@ def test_chiral_gradient_is_the_dihedral_error_s_derivative():
 
 
 def test_confidence_head_sample_chunk_rule():
-    """Samples per head call: all while their pair stream is small, one at large token counts."""
+    """Check confidence head sample chunk rule.
+
+    Samples per head call: all while their pair stream is small, one at large token
+    counts.
+    """
     import torch
 
     from foldforge.modules.dense.head import ConfidenceHead
@@ -316,7 +320,9 @@ def test_confidence_head_sample_chunk_rule():
         1,
     ]
     assert head.sample_chunk(1, 128) == 1
-    head.sample_chunk_override = 1  # the sequential path (execution.confidence_sample_chunk)
+    head.sample_chunk_override = (
+        1  # the sequential path (execution.confidence_sample_chunk)
+    )
     assert head.sample_chunk(5, 128) == 1
     head.sample_chunk_override = 3
     assert head.sample_chunk(5, 2048) == 3

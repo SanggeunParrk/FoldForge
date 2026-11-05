@@ -18,7 +18,6 @@ Covers:
 from typing import TypeAlias
 
 from alphafold3.model import data_constants
-import jax.numpy as jnp
 import numpy as np
 
 NUM_SEQ_NUM_RES_MSA_FEATURES = data_constants.NUM_SEQ_NUM_RES_MSA_FEATURES
@@ -26,7 +25,7 @@ NUM_SEQ_MSA_FEATURES = data_constants.NUM_SEQ_MSA_FEATURES
 MSA_PAD_VALUES = data_constants.MSA_PAD_VALUES
 
 
-xnp_ndarray: TypeAlias = np.ndarray | jnp.ndarray  # pylint: disable=invalid-name
+xnp_ndarray: TypeAlias = np.ndarray  # pylint: disable=invalid-name
 BatchDict: TypeAlias = dict[str, xnp_ndarray]
 
 

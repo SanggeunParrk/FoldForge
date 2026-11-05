@@ -32,13 +32,11 @@ from alphafold3.model import merging_features
 from alphafold3.model import msa_pairing
 from alphafold3.model.atom_layout import atom_layout
 from alphafold3.structure import chemical_components as struc_chem_comps
-import chex
-import jax.numpy as jnp
 import numpy as np
 from rdkit import Chem
 
 
-xnp_ndarray: TypeAlias = np.ndarray | jnp.ndarray  # pylint: disable=invalid-name
+xnp_ndarray: TypeAlias = np.ndarray  # pylint: disable=invalid-name
 BatchDict: TypeAlias = dict[str, xnp_ndarray]
 
 _STANDARD_RESIDUES = frozenset({
@@ -100,7 +98,7 @@ def _unwrap(obj):
     return obj
 
 
-@chex.dataclass(mappable_dataclass=False, frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Chains:
   chain_id: np.ndarray
   asym_id: np.ndarray
@@ -391,7 +389,7 @@ def tokenizer(
   return all_tokens, all_token_atoms_layout, standard_token_idxs
 
 
-@chex.dataclass(mappable_dataclass=False, frozen=True)
+@dataclasses.dataclass(frozen=True)
 class MSA:
   """Dataclass containing MSA."""
 
@@ -686,7 +684,7 @@ class MSA:
     }
 
 
-@chex.dataclass(mappable_dataclass=False, frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Templates:
   """Dataclass containing templates."""
 
@@ -866,7 +864,7 @@ def _reduce_template_features(
   return template_features
 
 
-@chex.dataclass(mappable_dataclass=False, frozen=True)
+@dataclasses.dataclass(frozen=True)
 class TokenFeatures:
   """Dataclass containing features for tokens."""
 
@@ -1008,7 +1006,7 @@ class TokenFeatures:
     }
 
 
-@chex.dataclass(mappable_dataclass=False, frozen=True)
+@dataclasses.dataclass(frozen=True)
 class PredictedStructureInfo:
   """Contains information necessary to work with predicted structure."""
 
@@ -1070,7 +1068,7 @@ class PredictedStructureInfo:
     }
 
 
-@chex.dataclass(mappable_dataclass=False, frozen=True)
+@dataclasses.dataclass(frozen=True)
 class PolymerLigandBondInfo:
   """Contains information about polymer-ligand bonds."""
 
@@ -1186,7 +1184,7 @@ class PolymerLigandBondInfo:
     }
 
 
-@chex.dataclass(mappable_dataclass=False, frozen=True)
+@dataclasses.dataclass(frozen=True)
 class LigandLigandBondInfo:
   """Contains information about the location of ligand-ligand bonds."""
 
@@ -1282,7 +1280,7 @@ class LigandLigandBondInfo:
     }
 
 
-@chex.dataclass(mappable_dataclass=False, frozen=True)
+@dataclasses.dataclass(frozen=True)
 class PseudoBetaInfo:
   """Contains information for extracting pseudo-beta and equivalent atoms."""
 
@@ -1597,7 +1595,7 @@ def get_reference(
   return features, from_atom, dest_atom
 
 
-@chex.dataclass(mappable_dataclass=False, frozen=True)
+@dataclasses.dataclass(frozen=True)
 class RefStructure:
   """Contains ref structure information."""
 
@@ -1755,7 +1753,7 @@ class RefStructure:
     }
 
 
-@chex.dataclass(mappable_dataclass=False, frozen=True)
+@dataclasses.dataclass(frozen=True)
 class ConvertModelOutput:
   """Contains atom layout info."""
 
@@ -1816,7 +1814,7 @@ class ConvertModelOutput:
     }
 
 
-@chex.dataclass(mappable_dataclass=False, frozen=True)
+@dataclasses.dataclass(frozen=True)
 class AtomCrossAtt:
   """Operate on flat atoms."""
 
@@ -1960,7 +1958,7 @@ class AtomCrossAtt:
     }
 
 
-@chex.dataclass(mappable_dataclass=False, frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Frames:
   """Features for backbone frames."""
 

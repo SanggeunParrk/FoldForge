@@ -317,6 +317,7 @@ def load_templates(
         return ()
     mols = read_record(path, key)["template_mols"]
     templates = []
+    seen: set[str] = set()
     for name, item in mols.items():
         mol = TemplateMol.from_dict(item)
         if len(mol.residues) != length:
@@ -349,6 +350,12 @@ def load_templates(
         mask[np.array(list(sequence)) == "-"] = False
         if int(mask[:, :3].all(axis=-1).sum()) < MIN_ALIGNED_BACKBONES:
             continue  # Same minimum backbone coverage as MiniWorld.
+        # One template per hit sequence, as AF3's and Protenix's template search
+        # keep it: the LMDB stores every chain of an entry (5SYD_A, 5SYD_B, ...),
+        # so the first ``count`` records would repeat the same structure.
+        if sequence.replace("-", "") in seen:
+            continue
+        seen.add(sequence.replace("-", ""))
         templates.append(
             Template(
                 str(name),

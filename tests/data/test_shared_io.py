@@ -129,7 +129,10 @@ def test_legacy_flags_have_one_execution_contract(model, tmp_path):
 def test_resolved_input_and_msa_limit_reach_runtime_without_reparse(
     tmp_path, monkeypatch
 ):
-    from foldforge.models import inference
+    from foldforge import api
+    from foldforge.data import ccd
+    from foldforge.data.inputs import build
+    from foldforge.models import execution, inference, loading
     from foldforge.models.io import runtime
 
     spec = SimpleNamespace(
@@ -141,20 +144,21 @@ def test_resolved_input_and_msa_limit_reach_runtime_without_reparse(
         diffusion_batch_size=1,
         n_diffusion_samples=1,
         model_dump_json=lambda **_kw: "{}",
+        model_dump=lambda **_kw: {},
     )
-    original = SimpleNamespace(spec=spec, chains=[])
-    prepared = SimpleNamespace(
-        spec=spec, chains=[], msa_species={}, resources=list, af3=lambda _seed: {}
-    )
+    monkeypatch.setattr(api, "_resolve_device", lambda _: torch.device("cpu"))
+    original = build.Input(spec, ())
+    prepared = build.Input(spec, ())
     reader = Mock(return_value=original)
     limiter = Mock(return_value=prepared)
-    predict = Mock(return_value=0)
+    predict = Mock(return_value=(SimpleNamespace(report={"test": True}),))
     monkeypatch.setattr(inference, "load", reader)
-    monkeypatch.setattr(inference, "limit_msa", limiter)
-    monkeypatch.setattr(
-        inference, "CCDDatabase", lambda path: SimpleNamespace(root=path)
-    )
-    monkeypatch.setattr(runtime, "run", predict)
+    monkeypatch.setattr(build, "limit_msa", limiter)
+    monkeypatch.setattr(ccd, "CCDDatabase", lambda path: SimpleNamespace(root=path))
+    monkeypatch.setattr(runtime, "predict", predict)
+    monkeypatch.setattr(loading, "load_configured", lambda *_a, **_k: object())
+    monkeypatch.setattr(execution, "Execution", lambda *_a: object())
+    (tmp_path / "weights.pt").touch()
     config = tmp_path / "config.yaml"
     config.write_text(
         "backend: pytorch\ntrunk:\n  msa_depth: 3\nexecution:\n  compile: "
@@ -213,7 +217,10 @@ def test_runtime_owns_forward_count_and_every_target_output(tmp_path, monkeypatc
 
     def execution(model, name, config) -> SimpleNamespace:  # noqa: ARG001 - shared callback or fixture signature
         executions.append((name, config))
-        return SimpleNamespace(report=lambda: {"effective_compile": config.compile})
+        return SimpleNamespace(
+            begin_request=lambda: None,
+            report=lambda: {"effective_compile": config.compile},
+        )
 
     monkeypatch.setattr(runtime, "bind_sampling_seed", Mock())
     monkeypatch.setattr(runtime, "Execution", execution)
@@ -241,7 +248,8 @@ def test_model_cli_shims_cannot_own_execution_or_persistence():
     for model in ("af3", "esmfold2", "protenix1", "protenix2", "opendde"):
         assert not (root / f"models/{model}/inference.py").exists()
     cli = (root / "cli.py").read_text()
-    assert '"foldforge.models.io.cli"' in cli
+    assert "foldforge.models.io.options" in cli
+    assert "app.add_command(fold_command)" in cli
     for path in (root / "models/io").glob("*_atoms.py"):
         source = path.read_text()
         # A shim may cache an INPUT it computed (ESMC embeddings) so a later run can

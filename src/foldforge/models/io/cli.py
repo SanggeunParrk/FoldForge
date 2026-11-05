@@ -1,98 +1,53 @@
-# Optional chemistry/GPU backends load at the selected execution boundary.
-# ruff: noqa: PLC0415
-"""Compatibility flags translated once into the same typed inference request."""
+"""Compatibility entry points backed by the single public fold parser."""
+# ruff: noqa: PLC0415 - compatibility entry points share lazy execution
 
 from __future__ import annotations
 
-import argparse
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-from foldforge.data.ccd import default_path
-from foldforge.models.config import ExecutionConfig, OutputConfig
-from foldforge.models.io.request import Request
-from foldforge.modules.engine.backends import BACKENDS
+if TYPE_CHECKING:
+    from foldforge.models.io.request import Request
 
 
 def parse(model: str, argv: list[str] | None = None) -> Request:
-    """Parse ."""
-    parser = argparse.ArgumentParser(prog=f"foldforge fold {model}")
-    parser.add_argument("--ccd-db", type=Path, default=default_path())
-    parser.add_argument("--checkpoint", type=Path, required=True)
-    parser.add_argument(
-        "--out",
-        type=Path,
-        default=None,
-        help="Run name or path inside runs/ (default: unique model run)",
-    )
-    from foldforge.models.config.runtime import IMAGE_KINDS
+    """Resolve a legacy JSON request without accessing inputs or checkpoints."""
+    import sys
 
-    parser.add_argument(
-        "--save-images",
-        nargs="+",
-        choices=(*IMAGE_KINDS, "all"),
-        help="Save selected diagnostic PNGs (or all); disabled by default",
-    )
-    parser.add_argument("--recycles", type=int, default=10)
-    parser.add_argument("--steps", type=int, default=200)
-    parser.add_argument("--samples", type=int, default=5)
-    parser.add_argument("--seed", type=int, help="Legacy shorthand for both seeds")
-    parser.add_argument(
-        "--trunk-seed", type=int, help="Input/conformer/MSA/trunk randomness"
-    )
-    parser.add_argument(
-        "--diffusion-seed", type=int, help="Diffusion noise and rigid augmentation"
-    )
-    parser.add_argument("--max-graphs", type=int, default=4)
-    parser.add_argument("--compile", action="store_true")
-    parser.add_argument("--cuda-graph", action="store_true")
-    parser.add_argument("--bucketing", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument(
-        "--execution-scope", choices=("denoiser", "trunk", "model"), default="denoiser"
-    )
-    parser.add_argument("--benchmark-repeats", type=int, default=0)
-    parser.add_argument("--input", type=Path, required=True)
-    parser.add_argument(
-        "--backend",
-        choices=BACKENDS,
-        default="miniworld",
-    )
-    parser.add_argument(
-        "--precision",
-        choices=("bf16", "fp32", "af3_default", "model_default"),
-        default="bf16",
-    )
-    options = vars(parser.parse_args(argv))
-    output = OutputConfig(images=tuple(options.pop("save_images") or ()))
-    legacy_seed = options.pop("seed")
-    if legacy_seed is not None and any(
-        options[name] is not None for name in ("trunk_seed", "diffusion_seed")
-    ):
-        parser.error("Use either --seed or --trunk-seed/--diffusion-seed")
-    for name in ("trunk_seed", "diffusion_seed"):
-        if options[name] is None:
-            options[name] = 0 if legacy_seed is None else legacy_seed
-    execution = ExecutionConfig(
-        **{
-            key: options.pop(key)
-            for key in (
-                "compile",
-                "cuda_graph",
-                "bucketing",
-                "max_graphs",
-                "benchmark_repeats",
-            )
-        },
-        scope=options.pop("execution_scope"),
-    )
+    import rich_click as click
+
+    from foldforge.data.ccd import default_path
+    from foldforge.models.inference import resolve_cli_config
+    from foldforge.models.io.options import parse as parse_options
+    from foldforge.models.io.request import Request
+
+    arguments = parse_options(model, list(sys.argv[1:] if argv is None else argv))
+    if arguments.input is None or arguments.checkpoint is None:
+        failure = click.UsageError(
+            "This compatibility parser requires --input and --checkpoint."
+        )
+        failure.show()
+        raise SystemExit(failure.exit_code)
     try:
-        return Request(model=model, execution=execution, output=output, **options)
+        return Request.from_config(
+            resolve_cli_config(arguments),
+            model=model,
+            ccd_db=arguments.ccd_db or default_path(),
+            input=arguments.input,
+            checkpoint=arguments.checkpoint,
+            device=arguments.device,
+            out=arguments.out,
+            samples=arguments.samples if arguments.samples is not None else 5,
+        )
     except ValueError as error:
-        parser.error(str(error))
+        failure = click.UsageError(str(error))
+        failure.show()
+        raise SystemExit(failure.exit_code) from error
 
 
 def run(model: str, argv: list[str] | None = None) -> int:
-    """Run the configured operation."""
-    request = parse(model, argv)
-    from foldforge.models.io.runtime import run as predict
+    """Compatibility execution uses the shared CLI/library path."""
+    import sys
 
-    return predict(request)
+    from foldforge.models.inference import run as predict
+
+    return predict(model, list(sys.argv[1:] if argv is None else argv))

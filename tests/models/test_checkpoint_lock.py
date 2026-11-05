@@ -43,3 +43,47 @@ def test_verify_reports_missing_and_resized(tmp_path, monkeypatch):
     (tmp_path / "a" / "one.bin").write_bytes(b"12")
     problems = lock.verify(tmp_path, quick=True)
     assert problems == ["size     a/one.bin", "missing  b/two.bin"]
+
+
+def test_qualified_conversions_keep_original_pins_and_require_exact_hash(
+    tmp_path, monkeypatch
+):
+    import hashlib
+
+    original = tmp_path / "original.lock"
+    qualified = tmp_path / "conversions.lock"
+    original.write_text(f"{hashlib.sha256(b'old').hexdigest()} 3 chai1/chai1.bin.zst\n")
+    qualified.write_text(
+        f"{hashlib.sha256(b'next').hexdigest()} 4 chai1/chai1.bin.zst\n"
+    )
+    monkeypatch.setattr(lock, "LOCK", original)
+    monkeypatch.setattr(lock, "CONVERSIONS_LOCK", qualified)
+    directory = tmp_path / "chai1"
+    directory.mkdir()
+    blob = directory / "chai1.bin.zst"
+    for content in [b"old", b"next"]:
+        blob.write_bytes(content)
+        lock.check_size(blob)
+        assert not lock.verify(tmp_path)
+    assert lock.pins()["chai1.bin.zst"].size == 3
+    blob.write_bytes(b"evil")
+    with pytest.raises(lock.CheckpointMismatchError):
+        lock.check_size(blob)
+    assert lock.verify(tmp_path) == ["sha256   chai1/chai1.bin.zst"]
+
+
+def test_conversion_pin_cannot_change_checkpoint_owner(tmp_path, monkeypatch):
+    import hashlib
+
+    original = tmp_path / "original.lock"
+    qualified = tmp_path / "conversions.lock"
+    original.write_text(f"{hashlib.sha256(b'old').hexdigest()} 3 chai1/chai1.bin.zst\n")
+    qualified.write_text(
+        f"{hashlib.sha256(b'next').hexdigest()} 4 boltz2/chai1.bin.zst\n"
+    )
+    monkeypatch.setattr(lock, "LOCK", original)
+    monkeypatch.setattr(lock, "CONVERSIONS_LOCK", qualified)
+    blob = tmp_path / "chai1.bin.zst"
+    blob.write_bytes(b"next")
+    with pytest.raises(lock.CheckpointMismatchError):
+        lock.check_size(blob)

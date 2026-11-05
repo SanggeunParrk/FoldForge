@@ -1,9 +1,14 @@
-"""One seam, four backends: ``backend`` / ``engine.ops`` / ``engine.unsupported`` reach the executed kernel.
+"""Verify backend execution against the selected reference.
 
-The plan tests need no GPU. The parity tests install an op on each backend that serves it, through the same
-install path a loaded model takes (``configure_model`` -> ``apply_plan`` -> ``install_engine_modules``), and check
-the result against the FP32 truth with the engine's own tolerance: as close as the same module's PyTorch reference
-is, up to bf16 rounding. The Anthropic payloads are located by environment variables and the tests skip without them.
+One seam, four backends: ``backend`` / ``engine.ops`` / ``engine.unsupported`` reach
+the executed kernel.
+
+The plan tests need no GPU. The parity tests install an op on each backend that
+serves it, through the same install path a loaded model takes (``configure_model``
+-> ``apply_plan`` -> ``install_engine_modules``), and check the result against the
+FP32 truth with the engine's own tolerance: as close as the same module's PyTorch
+reference is, up to bf16 rounding. The Anthropic payloads are located by environment
+variables and the tests skip without them.
 """
 
 from __future__ import annotations
@@ -30,7 +35,8 @@ from foldforge.modules.engine.backends import (
 )
 
 LOGGER = "foldforge.backend"
-#: Where the Anthropic payloads are (environment variables name locations). The engine's own ``miniworld`` modules use a
+#: Where the Anthropic payloads are (environment variables name locations). The
+#:engine's own ``miniworld`` modules use a
 #: payload that is named, so only the tests of the anthropic backend see them.
 PAYLOAD = {
     name: os.environ[name]
@@ -41,7 +47,11 @@ PAYLOAD = {
 
 @pytest.fixture(autouse=True)
 def engine_settings_restored():
-    """``apply_plan`` switches engine settings for the anthropic backend; each test starts from the defaults."""
+    """Restore engine settings after each test.
+
+    ``apply_plan`` switches engine settings for the anthropic backend; each test
+    starts from the defaults.
+    """
     from miniworld_engine import settings
 
     before = settings.current()
@@ -55,14 +65,21 @@ def engine_settings_restored():
 
 @pytest.fixture
 def payload(monkeypatch):
-    """The locations of the Anthropic payloads, for the tests of the anthropic backend."""
+    """Provide the external backend payload locations.
+
+    The locations of the Anthropic payloads, for the tests of the anthropic backend.
+    """
     for name, value in PAYLOAD.items():
         monkeypatch.setenv(name, value)
 
 
 @pytest.fixture(autouse=True)
 def payload_only_for_anthropic(request, monkeypatch):
-    """Every test sees the payload locations only when it is about the anthropic backend."""
+    """Expose payload locations only to tests of that backend.
+
+    Every test sees the payload locations only when it is about the anthropic
+    backend.
+    """
     params = getattr(getattr(request.node, "callspec", None), "params", {})
     if "payload" in request.fixturenames or params.get("backend") == "anthropic":
         for name, value in PAYLOAD.items():
@@ -72,7 +89,8 @@ def payload_only_for_anthropic(request, monkeypatch):
             monkeypatch.delenv(name, raising=False)
 
 
-# --------------------------------------------------------------------------------------------- the table and the plan
+# --------------------------------------------------------------------------------------
+# the table and the plan
 
 
 def test_the_four_backends_and_nothing_else():
@@ -199,12 +217,16 @@ def test_the_cli_takes_each_backend_and_only_those(backend):
         cli.parse("af3", [*arguments, "--backend", "nonsense"])
 
 
-# ------------------------------------------------------------------------------------------------ module-level parity
+# --------------------------------------------------------------------------------------
+# module-level parity
 
 needs_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 needs_anthropic = pytest.mark.skipif(
     len(PAYLOAD) < 3,
-    reason="TRIMUL_NATIVE_BUILD_DIR, OPT_CORE_DIR and MINIWORLD_ANTHROPIC_ROOT name the Anthropic payloads",
+    reason=(
+        "TRIMUL_NATIVE_BUILD_DIR, OPT_CORE_DIR and "
+        "MINIWORLD_ANTHROPIC_ROOT name the Anthropic payloads"
+    ),
 )
 
 BF16_ROUNDING = 3e-3
@@ -227,7 +249,11 @@ def randomize(module, std=0.08):
 
 
 def install(module, backend, ops=None, unsupported="fallback"):
-    """The path a loaded model takes for one dense module: configure, apply the plan, attach the engine modules."""
+    """Run install.
+
+    The path a loaded model takes for one dense module: configure, apply the plan,
+    attach the engine modules.
+    """
     from foldforge.modules.engine.configure import configure_model
     from foldforge.modules.engine.install import apply_plan
     from foldforge.modules.engine.modules import install_engine_modules
@@ -248,8 +274,12 @@ def masks(length, drop=0.15):
 
 @contextlib.contextmanager
 def kernel_calls(built, target):
-    """Count the calls of the kernel a backend is supposed to run: a patched entry point, or ``"engine"`` for the engine
-    modules attached to ``built`` (forward hooks)."""
+    """Run kernel calls.
+
+    Count the calls of the kernel a backend is supposed to run: a patched entry
+    point, or ``"engine"`` for the engine modules attached to ``built`` (forward
+    hooks).
+    """
     if target == "engine":
         from foldforge.modules.engine.modules import engine_of
 
@@ -277,32 +307,35 @@ KERNEL = {
     (
         "trimul",
         "anthropic",
-    ): "miniworld_engine.integrations.anthropic_trimul.update_unidirectional",
+    ): "miniworld_engine.baselines.anthropic_trimul.update_unidirectional",
     ("triangle_attention", "miniworld"): "engine",
     ("triangle_attention", "cuequivariance"): "cuequivariance_torch.triangle_attention",
     (
         "triangle_attention",
         "anthropic",
-    ): "miniworld_engine.integrations.anthropic.triangle_attention",
+    ): "miniworld_engine.baselines.anthropic.triangle_attention",
     ("opm", "miniworld"): "engine",
     (
         "opm",
         "anthropic",
-    ): "miniworld_engine.integrations.anthropic_msa.outer_product_mean",
+    ): "miniworld_engine.baselines.anthropic_msa.outer_product_mean",
     ("msa_pwa", "miniworld"): "engine",
     (
         "msa_pwa",
         "anthropic",
-    ): "miniworld_engine.integrations.anthropic_msa.pair_weighted_averaging",
-    ("transition", "miniworld"): "miniworld_engine.ops.transition",
-    ("transition", "anthropic"): "miniworld_engine.integrations.anthropic.transition",
+    ): "miniworld_engine.baselines.anthropic_msa.pair_weighted_averaging",
+    ("transition", "miniworld"): "engine",
+    ("transition", "anthropic"): "miniworld_engine.baselines.anthropic.transition",
     ("single_attention", "cuequivariance"): "cuequivariance_torch.attention_pair_bias",
 }
 
 
 def parity(make, run, backend, op, *, real, tolerance=BF16_ROUNDING):
-    """FP32 truth vs the pytorch backend vs ``backend``: no worse than the reference plus bf16 rounding, and the
-    backend's own kernel is what ran."""
+    """Run parity.
+
+    FP32 truth vs the pytorch backend vs ``backend``: no worse than the reference
+    plus bf16 rounding, and the backend's own kernel is what ran.
+    """
     torch.manual_seed(7)
     layer = randomize(make())
     truth = copy.deepcopy(layer).cuda().float()
@@ -355,7 +388,11 @@ def test_trimul_on_each_backend(backend, outgoing):
 
 @needs_cuda
 def test_length_divided_trimul_on_miniworld():
-    """RoseTTAFold3 divides the contraction by the real length: the engine scales the left projection, the kernel runs."""
+    """Check length divided trimul on miniworld.
+
+    RoseTTAFold3 divides the contraction by the real length: the engine scales the
+    left projection, the kernel runs.
+    """
     from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
     from foldforge.modules.engine.routing import triangle_residual
 
@@ -378,13 +415,19 @@ def test_length_divided_trimul_on_miniworld():
     "backend", ["cuequivariance", pytest.param("anthropic", marks=needs_anthropic)]
 )
 def test_length_divided_trimul_is_a_stated_reference_elsewhere(backend, caplog):
-    """Neither the vendor op nor the payload has the per-call length scale: one log line, then the reference."""
+    """Check length divided trimul is a stated reference elsewhere.
+
+    Neither the vendor op nor the payload has the per-call length scale: one log
+    line, then the reference.
+    """
     from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
     from foldforge.modules.engine.configure import configure_model
     from foldforge.modules.engine.routing import triangle_residual
 
     torch.manual_seed(4)
-    layer = randomize(TriangleMultiplication(128, _outgoing=True, divide_by_length=True))
+    layer = randomize(
+        TriangleMultiplication(128, _outgoing=True, divide_by_length=True)
+    )
     x, mask, _ = pair_case(128)
     reference = configure_model(copy.deepcopy(layer), "pytorch")
     backends.forget_logged_refusals()
@@ -394,7 +437,10 @@ def test_length_divided_trimul_is_a_stated_reference_elsewhere(backend, caplog):
             out = triangle_residual(built, x.clone(), mask)
             triangle_residual(built, x.clone(), mask)
             expected = triangle_residual(reference, x.clone(), mask)
-    assert len([r for r in caplog.records if "refuses a trimul call" in r.getMessage()]) == 1
+    assert (
+        len([r for r in caplog.records if "refuses a trimul call" in r.getMessage()])
+        == 1
+    )
     assert torch.equal(out, expected)
 
 
@@ -441,7 +487,8 @@ def test_msa_ops_on_each_backend(backend):
         m, z = (msa.float(), pair.float()) if float_input else (msa, pair)
         return layer.residual(m.clone(), msa_mask, z)
 
-    # the release's cell is (d_msa 64, d_pair 128, 8 heads, head width 32); AF3's own head width is 8 (below)
+    # the release's cell is (d_msa 64, d_pair 128, 8 heads, head width 32); AF3's
+    # own head width is 8 (below)
     width = 32 if backend == "anthropic" else None
     parity(
         lambda: MSAAttention(64, 128, 8, value_dim=width),
@@ -457,7 +504,8 @@ def test_msa_ops_on_each_backend(backend):
     pair_real = torch.ones(length, length, 128, device="cuda", dtype=torch.bool)
     pair_real[::17] = False
     pair_real[:, ::17] = False
-    # the release's epilogue divides by the pair count before it adds the bias: the OpenFold-lineage convention (AF3's is below)
+    # the release's epilogue divides by the pair count before it adds the bias:
+    # the OpenFold-lineage convention (AF3's is below)
     convention = (
         {"bias_after_norm": True, "clamped_norm": True}
         if backend == "anthropic"
@@ -519,12 +567,17 @@ def test_single_attention_on_cuequivariance_and_miniworld():
     parity(make, run, "cuequivariance", "single_attention", real=real)
 
 
-# ---------------------------------------------------------------- the fallback is stated, never silent; overrides work
+# ---------------------------------------------------------------- the fallback is
+# stated, never silent; overrides work
 
 
 @needs_cuda
 def test_the_engine_module_of_an_op_runs_only_on_its_backend():
-    """``backend: pytorch`` with ``trimul: miniworld`` attaches the engine TriMul to the trimul module and nothing else."""
+    """Check the engine module of an op runs only on its backend.
+
+    ``backend: pytorch`` with ``trimul: miniworld`` attaches the engine TriMul to
+    the trimul module and nothing else.
+    """
     from foldforge.modules.dense.primitives import OuterProductMean
     from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
     from foldforge.modules.engine.modules import engine_of
@@ -544,7 +597,11 @@ def test_the_engine_module_of_an_op_runs_only_on_its_backend():
 
 @needs_cuda
 def test_backend_without_a_kernel_attaches_nothing_and_equals_pytorch():
-    """cuequivariance has no OuterProductMean kernel: the op is the PyTorch reference, bit for bit."""
+    """Check backend without a kernel attaches nothing and equals pytorch.
+
+    cuequivariance has no OuterProductMean kernel: the op is the PyTorch reference,
+    bit for bit.
+    """
     from foldforge.modules.dense.primitives import OuterProductMean
     from foldforge.modules.engine.configure import configure_model
     from foldforge.modules.engine.modules import engine_of
@@ -564,7 +621,11 @@ def test_backend_without_a_kernel_attaches_nothing_and_equals_pytorch():
 @pytest.mark.skipif(len(PAYLOAD) < 3, reason="the Anthropic payloads are not named")
 @pytest.mark.usefixtures("payload")
 def test_af3_msa_head_width_is_refused_by_the_release_and_stated(caplog):
-    """AF3's pair weighted averaging has 8-wide heads; the release's cell is 32 wide: one line, then the reference."""
+    """Check af3 msa head width is refused by the release and stated.
+
+    AF3's pair weighted averaging has 8-wide heads; the release's cell is 32 wide:
+    one line, then the reference.
+    """
     from foldforge.modules.dense.attention import MSAAttention
     from foldforge.modules.engine.configure import configure_model
 
@@ -590,7 +651,11 @@ def test_af3_msa_head_width_is_refused_by_the_release_and_stated(caplog):
 @pytest.mark.skipif(len(PAYLOAD) < 3, reason="the Anthropic payloads are not named")
 @pytest.mark.usefixtures("payload")
 def test_af3_opm_bias_convention_is_refused_by_the_release_and_stated(caplog):
-    """AF3 adds the OPM output bias before the division by the pair count, the release's epilogue after: one line, then the reference."""
+    """Check af3 opm bias convention is refused by the release and stated.
+
+    AF3 adds the OPM output bias before the division by the pair count, the
+    release's epilogue after: one line, then the reference.
+    """
     from foldforge.modules.dense.primitives import OuterProductMean
     from foldforge.modules.engine.configure import configure_model
 
@@ -613,8 +678,14 @@ def test_af3_opm_bias_convention_is_refused_by_the_release_and_stated(caplog):
 @needs_cuda
 @pytest.mark.skipif(len(PAYLOAD) < 3, reason="the Anthropic payloads are not named")
 @pytest.mark.usefixtures("payload")
-def test_a_module_the_payload_cannot_serve_is_stated_at_install_and_equals_the_reference(caplog):
-    """A pair width the payload has no TriMul unit for (192): stated once at install, no engine module, the reference."""
+def test_unsupported_payload_module_is_reported_and_matches_reference(
+    caplog,
+):
+    """Check a module the payload cannot serve is stated at install and equals.
+
+    A pair width the payload has no TriMul unit for (192): stated once at install,
+    no engine module, the reference.
+    """
     from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
     from foldforge.modules.engine.configure import configure_model
     from foldforge.modules.engine.modules import engine_of
@@ -628,7 +699,11 @@ def test_a_module_the_payload_cannot_serve_is_stated_at_install_and_equals_the_r
     backends.forget_logged_refusals()
     with caplog.at_level(logging.WARNING, logger=LOGGER):
         built = install(copy.deepcopy(layer), "anthropic")
-    refusals = [r.getMessage() for r in caplog.records if "refuses a trimul call" in r.getMessage()]
+    refusals = [
+        r.getMessage()
+        for r in caplog.records
+        if "refuses a trimul call" in r.getMessage()
+    ]
     assert len(refusals) == 1, caplog.text
     assert engine_of(built) is None
     with torch.no_grad():
@@ -638,19 +713,30 @@ def test_a_module_the_payload_cannot_serve_is_stated_at_install_and_equals_the_r
         )
     backends.forget_logged_refusals()
     with pytest.raises(BackendUnsupportedError, match="trimul"):
-        install(copy.deepcopy(layer), "pytorch", {"trimul": "anthropic"}, unsupported="error")
+        install(
+            copy.deepcopy(layer),
+            "pytorch",
+            {"trimul": "anthropic"},
+            unsupported="error",
+        )
 
 
 @needs_cuda
 @pytest.mark.skipif(len(PAYLOAD) < 3, reason="the Anthropic payloads are not named")
 @pytest.mark.usefixtures("payload")
 def test_a_call_the_payload_refuses_runs_the_reference_with_one_line_or_raises(caplog):
-    """The OPM epilogue tiles 4 x 16 tokens: N = 100 is refused at the call (not at install), stated once."""
+    """Check a call the payload refuses runs the reference with one line or.
+
+    The OPM epilogue tiles 4 x 16 tokens: N = 100 is refused at the call (not at
+    install), stated once.
+    """
     from foldforge.modules.dense.primitives import OuterProductMean
     from foldforge.modules.engine.configure import configure_model
 
     torch.manual_seed(5)
-    layer = randomize(OuterProductMean(64, 128, 32, bias_after_norm=True, clamped_norm=True))
+    layer = randomize(
+        OuterProductMean(64, 128, 32, bias_after_norm=True, clamped_norm=True)
+    )
     msa = torch.randn(32, 100, 64, device="cuda", dtype=torch.bfloat16)
     mask = torch.ones(32, 100, device="cuda")
     reference = configure_model(copy.deepcopy(layer), "pytorch")
@@ -660,16 +746,24 @@ def test_a_call_the_payload_refuses_runs_the_reference_with_one_line_or_raises(c
         out = built(msa, mask)
         built(msa, mask)
         expected = reference(msa, mask)
-    assert len([r for r in caplog.records if "refuses a opm call" in r.getMessage()]) == 1, caplog.text
+    assert (
+        len([r for r in caplog.records if "refuses a opm call" in r.getMessage()]) == 1
+    ), caplog.text
     assert torch.equal(out, expected)
-    strict = install(copy.deepcopy(layer), "pytorch", {"opm": "anthropic"}, unsupported="error")
+    strict = install(
+        copy.deepcopy(layer), "pytorch", {"opm": "anthropic"}, unsupported="error"
+    )
     with torch.no_grad(), pytest.raises(BackendUnsupportedError, match="opm"):
         strict(msa, mask)
 
 
 @needs_cuda
 def test_sampler_ops_are_off_unless_miniworld():
-    """The engine's fused rigid-motion / pooling kernels are miniworld's: other backends take the torch ops."""
+    """Check sampler ops are off unless miniworld.
+
+    The engine's fused rigid-motion / pooling kernels are miniworld's: other
+    backends take the torch ops.
+    """
     from foldforge.modules.dense.atom_cross_attention import AtomCrossAttEncoder
 
     assert "AtomCrossAttEncoder" in OP_CLASSES["sampler_ops"]

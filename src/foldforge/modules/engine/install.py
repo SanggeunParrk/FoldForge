@@ -8,18 +8,25 @@ turns into other classes), the conditioning pass last.
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import torch
 
 from foldforge.modules.engine.backends import OP_CLASSES, BackendPlan
 from foldforge.modules.engine.conditioning import install_conditioning
 from foldforge.modules.engine.configure import implementation_of
+from foldforge.modules.engine.installation import (
+    installation_report,
+    phase_decisions,
+    record_installation,
+    record_phase,
+)
 from foldforge.modules.engine.modules import install_engine_modules
 from foldforge.modules.engine.pairformer import install_pairformers
 
 if TYPE_CHECKING:
     from collections.abc import Collection
+    from typing import Any
 
     from torch import nn
 
@@ -69,7 +76,11 @@ def apply_plan(model: nn.Module, plan: BackendPlan) -> None:
     # built with implementation="anthropic"; this switches those off, so that the backend named is the kernel that runs.
     off = {
         **({"opm_train": False} if plan.of("opm") == "anthropic" else {}),
-        **({"pwa_train": False, "pwa_infer": False} if plan.of("msa_pwa") == "anthropic" else {}),
+        **(
+            {"pwa_train": False, "pwa_infer": False}
+            if plan.of("msa_pwa") == "anthropic"
+            else {}
+        ),
     }
     if off:
         from miniworld_engine import settings
@@ -98,6 +109,8 @@ def install_engine(
     """
     skip = set(skip)
     plan = BackendPlan.make() if plan is None else plan
+    record_phase(model, "pairformers", {})
+    record_phase(model, "conditioning", {})
     with skip_engine_init():
         if "pairformers" not in skip:
             model = install_pairformers(model)
@@ -108,4 +121,33 @@ def install_engine(
                     model, torch.empty(0, dtype=dtype, device=device), skip, plan
                 )
             )
-        return model if "conditioning" in skip else install_conditioning(model)
+        else:
+            record_installation(
+                model,
+                {
+                    "enabled": False,
+                    "coverage": "engine_module_candidates",
+                    "is_runtime_dispatch": False,
+                    "reason": "engine_modules_disabled",
+                    "modules": {},
+                },
+            )
+        if "conditioning" not in skip:
+            model = install_conditioning(model)
+        report = installation_report(model)
+        load_report = cast("dict[str, Any]", model.foldforge_load_report)
+        report["phases"] = {
+            "pairformers": {
+                "status": "skipped" if "pairformers" in skip else "processed",
+                "converted": 0
+                if "pairformers" in skip
+                else load_report.get("engine_pairformer_blocks", 0),
+            },
+            "conditioning": {
+                "status": "skipped" if "conditioning" in skip else "processed"
+            },
+        }
+        for name, decisions in phase_decisions(model).items():
+            report["phases"][name]["decisions"] = decisions
+        load_report["engine_installation"] = report
+        return model

@@ -4,7 +4,7 @@
 
 This module owns argument names only. Noise, augmentation, schedules, sample
 chunking, integration and training corruption live in
-miniworld_engine.architecture.diffusion.
+foldforge.diffusion.
 """
 
 from __future__ import annotations
@@ -14,11 +14,11 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
-from miniworld_engine.architecture.diffusion.augmentation import (
+
+from foldforge.diffusion.augmentation import (
     centre_random_augmentation,
 )
-from miniworld_engine.architecture.diffusion.edm.sampling import EulerSampler
-
+from foldforge.diffusion.edm.sampling import EulerSampler
 from foldforge.utils.seed import seed_context
 
 if TYPE_CHECKING:
@@ -165,13 +165,18 @@ def bind_sampling_seed(model: torch.nn.Module, seed: int) -> None:
     This host boundary encloses initial noise, augmentation, churn and guidance.
     The denoiser's compiled/CUDA-graph boundary stays inside it.
     """
-    owner, method = model, "_sample_diffusion"
+    owner: Any = model
+    method = "_sample_diffusion"
+    owner.foldforge_diffusion_seed = seed
     original = getattr(owner, method)
+    if original is getattr(owner, "foldforge_sampling_wrapper", None):
+        return
 
     @torch.compiler.disable
     @wraps(original)
     def sample(*args: Any, **kwargs: Any) -> Any:
-        with seed_context(seed):
+        with seed_context(owner.foldforge_diffusion_seed):
             return original(*args, **kwargs)
 
+    owner.foldforge_sampling_wrapper = sample
     setattr(owner, method, sample)

@@ -16,10 +16,9 @@ import torch.nn as nn
 
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 from foldforge.modules.engine.attention_ops import (
-    engine_attention_supported,
-    engine_triangle_attention,
-    gated_projection,
+    anthropic_attention as anthropic_attention,
 )
+from foldforge.modules.engine.attention_ops import serve_projected_triangle
 from foldforge.modules.engine.modules import residue_mask
 from foldforge.modules.engine.routing import served_by
 from foldforge.modules.reference.attention import dot_product_attention
@@ -60,43 +59,6 @@ def _row_chunked_attention(
         for start in range(0, rows, chunk)
     ]
     return torch.concatenate(parts, dim=0)
-
-
-def anthropic_attention(module, q, k, v, bias, mask):
-    """The attention core on the Anthropic release's triangle-attention row ``k2b`` (the cuequivariance calling convention).
-
-    None when the release refuses the call (it raises ``Refusal`` by name, or the call needs a gradient): the caller then runs
-    the PyTorch reference, after one log line (``engine.unsupported: error`` raises instead).
-    """
-    from foldforge.modules.engine.backends import call_refusal
-
-    policy = getattr(module, "foldforge_unsupported", "fallback")
-    if call_refusal(
-        policy,
-        "triangle_attention",
-        "anthropic",
-        "the release's calls are inference-only (grad is enabled)" if torch.is_grad_enabled() else None,
-    ):
-        return None
-    from miniworld_engine.integrations import anthropic
-
-    vendor_mask = None if mask is None else mask[None, :, None, None, :].bool()
-    try:
-        out = anthropic.triangle_attention(
-            q[None].contiguous(),
-            k[None].contiguous(),
-            v[None].contiguous(),
-            bias[None, None].float().contiguous(),
-            vendor_mask,
-            module.qkv_dim**-0.5,
-            row="k2b",
-        )
-    except Exception as error:  # the release refuses by name (opt_core ``Refusal``)
-        if type(error).__name__ != "Refusal":
-            raise
-        call_refusal(policy, "triangle_attention", "anthropic", str(error))
-        return None
-    return out.squeeze(0)
 
 
 class GridSelfAttention(nn.Module):
@@ -157,44 +119,19 @@ class GridSelfAttention(nn.Module):
             for t in [q, k, v]
         )
 
-        if engine_attention_supported(self, q, self.qkv_dim):
-            weighted_avg = engine_triangle_attention(q, k, v, bias, mask)
-        elif (
-            getattr(self, "foldforge_implementation", None) == "cuequivariance"
-            and q.is_cuda
-        ):
-            from cuequivariance_torch import triangle_attention
-
-            vendor_mask = None if mask is None else mask[None, :, None, None, :]
-            vendor_output = triangle_attention(
-                q[None].contiguous(),
-                k[None].contiguous(),
-                v[None].contiguous(),
-                bias[None, None].float().contiguous(),
-                mask=vendor_mask,
-                scale=self.qkv_dim**-0.5,
-            )
-            if not isinstance(vendor_output, torch.Tensor):
-                message = "Triangle attention returned auxiliary values unexpectedly"
-                raise TypeError(message)
-            weighted_avg = vendor_output.squeeze(0)
-        else:
-            weighted_avg = None
-            if getattr(self, "foldforge_implementation", None) == "anthropic" and q.is_cuda:
-                weighted_avg = anthropic_attention(self, q, k, v, bias, mask)
-            if weighted_avg is None:
-                weighted_avg = _row_chunked_attention(q, k, v, mask=mask, bias=bias)
+        weighted_avg = serve_projected_triangle(self, q, k, v, bias, mask)
+        if weighted_avg is None:
+            weighted_avg = _row_chunked_attention(q, k, v, mask=mask, bias=bias)
 
         weighted_avg = einops.rearrange(weighted_avg, "b h n d -> b n (h d)")
 
         gate_values = self.gating_query(pair)
 
-        kept = gated_projection(self, self.output_projection, gate_values, weighted_avg)
+        gated = torch.sigmoid(gate_values) * weighted_avg
+        kept = self.output_projection(gated)
         if not self.dual_output:
             return kept
-        other = gated_projection(
-            self, self.output_projection_transposed, gate_values, weighted_avg
-        )
+        other = self.output_projection_transposed(gated)
         return kept, other
 
     def forward(self, pair: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -285,7 +222,7 @@ class MSAAttention(nn.Module):
         v_avg = torch.reshape(v_avg, (*v_avg.shape[:-2], -1))
 
         gate_values = self.gating_query(msa)
-        return gated_projection(self, self.output_projection, gate_values, v_avg)
+        return self.output_projection(torch.sigmoid(gate_values) * v_avg)
 
     def residual(
         self, msa: torch.Tensor, msa_mask: torch.Tensor, pair: torch.Tensor

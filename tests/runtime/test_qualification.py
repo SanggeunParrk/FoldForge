@@ -8,10 +8,10 @@ from typing import Any, Union
 
 import pytest
 import torch
-from miniworld_engine.architecture import tensor_layout as layout
 from support import REFERENCE_ROOT, REPOSITORY_ROOT
 from torch import nn
 
+from foldforge.diffusion import tensor_layout as layout
 from foldforge.models.config import ExecutionConfig
 from foldforge.models.execution import ExecutedCallable
 
@@ -106,7 +106,7 @@ def test_compile_is_really_invoked_and_matches():
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA graph runtime")
-def test_graph_dataclass_metadata_and_capture_limit():
+def test_graph_dataclass_metadata_and_bounded_eviction():
     from dataclasses import dataclass
 
     @dataclass
@@ -125,8 +125,14 @@ def test_graph_dataclass_metadata_and_capture_limit():
         b = fn(Inputs(x + 2, torch.tensor([2, 3])))
         torch.testing.assert_close(a, x.reshape(2, 3).square())
         torch.testing.assert_close(b, (x + 2).reshape(2, 3).square())
-        with pytest.raises(RuntimeError, match="max_graphs"):
-            fn(Inputs(x, torch.tensor([3, 2])))
+        c = fn(Inputs(x, torch.tensor([3, 2])))
+        torch.testing.assert_close(c, x.reshape(3, 2).square())
+        assert len(fn.graphs) == 1
+        assert fn.evictions == 1
+        d = fn(Inputs(x + 3, torch.tensor([2, 3])))
+        torch.testing.assert_close(d, (x + 3).reshape(2, 3).square())
+        assert len(fn.graphs) == 1
+        assert fn.evictions == 2
         with pytest.raises(ValueError, match="integer CPU"):
             fn(Inputs(x, torch.tensor([2.0, 3.0])))
 
@@ -200,7 +206,7 @@ def test_shared_layout_imports_are_live(family):
     )
     for relative, name in records:
         relative.removesuffix(".py").replace("/", ".")
-        actual = importlib.import_module("miniworld_engine.architecture.tensor_layout")
+        actual = importlib.import_module("foldforge.diffusion.tensor_layout")
         assert getattr(actual, name) is getattr(layout, name), (family, name)
 
 

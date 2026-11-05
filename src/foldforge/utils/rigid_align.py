@@ -1,22 +1,29 @@
 """Kabsch rotation without a decomposition that synchronises with the host.
 
-``torch.linalg.svd`` on a CUDA tensor checks its status flag on the host, which a CUDA-graph capture
-forbids. Horn's quaternion method needs only the dominant eigenvector of one symmetric 4x4 matrix
-``N(H)``; that is found by squaring ``N + c I`` repeatedly (every squaring is a 4x4 matmul and a
-rescale), which has no data-dependent branch and no host read. A proper rotation always results, so
-the reflection case of the SVD form (flip the weakest axis when ``det < 0``) is the same answer.
+``torch.linalg.svd`` on a CUDA tensor checks its status flag on the host, which a
+CUDA-graph capture forbids. Horn's quaternion method needs only the dominant
+eigenvector of one symmetric 4x4 matrix ``N(H)``; that is found by squaring ``N + c
+I`` repeatedly (every squaring is a 4x4 matmul and a rescale), which has no
+data-dependent branch and no host read. A proper rotation always results, so the
+reflection case of the SVD form (flip the weakest axis when ``det < 0``) is the same
+answer.
 """
 
 from __future__ import annotations
 
 import torch
 
-#: ``(N + cI)^(2**SQUARINGS)``: the ratio of the two largest eigenvalues is raised to ``2**SQUARINGS``.
+#: ``(N + cI)^(2**SQUARINGS)``: the ratio of the two largest eigenvalues is raised to
+#:``2**SQUARINGS``.
 SQUARINGS = 12
 
 
 def horn_matrix(h: torch.Tensor) -> torch.Tensor:
-    """The symmetric 4x4 ``N`` of Horn (1987) from ``h[..., i, j] = sum_n w_n a[n, i] b[n, j]``."""
+    """Build Horn's symmetric 4x4 matrix from the covariance.
+
+    The symmetric 4x4 ``N`` of Horn (1987) from ``h[..., i, j] = sum_n w_n a[n, i]
+    b[n, j]``.
+    """
     sxx, sxy, sxz = h[..., 0, 0], h[..., 0, 1], h[..., 0, 2]
     syx, syy, syz = h[..., 1, 0], h[..., 1, 1], h[..., 1, 2]
     szx, szy, szz = h[..., 2, 0], h[..., 2, 1], h[..., 2, 2]
@@ -30,14 +37,22 @@ def horn_matrix(h: torch.Tensor) -> torch.Tensor:
 
 
 def dominant_quaternion(n: torch.Tensor) -> torch.Tensor:
-    """Unit eigenvector of the largest eigenvalue of the symmetric 4x4 ``n`` (``[..., 4]``)."""
-    # |eigenvalue| <= the trace norm of H <= sqrt(3) |H|_F, and the spectrum of N is the sums of the
-    # signed singular values, so shifting by the Frobenius bound makes the matrix positive definite.
+    """Compute the dominant unit quaternion of a symmetric 4x4 matrix.
+
+    Unit eigenvector of the largest eigenvalue of the symmetric 4x4 ``n`` (``[...,
+    4]``).
+    """
+    # |eigenvalue| <= the trace norm of H <= sqrt(3) |H|_F, and the spectrum of N
+    # is the sums of the
+    # signed singular values, so shifting by the Frobenius bound makes the matrix
+    # positive definite.
     shift = n.square().sum((-2, -1), keepdim=True).sqrt() * 1.0
     m = n + shift * torch.eye(4, dtype=n.dtype, device=n.device)
     for _ in range(SQUARINGS):
         m = m @ m
-        m = m / m.abs().amax((-2, -1), keepdim=True).clamp_min(torch.finfo(n.dtype).tiny)
+        m = m / m.abs().amax((-2, -1), keepdim=True).clamp_min(
+            torch.finfo(n.dtype).tiny
+        )
     # m ~ lambda^k q q^T: the column of largest norm is q up to scale (and sign).
     columns = m.transpose(-2, -1)
     norms = columns.square().sum(-1)
@@ -47,7 +62,11 @@ def dominant_quaternion(n: torch.Tensor) -> torch.Tensor:
 
 
 def quaternion_to_matrix(q: torch.Tensor) -> torch.Tensor:
-    """Rotation matrix (column-vector convention) of the unit quaternion ``q = (w, x, y, z)``."""
+    """Convert a unit quaternion to a column-vector rotation matrix.
+
+    Rotation matrix (column-vector convention) of the unit quaternion ``q = (w, x,
+    y, z)``.
+    """
     w, x, y, z = q.unbind(-1)
     rows = [
         [w * w + x * x - y * y - z * z, 2 * (x * y - w * z), 2 * (x * z + w * y)],
@@ -58,6 +77,10 @@ def quaternion_to_matrix(q: torch.Tensor) -> torch.Tensor:
 
 
 def kabsch_rotation(covariance: torch.Tensor) -> torch.Tensor:
-    """``R`` with ``a @ R ~ b`` (row vectors) for ``covariance = a^T W b``; the same ``R`` as ``U D V^T`` of its SVD."""
+    """Compute the row-vector Kabsch rotation from covariance.
+
+    ``R`` with ``a @ R ~ b`` (row vectors) for ``covariance = a^T W b``; the same
+    ``R`` as ``U D V^T`` of its SVD.
+    """
     q = dominant_quaternion(horn_matrix(covariance))
     return quaternion_to_matrix(q).transpose(-2, -1)

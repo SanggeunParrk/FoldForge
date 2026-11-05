@@ -11,9 +11,9 @@
 """Library of scoring methods of the model outputs."""
 
 import torch
-from foldforge.utils.device_constants import on_device
 
 from foldforge.data.features import dense_protein as protein_data_processing
+from foldforge.utils.device_constants import on_device
 
 
 def pseudo_beta_fn(

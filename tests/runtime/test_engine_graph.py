@@ -51,7 +51,58 @@ def test_denoiser_graph_replays_the_eager_result(compile_):
         expected = step(act.clone())
         first = graphed(act.clone()).clone()
         second = graphed(act.clone()).clone()
+        changed = act * 0.9 + 0.02
+        expected_changed = step(changed.clone())
+        third = graphed(changed.clone()).clone()
     assert graphed.captures == 1
-    assert graphed.replays == 2
+    assert graphed.replays == 3
     torch.testing.assert_close(first, expected, rtol=0.02, atol=0.02)
     torch.testing.assert_close(second, first, rtol=0, atol=0)
+    torch.testing.assert_close(third, expected_changed, rtol=0.02, atol=0.02)
+
+
+@pytest.mark.parametrize("parallel", [False, True])
+@pytest.mark.parametrize("compile_", [False, True])
+def test_pairformer_adapter_graph_preserves_changed_inputs(parallel, compile_):
+    from dataclasses import replace
+
+    from foldforge.modules.dense.pairformer import PairformerBlock
+    from foldforge.modules.dense.spec import ALPHAFOLD3
+    from foldforge.modules.engine.pairformer import AF3Pairformer
+    from foldforge.modules.engine.serving import report_observations
+
+    torch.manual_seed(13)
+    source = PairformerBlock(
+        spec=replace(ALPHAFOLD3, parallel_pairformer_block=parallel)
+    )
+    with torch.no_grad():
+        for p in source.parameters():
+            if p.ndim > 1:
+                p.normal_(0, 0.04)
+    layer = AF3Pairformer(configure_model(source, "miniworld"))
+    install_engine_modules(layer, torch.empty(0, dtype=torch.bfloat16, device="cuda"))
+    length = 128
+    pair = torch.randn(length, length, 128, device="cuda", dtype=torch.bfloat16)
+    single = torch.randn(length, 384, device="cuda", dtype=torch.bfloat16)
+    residues = torch.rand(length, device="cuda") > 0.15
+    mask = residues[:, None] & residues[None, :]
+
+    def step(x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        return layer(x, mask, single, residues)
+
+    policy = SimpleNamespace(compile=compile_, cuda_graph=True, max_graphs=2)
+    graphed = ExecutedCallable(step, policy, "test.pairformer")
+    with torch.no_grad():
+        changed = pair * 0.9 + 0.02
+        expected = step(pair.clone())
+        expected_changed = step(changed.clone())
+        first = tuple(v.clone() for v in graphed(pair.clone()))
+        before_replay = report_observations(layer)
+        second = tuple(v.clone() for v in graphed(changed.clone()))
+    assert graphed.captures == 1
+    assert graphed.replays == 2
+    assert report_observations(layer) == before_replay
+    for actual, want in zip(first, expected, strict=True):
+        torch.testing.assert_close(actual, want, rtol=0.02, atol=0.02)
+    for actual, want in zip(second, expected_changed, strict=True):
+        torch.testing.assert_close(actual, want, rtol=0.02, atol=0.02)

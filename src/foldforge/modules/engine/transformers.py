@@ -1,289 +1,173 @@
-"""Serve token and atom transformers through one adapter contract.
+"""The diffusion transformers as FoldForge builds them: engine ``TokenDiT*`` / ``AtomDiT*`` BLOCKS, the stack assembled here.
 
-Installation selects a per-block or whole-stack layout adapter once. Dense callers
-use ``serve_token`` / ``serve_atom`` and receive an output or None for dense fallback.
-The four layout handlers preserve the original views, padding and cache-key
-lifetimes; engine weights remain attached out of band. Host observations are
-reported separately from compiled execution and CUDA Graph replay counts.
+The engine owns one block per model (``TokenDiT(model=...)``, ``AtomDiT(model=...)``: the model's own class, so a state dict has that
+class's keys); the stack is FoldForge's: a ``ModuleList`` ``blocks`` run in order. Each block hoists its own pair bias from the pair
+(``attention.ln_pair`` + ``attention.to_bias``), so there is no shared pair norm / projection in the engine layout: the released AF3
+stack's shared parameters are broadcast / sliced per block by the offline converter (:mod:`foldforge.models.checkpoints.legacy.released`).
+
+Shapes (engine layout): ``single`` / ``cond`` ``[A, B, L, d]`` (A = diffusion samples), token ``pair`` ``[B, L, L, d_pair]``, atom
+``pair`` the trunked ``[B, windows, 32, 128, d_pair]``, ``mask`` the bool key mask ``[B, L]`` (or ``[A, B, L]``), ``uid`` ``[B, N]``
+(Chai-1's conformer ids).
 """
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from miniworld_engine.modules import AtomDiT, TokenDiT
+from miniworld_engine.modules.atom_dit import KEY_WINDOWS
+from torch import nn
 
-from foldforge.modules.engine.modules import (
-    attachment_support,
-    engine_of,
-    variant_selection,
-)
-from foldforge.modules.engine.routing import enabled, enabled_fp32
-from foldforge.modules.engine.serving import (
-    ADAPTER_ATTR,
-    Dispatch,
-    TransformerAdapter,
-    observe,
-)
+from foldforge.modules.engine.modules import Precision, finish, model_keys
 
-_UNBATCHED_TOKEN_RANK = 2
+if TYPE_CHECKING:
+    from torch import Tensor
 
-#: Token widths of the engine's Hopper FP32 token DiT (`integrations.token_dit.LAYOUTS`,
-#: 16 heads, 384-wide conditioning).
-_FP32_TOKEN_WIDTHS = (768, 1024)
-_FP32_TOKEN_TILE = 128
+_UNBATCHED_RANK = 2
 
 
-def _fp32_token_blocks(module: nn.Module, built: object, act: torch.Tensor) -> bool:
-    """Whether FP32 activations may take the engine's per-block token DiT (TF32 tensor cores, FP32 residual stream).
+class TokenDiTStack(nn.Module):
+    """``blocks``: the engine token DiT blocks of one family, in order (state-dict keys ``blocks.{i}.<engine names>``).
 
-    The blocks must hold FP32 parameters (the engine's FP32 path reads no other), TF32 must be allowed for
-    this module (`routing.set_tf32_policy`), and the call must be the shape the Hopper FP32 kernels
-    take: whole 128-token tiles at a 768 / 1024 width. Anything else keeps the dense FP32 statements.
-    """
-    return (
-        isinstance(built, list)
-        and enabled_fp32(module, act)
-        and act.shape[-1] in _FP32_TOKEN_WIDTHS
-        and act.shape[-2] % _FP32_TOKEN_TILE == 0
-        and getattr(module, "foldforge_engine_fp32", False)
-    )
+    Called like the dense token transformer: ``act`` ``[S, L, d]`` (or ``[L, d]``), ``mask`` ``[L]``, ``single_cond`` ``[L, d_cond]``
+    (broadcast over the samples, or ``[S, L, d_cond]``), ``pair_cond`` ``[L, L, d_pair]``; ``key_mask`` ``[1, L]`` bool (made once per fold
+    by the caller; made here when absent); ``extra_pair_bias`` ``[L, L]``: OpenDDE's bias, added to every head of every block."""
 
+    def __init__(self, blocks: list[nn.Module]) -> None:
+        super().__init__()
+        self.blocks = nn.ModuleList(blocks)
 
-def _serves_extra_bias(act: torch.Tensor, extra_pair_bias: torch.Tensor) -> bool:
-    """Whether the engine's token DiT takes this [L, L] bias (Hopper, BF16, ``act``'s token count)."""
-    from miniworld_engine.modules import runtime
-
-    return runtime.token_dit_serves_extra_bias(
-        act[None, None] if act.ndim == _UNBATCHED_TOKEN_RANK else act[:, None],
-        extra_pair_bias,
-    )
-
-
-def _token_stack(
-    built: nn.Module,
-    module: nn.Module,
-    act: torch.Tensor,
-    mask: torch.Tensor,
-    single_cond: torch.Tensor,
-    pair_cond: torch.Tensor,
-    key_mask: torch.Tensor | None,
-    extra_pair_bias: torch.Tensor | None,
-) -> Dispatch:
-    """Serve a whole token stack without changing its fold-level bias cache keys."""
-    if not enabled(module, act):
-        return Dispatch(refusal="backend_or_dtype")
-    unbatched = act.ndim == _UNBATCHED_TOKEN_RANK
-    if key_mask is None:
-        key_mask = (mask > 0)[None]
-    if extra_pair_bias is not None:
-        return Dispatch(refusal="extra_pair_bias_unsupported")
-    x = act[None] if unbatched else act
-    selection = variant_selection(built, x, single_cond, pair_cond, key_mask[0])
-    out = built(x, single_cond, pair_cond, key_mask[0])
-    return Dispatch(out[0] if unbatched else out, selection=selection)
+    def forward(
+        self,
+        act: Tensor,
+        mask: Tensor,
+        single_cond: Tensor,
+        pair_cond: Tensor,
+        extra_pair_bias: Tensor | None = None,
+        key_mask: Tensor | None = None,
+        *,
+        compute_dtype: torch.dtype | None = None,
+    ) -> Tensor:
+        """Every block in order (each owns its residuals)."""
+        kw: dict[str, Any] = {}
+        if compute_dtype is not None:
+            kw["compute_dtype"] = compute_dtype
+        if extra_pair_bias is not None:
+            kw["extra_pair_bias"] = extra_pair_bias
+        if key_mask is None:
+            key_mask = (mask > 0)[None]
+        unbatched = act.ndim == _UNBATCHED_RANK
+        cond = single_cond.expand(*act.shape[:-1], single_cond.shape[-1])
+        x, cond = (act[None, None], cond[None, None]) if unbatched else (act[:, None], cond[:, None])
+        pair = pair_cond[None]
+        for block in self.blocks:
+            x = block(x, cond, pair, key_mask, **kw)
+        return x[0, 0] if unbatched else x[:, 0]
 
 
-def _token_blocks(
-    built: list[nn.Module],
-    module: nn.Module,
-    act: torch.Tensor,
-    mask: torch.Tensor,
-    single_cond: torch.Tensor,
-    pair_cond: torch.Tensor,
-    key_mask: torch.Tensor | None,
-    extra_pair_bias: torch.Tensor | None,
-) -> Dispatch:
-    """Serve per-block token DiT with the original view and expansion conventions."""
-    if not (
-        enabled(module, act)
-        or (extra_pair_bias is None and _fp32_token_blocks(module, built, act))
-    ):
-        return Dispatch(refusal="backend_dtype_or_tf32_layout")
-    if extra_pair_bias is not None and not _serves_extra_bias(act, extra_pair_bias):
-        return Dispatch(refusal="extra_pair_bias_shape_or_policy")
-    unbatched = act.ndim == _UNBATCHED_TOKEN_RANK
-    if key_mask is None:
-        key_mask = (mask > 0)[None]
-    cond = single_cond.expand(*act.shape[:-1], single_cond.shape[-1])
-    if unbatched:
-        x, cond = act[None, None], cond[None, None]
-    else:
-        x, cond = act[:, None], cond[:, None]
-    pair = pair_cond[None]
-    extra = {} if extra_pair_bias is None else {"extra_pair_bias": extra_pair_bias}
-    for block in built:
-        x = block(x, cond, pair, key_mask, **extra)
-    return Dispatch(x[0, 0] if unbatched else x[:, 0])
+class AtomDiTStack(nn.Module):
+    """``blocks``: the engine atom DiT blocks of one family, in order (keys ``blocks.{i}.<engine names>``).
+
+    Called like the dense atom transformer on the windowed layout: ``queries_act`` ``[..., windows, 32, d]``, ``queries_mask``
+    ``[windows, 32]``, ``queries_single_cond`` ``[windows, 32, d]``, ``pair_cond`` ``[windows, 32, 128, d_pair]``. The engine block derives the
+    128-key window itself (from the key mask: the real atoms come first), so ``queries_to_keys`` / ``keys_mask`` / ``keys_single_cond`` are
+    not read; ``engine_inputs = (pair [1, windows, 32, 128, d_pair], key_mask [1, atoms], uid)`` is the per-fold layout the caller
+    made once (the engine keys its pair bias on the tensor object); ``uid`` only for Chai-1's blocks."""
+
+    def __init__(self, blocks: list[nn.Module]) -> None:
+        super().__init__()
+        self.blocks = nn.ModuleList(blocks)
+
+    def forward(
+        self,
+        queries_act: Tensor,
+        queries_mask: Tensor,
+        queries_to_keys: object,  # noqa: ARG002
+        keys_mask: Tensor,  # noqa: ARG002
+        queries_single_cond: Tensor,
+        keys_single_cond: Tensor,  # noqa: ARG002
+        pair_cond: Tensor,
+        pair_mask: Tensor | None = None,
+        rope_q: object = None,
+        rope_k: object = None,
+        engine_inputs: tuple[Tensor | None, ...] | None = None,
+    ) -> Tensor:
+        """Every block in order."""
+        if rope_q is not None or rope_k is not None:
+            raise ValueError("a rotary atom transformer is not an engine AtomDiT block with a pair")
+        windows, queries, channels = queries_act.shape[-3:]
+        atoms = windows * queries
+        lead = queries_act.shape[:-3]
+        pair, key_mask, uid = ((*engine_inputs, None, None, None) if engine_inputs else (None, None, None))[:3]
+        if pair_mask is not None and uid is None:
+            raise ValueError("a pair mask (same-conformer attention) needs the conformer ids in engine_inputs")
+        if uid is not None and uid.ndim == 1:  # the encoder keeps the flat ids [N]; the engine takes [B, N]
+            uid = uid[None]
+        if pair is None:
+            pair = pair_cond.reshape(1, windows, queries, -1, pair_cond.shape[-1])
+        if key_mask is None:
+            key_mask = (queries_mask > 0).reshape(1, atoms)
+        x = queries_act.reshape(-1, 1, atoms, channels)
+        cond = queries_single_cond.reshape(1, 1, atoms, channels).expand(x.shape[0], 1, atoms, channels)
+        for block in self.blocks:
+            x = block(x, cond, pair, key_mask, uid) if uid is not None else block(x, cond, pair, key_mask)
+        return x.reshape(*lead, windows, queries, channels)
 
 
-def _atom_stack(
-    built: nn.Module,
-    module: nn.Module,
-    queries_act: torch.Tensor,
-    queries_mask: torch.Tensor,
-    queries_single_cond: torch.Tensor,
-    pair_cond: torch.Tensor,
-    pair_mask: torch.Tensor | None,
-    rope_q: tuple[torch.Tensor, torch.Tensor] | None,
-    rope_k: tuple[torch.Tensor, torch.Tensor] | None,
-    engine_inputs: tuple[torch.Tensor | None, ...] | None,
-) -> Dispatch:
-    """Serve an atom stack, preserving conformer ids and pre-hoisted even windows."""
-    subsets, queries, channels = queries_act.shape[-3:]
-    samples = queries_act.shape[:-3]
-    atoms = subsets * queries
-    uid = engine_inputs[2] if engine_inputs and len(engine_inputs) > 2 else None
-    if pair_mask is not None and uid is None:
-        return Dispatch(refusal="pair_mask_requires_conformer_ids")
-    if rope_q is not None or rope_k is not None:
-        return Dispatch(refusal="rotary_unsupported_by_variant")
-    pair, key_mask, uid, even = (
-        tuple(engine_inputs) + (None,) * (4 - len(engine_inputs))
-        if engine_inputs
-        else (None,) * 4
-    )
-    if subsets % 2 and even is not None:
-        pair, key_mask, uid = even
-        pad = queries
-    else:
-        pad = 0
-    pair = pair[0] if pair is not None else pair_cond
-    key_mask = (
-        key_mask[0] if key_mask is not None else (queries_mask > 0).reshape(atoms)
-    )
-    x = queries_act.reshape(-1, atoms, channels)
-    cond = queries_single_cond.reshape(atoms, channels)
-    if pad:
-        x, cond = F.pad(x, (0, 0, 0, pad)), F.pad(cond, (0, 0, 0, pad))
-    selection = variant_selection(built, x, cond, pair, key_mask, uid)
-    out = built(x, cond, pair, key_mask, uid)[:, :atoms]
-    return Dispatch(
-        out.reshape(*samples, subsets, queries, channels), selection=selection
-    )
+def engine_key_window(window: str) -> tuple[str, str | None]:
+    """``(engine key_window, note)`` of a FoldForge ``atom_key_window``. The engine has ``pad`` / ``slide`` / ``slide_qblock``; Chai-1's
+    exact ``circular`` was removed (it becomes ``pad`` + the conformer-id mask ``uid``; output may differ: ``docs/ENGINE-UNSUPPORTED.md``)."""
+    if window in KEY_WINDOWS:
+        return window, None
+    if window == "circular":
+        return "pad", "circular key window is not an engine key window: pad + uid (outputs may differ)"
+    raise ValueError(f"unknown atom key window {window!r}")
 
 
-def _atom_blocks(
-    built: list[nn.Module],
-    module: nn.Module,
-    queries_act: torch.Tensor,
-    queries_mask: torch.Tensor,
-    queries_single_cond: torch.Tensor,
-    pair_cond: torch.Tensor,
-    pair_mask: torch.Tensor | None,
-    rope_q: tuple[torch.Tensor, torch.Tensor] | None,
-    rope_k: tuple[torch.Tensor, torch.Tensor] | None,
-    engine_inputs: tuple[torch.Tensor | None, ...] | None,
-) -> Dispatch:
-    """Serve ordinary and ESM rotary blocks through their original engine signatures."""
-    subsets, queries, channels = queries_act.shape[-3:]
-    samples = queries_act.shape[:-3]
-    atoms = subsets * queries
-    # ESMFold2's blocks rotate q / k themselves and build its sliding window (the only
-    # pair_mask
-    # that family has, from ``window_half``); AF3's take neither.
-    rotary = bool(getattr(built[0], "rope", False))
-    if (
-        (rope_q is not None) != rotary
-        or (rope_k is not None) != rotary
-        or (pair_mask is not None and not (rotary and module.window_half is not None))
-    ):
-        return Dispatch(refusal="rotary_or_pair_mask_mismatch")
-    # FP32 blocks multiply on TF32 tensor cores: only where TF32 is allowed
-    # (`routing.set_tf32_policy`)
-    if (
-        getattr(module, "foldforge_engine_fp32", False)
-        and queries_act.dtype == torch.float32
-        and not enabled_fp32(module, queries_act)
-    ):
-        return Dispatch(refusal="fp32_requires_tf32")
-    pair, key_mask, *_ = engine_inputs if engine_inputs is not None else (None, None)
-    if pair is None:
-        pair = pair_cond.reshape(1, subsets, queries, -1, pair_cond.shape[-1])
-    if key_mask is None:
-        key_mask = (queries_mask > 0).reshape(1, atoms)
-    x = queries_act.reshape(-1, 1, atoms, channels)
-    cond = queries_single_cond.reshape(1, 1, atoms, channels).expand(
-        x.shape[0], 1, -1, -1
-    )
-    rope = (
-        {"rope": tuple(t.reshape(1, atoms, t.shape[-1]) for t in rope_q)}
-        if rotary and rope_q is not None
-        else {}
-    )
-    for block in built:
-        x = block(x, cond, pair, key_mask, **rope)
-    return Dispatch(x.reshape(*samples, subsets, queries, channels))
+def token_dit_stack(
+    family: str,
+    *,
+    n_blocks: int,
+    d_single: int,
+    d_cond: int,
+    d_pair: int,
+    n_head: int,
+    n: int = 2,
+    adaln_eps: float | None = None,
+    precision: Precision = "master",
+) -> TokenDiTStack:
+    """``n_blocks`` ``TokenDiT(model=...)`` blocks of ``family``. ``adaln_eps``: Chai-1's AdaLN epsilon (engine default 0.1, the release;
+    FoldForge's fast mode 1e-5)."""
+    key = model_keys(family).token_dit
+    if key is None:
+        raise ValueError(f"family {family!r} has no engine token DiT")
+    extra = {"adaln_eps": adaln_eps} if adaln_eps is not None else {}
+    blocks = [TokenDiT(key, d_single, d_cond, d_pair, n_head, n, **extra) for _ in range(n_blocks)]
+    return finish(TokenDiTStack(blocks), precision)  # type: ignore[return-value]
 
 
-def attach_adapter(module: nn.Module, built: object, kind: str) -> TransformerAdapter:
-    """Normalize the built representation once, outside the model's hot forward."""
-    stack = isinstance(built, nn.Module)
-    serves = {
-        ("token", False): _token_blocks,
-        ("token", True): _token_stack,
-        ("atom", False): _atom_blocks,
-        ("atom", True): _atom_stack,
-    }
-    adapter = TransformerAdapter(
-        built, f"{kind}_{'stack' if stack else 'blocks'}", serves[kind, stack]
-    )
-    object.__setattr__(module, ADAPTER_ATTR, adapter)
-    return adapter
+def atom_dit_stack(
+    family: str,
+    *,
+    n_blocks: int,
+    d_single: int = 128,
+    d_cond: int = 128,
+    d_pair: int = 16,
+    n_head: int = 4,
+    n: int = 2,
+    key_window: str | None = None,
+    adaln_eps: float | None = None,
+    precision: Precision = "master",
+) -> AtomDiTStack:
+    """``n_blocks`` ``AtomDiT(model=...)`` blocks of ``family``. ``key_window``: the FoldForge fast modes pass ``"slide"``
+    (:func:`engine_key_window` for the spec's own word); ``None`` keeps the class's default. ``adaln_eps``: Chai-1's."""
+    key = model_keys(family).atom_dit
+    if key is None:
+        raise ValueError(f"family {family!r} has no engine atom DiT with a pair (see docs/ENGINE-UNSUPPORTED.md)")
+    extra: dict[str, Any] = {"key_window": key_window} if key_window is not None else {}
+    if adaln_eps is not None:
+        extra["adaln_eps"] = adaln_eps
+    blocks = [AtomDiT(key, d_single, d_cond, d_pair, n_head, n, **extra) for _ in range(n_blocks)]
+    return finish(AtomDiTStack(blocks), precision)  # type: ignore[return-value]
 
-
-def _serve(module: nn.Module, kind: str, *inputs: object) -> torch.Tensor | None:
-    built = engine_of(module)
-    support = attachment_support(module)
-    if not support.accepted:
-        return observe(module, Dispatch(refusal=support.refusal))
-    if torch.is_inference_mode_enabled():
-        return observe(
-            module, Dispatch(refusal="inference_mode_has_no_tensor_versions")
-        )
-    adapter = module.__dict__.get(ADAPTER_ATTR)
-    if adapter is None or adapter.built is not built:
-        # Covers explicitly attached twins outside the production installer.
-        adapter = attach_adapter(module, built, kind)
-    return observe(module, adapter.try_run(module, *inputs))
-
-
-def serve_token(
-    module: nn.Module,
-    act: torch.Tensor,
-    mask: torch.Tensor,
-    single_cond: torch.Tensor,
-    pair_cond: torch.Tensor,
-    key_mask: torch.Tensor | None,
-    extra_pair_bias: torch.Tensor | None,
-) -> torch.Tensor | None:
-    """Hand one token call through the common adapter, or return None for dense execution."""
-    return _serve(
-        module, "token", act, mask, single_cond, pair_cond, key_mask, extra_pair_bias
-    )
-
-
-def serve_atom(
-    module: nn.Module,
-    queries_act: torch.Tensor,
-    queries_mask: torch.Tensor,
-    queries_single_cond: torch.Tensor,
-    pair_cond: torch.Tensor,
-    pair_mask: torch.Tensor | None,
-    rope_q: tuple[torch.Tensor, torch.Tensor] | None,
-    rope_k: tuple[torch.Tensor, torch.Tensor] | None,
-    engine_inputs: tuple[torch.Tensor | None, ...] | None,
-) -> torch.Tensor | None:
-    """Hand one atom call through the same adapter contract as the token transformer."""
-    return _serve(
-        module,
-        "atom",
-        queries_act,
-        queries_mask,
-        queries_single_cond,
-        pair_cond,
-        pair_mask,
-        rope_q,
-        rope_k,
-        engine_inputs,
-    )

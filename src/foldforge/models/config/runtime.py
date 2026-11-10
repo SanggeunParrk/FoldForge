@@ -46,30 +46,16 @@ def reject_removed_environment() -> None:
         raise RuntimeError(message)
 
 
-#: Parts of the engine install that ``engine.skip`` can leave dense (the keys of the
-#: load report's counts).
-ENGINE_SKIP_KEYS = (
-    "pairformers",
-    "conditioning",
-    "engine_trimul",
-    "engine_triangle_attention",
-    "engine_msa_pwa",
-    "engine_opm",
-    "engine_trunk_transition",
-    "engine_dit_blocks",
-    "engine_single_attention",
-    "engine_atom_blocks",
-    "engine_dit_variant_blocks",
-    "engine_atom_variant_blocks",
-)
+#: Parts of the engine install that ``engine.skip`` can leave out: ``engine_modules`` puts every engine module on its ``pytorch``
+#: backend (what a CPU load does anyway).
+ENGINE_SKIP_KEYS = ("engine_modules",)
 
 
 class EngineConfig(BaseModel):
     """Configure engine skips and per-op backend choices."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    #: Parts left dense (PyTorch) instead of engine-served; each is one of
-    #: ``ENGINE_SKIP_KEYS``.
+    #: Parts of the install to leave out, each one of ``ENGINE_SKIP_KEYS``.
     skip: tuple[Literal[ENGINE_SKIP_KEYS], ...] = ()  # type: ignore[valid-type]
     #: Ops that take another backend than ``Config.backend``: ``{op: backend}``, ops
     #: from ``backends.OPS``.

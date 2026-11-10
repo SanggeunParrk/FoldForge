@@ -1,21 +1,17 @@
 # Chemistry and model implementations are imported at each tested boundary.
 # ruff: noqa: TC003
-"""Shared CCD ownership and released Pairformer composition regressions."""
+"""Shared CCD ownership regressions (the pairformer composition is tested in test_engine_graph.py)."""
 
 from __future__ import annotations
 
-import copy
 import json
 from pathlib import Path
 
 import pytest
 import torch
-from support import production_module
 
 from foldforge.data.ccd import CCDDatabase, current_database
 from foldforge.data.ccd.database import database_cache
-from foldforge.modules.engine.configure import configure_model
-from foldforge.modules.engine.pairformer import AF3Pairformer
 
 
 def _database(root: Path, glycan: str) -> CCDDatabase:
@@ -69,23 +65,3 @@ def test_af3_glycan_sets_follow_selected_database(tmp_path):
             assert set(sets.GLYCAN_LINKING_LIGANDS) == {"B"}
         assert set(sets.GLYCAN_LINKING_LIGANDS) == {"A"}
 
-
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="GPU composition parity")
-def test_shared_pairformer_matches_released_order():
-    torch.manual_seed(76)
-    source = production_module("af3", "nn.pairformer").PairformerBlock()
-    with torch.no_grad():
-        for p in source.parameters():
-            if p.ndim > 1:
-                p.normal_(0, 0.025)
-    source = configure_model(source, "pytorch")
-    converted = AF3Pairformer(copy.deepcopy(source))
-    pair = torch.randn(24, 24, 128, device="cuda", dtype=torch.bfloat16)
-    single = torch.randn(24, 384, device="cuda", dtype=torch.bfloat16)
-    pair_mask = torch.rand(24, 24, device="cuda") > 0.1
-    mask = torch.ones(24, device="cuda")
-    with torch.inference_mode():
-        expected = source(pair.clone(), pair_mask, single.clone(), mask)
-        actual = converted(pair.clone(), pair_mask, single.clone(), mask)
-    for a, e in zip(actual, expected, strict=True):
-        torch.testing.assert_close(a, e, rtol=0.01, atol=0.02)

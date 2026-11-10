@@ -1,89 +1,35 @@
-"""Precision and backend configuration of a loaded model.
+"""Precision and device of a loaded model: fp32 master parameters, bf16 (or fp32) activations.
 
-Norm parameters stay FP32 (the released values), every other parameter takes the native
-dtype, and every module learns which backend it was asked for.
+FoldForge parameters are ``master`` (fp32 parameters, bf16 activations under autocast: the engine's ``MasterWeights``) or plain ``fp32``;
+there are no native-bf16 parameters, and the trunk is always master. ``dtype`` is therefore the ACTIVATION dtype: bf16 means precision
+``master`` (run the model under :func:`activation_autocast`), fp32 means precision ``fp32``. The parameters keep the loaded fp32 values
+exactly (no rounding, no re-cast of norms: engine norms keep their own fp32 pin); the Fourier / geometry tables are not touched.
 """
 
 from __future__ import annotations
 
-from typing import Any
+import contextlib
+from typing import TYPE_CHECKING
 
 import torch
-from miniworld_engine.modules.exceptions import ImplementationType as EngineImpl
-from miniworld_engine.modules.primitives import LayerNorm as EngineLayerNorm
-from torch import nn
-from torch.nn import functional as F
 
-from foldforge.layers.implementation import ImplementationType
 from foldforge.modules.engine.backends import BACKENDS
-from foldforge.modules.engine.native_linear import NativeLinear
-from foldforge.modules.engine.routing import enabled
 
-#: The engine ``LayerNorm`` a ``NativeLayerNorm`` hands its BF16 calls to (out of band: not a child).
-_ENGINE_NORM = "_engine_norm_module"
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
+    from torch import nn
 
-def implementation_of(backend: str) -> object:
-    """The ``foldforge_implementation`` a module carries for a backend name.
-
-    The engine's enum has no member for ``anthropic`` (its kernels are reached through adapters, never the
-    engine modules that ``enabled`` guards), so that backend's name stays a string.
-    """
-    if backend == "miniworld":
-        return ImplementationType.MINIWORLD_ENGINE
-    if backend == "anthropic":
-        return backend
-    return ImplementationType(backend)
+_ACTIVATION_PRECISION = {torch.bfloat16: "master", torch.float32: "fp32"}
 
 
-class NativeLayerNorm(nn.Module):
-    """FP32 parameters and reduction, original checkpoint affine names.
-
-    On the ``miniworld`` backend a BF16 call is served by the engine's ``LayerNorm`` module
-    (``miniworld_engine.modules.primitives.LayerNorm``: the general CUDA LayerNorm on H100 / B200, its
-    portable kernels elsewhere), which shares this module's parameters and is attached out of band
-    (no state_dict key). Every other call runs the FP32 PyTorch statements.
-    """
-
-    def __init__(self, source: nn.Module, backend: str) -> None:
-        super().__init__()
-        self.normalized_shape = tuple(
-            getattr(source, "normalized_shape", getattr(source, "c_in", ()))
-        )
-        self.eps = source.eps
-        self.weight = source.weight
-        self.bias = source.bias
-        self.foldforge_implementation = implementation_of(backend)
-        # Built for the miniworld backend only (the engine resolves its CUDA / portable leg for the card here).
-        object.__setattr__(
-            self, _ENGINE_NORM, self._engine_norm() if backend == "miniworld" else None
-        )
-
-    def _engine_norm(self) -> nn.Module | None:
-        """The engine ``LayerNorm`` over this module's own parameters, or None for a form it does not hold."""
-        if len(self.normalized_shape) != 1 or (self.weight is None and self.bias is not None):
-            return None
-        with torch.device("meta"):
-            norm = EngineLayerNorm(
-                self.normalized_shape,
-                eps=self.eps,
-                elementwise_affine=self.weight is not None,
-                bias=self.bias is not None,
-                implementation=EngineImpl.MINIWORLD,
-            )
-        # Shared parameters: ``configure_model`` / ``.to`` replace their data in place, the engine module follows.
-        norm.weight = self.weight
-        norm.bias = self.bias
-        return norm.eval()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Normalize in FP32 and return the original activation dtype."""
-        engine = self.__dict__.get(_ENGINE_NORM)
-        if engine is not None and enabled(self, x):
-            return engine(x)
-        return F.layer_norm(
-            x.float(), self.normalized_shape, self.weight, self.bias, self.eps
-        ).to(x.dtype)
+def precision_of(dtype: torch.dtype) -> str:
+    """The parameter precision a given activation dtype runs with (``master`` for bf16, ``fp32`` for fp32)."""
+    try:
+        return _ACTIVATION_PRECISION[dtype]
+    except KeyError:
+        message = f"activation dtype {dtype} has no parameter precision (bfloat16 -> master, float32 -> fp32)"
+        raise ValueError(message) from None
 
 
 def configure_model(
@@ -92,62 +38,63 @@ def configure_model(
     dtype: torch.dtype = torch.bfloat16,
     device: str | torch.device = "cuda",
 ) -> nn.Module:
-    """Set native parameter precision, preserving the exact norm values."""
+    """Move ``model`` to ``device`` keeping fp32 parameters and record its precision: ``model.foldforge_precision`` (``master`` /
+    ``fp32``) and ``model.foldforge_activation_dtype``. Engine modules inside get their fp32 masters pinned (``set_master_weights``) for
+    ``master``. Backends are applied separately (:func:`foldforge.modules.engine.install.install_engine`)."""
     if backend not in BACKENDS:
         msg = f"Unknown backend: {backend}"
         raise ValueError(msg)
-    if backend == "cuequivariance" and torch.device(device).type == "cuda":
-        from cuequivariance_ops_torch import init_triton_cache
-
-        init_triton_cache()
-    norms = []
-
-    def replace(parent: Any) -> None:
-        for name, child in list(parent.named_children()):
-            if (
-                "LayerNorm" in type(child).__name__
-                and hasattr(child, "weight")
-                and hasattr(child, "eps")
-            ):
-                replacement = NativeLayerNorm(child, backend)
-                setattr(parent, name, replacement)
-                norms.append(replacement)
-            elif isinstance(child, nn.Linear):
-                setattr(parent, name, NativeLinear.from_linear(child))
-            else:
-                replace(child)
-
-    replace(model)
-    saved = [
-        (
-            n,
-            None if n.weight is None else n.weight.detach().float().clone(),
-            None if n.bias is None else n.bias.detach().float().clone(),
-        )
-        for n in norms
-    ]
-    # Fixed geometry/Fourier/confidence tables are not learned parameters.
+    precision = precision_of(dtype)
     fixed_buffers = [
         (m, name, value.detach().clone())
         for m in model.modules()
         for name, value in m.named_buffers(recurse=False)
         if value is not None and value.dtype == torch.float32
     ]
-    model.to(device=device, dtype=dtype)
+    model.to(device=device)
     for m, name, value in fixed_buffers:
         setattr(m, name, value.to(device))
-    for n, w, b in saved:
-        if w is not None:
-            n.weight.data = w.to(device)
-        if b is not None:
-            n.bias.data = b.to(device)
-    for module in model.modules():
-        module.foldforge_implementation = implementation_of(backend)
+    if precision == "master":
+        from miniworld_engine.modules import MasterWeights
+
+        for module in model.modules():
+            if isinstance(module, MasterWeights):
+                module.set_master_weights()
+    model.foldforge_precision = precision
+    model.foldforge_activation_dtype = dtype
     model.eval().requires_grad_(requires_grad=False)
-    norm_ids = {id(p) for n in norms for p in n.parameters(recurse=False)}
     for name, param in model.named_parameters():
-        expected = torch.float32 if id(param) in norm_ids else dtype
-        if param.dtype != expected:
-            msg = f"{name}: {param.dtype}, expected {expected}"
+        if param.dtype != torch.float32:
+            msg = f"{name}: {param.dtype}; FoldForge parameters are fp32 (master or plain), never native low precision"
             raise TypeError(msg)
     return model
+
+
+def activation_autocast(model: nn.Module) -> contextlib.AbstractContextManager[None]:
+    """The autocast a ``master`` model runs under (bf16 on its device type); a no-op for ``fp32`` and for a model that was not configured."""
+    if getattr(model, "foldforge_precision", None) != "master":
+        return contextlib.nullcontext()
+    device = next(model.parameters()).device.type
+    return torch.autocast(device, dtype=model.foldforge_activation_dtype)
+
+
+def set_tf32_policy(model: nn.Module, *, tf32: bool, diffusion_tf32: bool = False) -> None:
+    """Record whether TF32 tensor cores may serve this model's modules (``foldforge_tf32`` on every module).
+
+    ``tf32`` is ``execution.tf32``; ``diffusion_tf32`` additionally allows it in the diffusion head (the ``af3_default`` policy) while the
+    trunk stays exact. The engine's fp32 backends read the flag through the model's execution policy, not through the engine classes."""
+    head = getattr(model, "diffusion_head", None)
+    diffusion = set() if head is None else {id(m) for m in head.modules()}
+    for module in model.modules():
+        module.foldforge_tf32 = tf32 or (diffusion_tf32 and id(module) in diffusion)
+
+
+@contextlib.contextmanager
+def inference_settings() -> Iterator[None]:
+    """Restore torch's process-wide matmul precision after library inference (the engine keeps no process-global state: each module
+    carries its own backend, so this is the only shared setting)."""
+    precision = torch.get_float32_matmul_precision()
+    try:
+        yield
+    finally:
+        torch.set_float32_matmul_precision(precision)

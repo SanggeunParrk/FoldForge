@@ -1,147 +1,104 @@
-"""Shared policy retains legacy eligibility and distinguishes checks from execution."""
+"""The guard in front of every non-pytorch engine call, the plan that picks backends, and the engine stacks inside a CUDA graph."""
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
-from typing import Any
 
 import pytest
 import torch
 from torch import nn
 
-from foldforge.layers.implementation import ImplementationType
-from foldforge.modules.engine.backends import (
-    BackendUnsupportedError,
-    Support,
-    forget_logged_refusals,
-)
-from foldforge.modules.engine.policy import accept_support, miniworld_support, refused
-from foldforge.modules.engine.serving import report_observations
+from foldforge.modules.engine import modules, policy
+from foldforge.modules.engine.backends import BackendPlan, BackendUnsupportedError
 
 
-@pytest.mark.parametrize(
-    "backend",
-    [ImplementationType.MINIWORLD_ENGINE, ImplementationType.PYTORCH, "anthropic"],
-)
-@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32, torch.float16])
-@pytest.mark.parametrize("cuda", [False, True])
-@pytest.mark.parametrize("tf32", [False, True])
-@pytest.mark.parametrize("fp32", [False, True])
-def test_activation_policy_matches_legacy_predicates(backend, dtype, cuda, tf32, fp32):
-    module = nn.Module()
-    module.foldforge_implementation = backend
-    module.foldforge_tf32 = tf32
-    activation = SimpleNamespace(is_cuda=cuda, dtype=dtype)
-    expected = (
-        backend == ImplementationType.MINIWORLD_ENGINE
-        and cuda
-        and (dtype == torch.float32 and tf32 if fp32 else dtype == torch.bfloat16)
-    )
-    assert miniworld_support(module, activation, fp32=fp32).accepted == expected
+def _kernel_backend(module: nn.Module) -> str:
+    return next(name for name in module.backends if name in ("cuda", "triton"))
 
 
-def test_policy_records_refusals_even_when_strict_raises(caplog):
-    module = nn.Module()
-    module.foldforge_unsupported = "fallback"
-    forget_logged_refusals()
-    for _ in range(2):
-        assert refused(module, "transition", "anthropic", "shape refused")
-    assert sum("shape refused" in r.getMessage() for r in caplog.records) == 1
-    module.foldforge_unsupported = "error"
-    with pytest.raises(BackendUnsupportedError, match="shape refused"):
-        refused(module, "transition", "anthropic", Support(refusal="shape refused"))
-    # Eligibility-only fallbacks remain silent even with error policy.
-    assert not accept_support(module, Support(refusal="not_installed"))
-    entry = report_observations(module)["modules"]["<root>"]
-    assert entry["refused_host_checks"] == {"shape refused": 3, "not_installed": 1}
-    assert entry["served_host_calls"] == 0
+def test_a_refused_call_runs_the_pytorch_backend_and_logs_once(caplog):
+    policy.forget_logged_refusals()
+    layer = modules.transition(16, 2)
+    x = torch.randn(1, 4, 16)
+    expected = layer(x)
+    layer.set_backend(_kernel_backend(layer))  # CPU tensors: the kernel backends refuse them
+    policy.guard(layer, "fallback")
+    with caplog.at_level(logging.WARNING, logger="foldforge.backend"):
+        first, second = layer(x), layer(x)
+    torch.testing.assert_close(first, expected)
+    torch.testing.assert_close(second, expected)
+    assert layer.backend == _kernel_backend(layer)  # the chosen backend is restored after the call
+    assert sum("refuses a call" in record.getMessage() for record in caplog.records) == 1
 
 
-def test_compiled_policy_does_not_mutate_host_counters():
-    module = nn.Module()
-    support = Support()
-    accept_support(module, support)
-    before = report_observations(module)
-
-    def call(x: torch.Tensor) -> torch.Tensor:
-        return x + 1 if accept_support(module, support) else x
-
-    compiled = torch.compile(call, backend="eager", fullgraph=True)
-    torch.testing.assert_close(compiled(torch.tensor(2.0)), torch.tensor(3.0))
-    assert report_observations(module) == before
+def test_the_error_policy_raises_the_engine_reason():
+    layer = modules.transition(16, 2)
+    layer.set_backend(_kernel_backend(layer))
+    policy.guard(layer, "error")
+    with pytest.raises(BackendUnsupportedError, match="Transition"):
+        layer(torch.randn(1, 4, 16))
 
 
-def test_projected_anthropic_grad_refusal_preserves_error_policy():
-    from foldforge.modules.engine.attention_ops import anthropic_attention
-
-    module = nn.Module()
-    q = torch.ones(2, 1, 2, 4)
-    bias = torch.ones(1, 2, 2)
-    with torch.enable_grad():
-        assert anthropic_attention(module, q, q, q, bias, None) is None
-        module.foldforge_unsupported = "error"
-        with pytest.raises(BackendUnsupportedError, match="grad is enabled"):
-            anthropic_attention(module, q, q, q, bias, None)
-
-
-@pytest.mark.parametrize("route", ["cuequivariance", "anthropic", "pytorch"])
-def test_projected_attention_keeps_route_priority(monkeypatch, route):
-    import sys
-
-    from foldforge.modules.engine import attention_ops
-
-    module = nn.Module()
-    module.qkv_dim = 4
-    module.foldforge_implementation = route
-    calls = []
-    q = torch.ones(2, 1, 2, 4)
-    bias, mask = torch.ones(1, 2, 2), torch.tensor([[1, 0], [1, 0]])
-
-    def vendor(*args: torch.Tensor, **options: Any) -> torch.Tensor:
-        calls.append("cuequivariance")
-        assert options["mask"].shape == (1, 2, 1, 1, 2)
-        return args[0] + 2
-
-    def anthropic(*_: object) -> torch.Tensor:
-        calls.append("anthropic")
-        return q + 3
-
-    monkeypatch.setattr(
-        attention_ops,
-        "backend_support",
-        lambda m, b, _x: Support(
-            refusal=None if m.foldforge_implementation == b else "backend_not_selected"
-        ),
-    )
-    monkeypatch.setattr(attention_ops, "anthropic_attention", anthropic)
-    monkeypatch.setitem(
-        sys.modules, "cuequivariance_torch", SimpleNamespace(triangle_attention=vendor)
-    )
-    result = attention_ops.serve_projected_triangle(module, q, q, q, bias, mask)
-    if route == "pytorch":
-        assert result is None
-        assert calls == []
-    else:
-        assert calls == [route]
-        torch.testing.assert_close(
-            result, q + {"cuequivariance": 2, "anthropic": 3}[route]
-        )
+def test_the_plan_gives_each_op_module_a_backend_and_keeps_composites_on_pytorch():
+    model = nn.Module()
+    model.block = modules.transition(16, 2)
+    model.norm = modules.layer_norm(16)
+    model.plain = nn.Linear(2, 2)
+    plan = BackendPlan.make("miniworld", None, "fallback")
+    report = policy.apply_plan(model, plan, torch.device("cpu"))
+    assert set(report) == {"block", "norm"}  # only engine op modules are in the plan
+    assert {entry["backend"] for entry in report.values()} == {"pytorch"}  # no CUDA device: nothing kernel-served
+    assert report["block"]["op"] == "transition"
 
 
-@pytest.mark.parametrize("cuda", [False, True])
-@pytest.mark.parametrize("activation", [torch.bfloat16, torch.float32])
-@pytest.mark.parametrize("condition", [torch.bfloat16, torch.float32])
-def test_conditioning_policy_preserves_operand_compatibility(
-    cuda, activation, condition
-):
-    from foldforge.modules.engine.conditioning import conditioning_support
+def test_the_pairformer_block_stays_on_pytorch_and_its_children_are_planned_alone():
+    from foldforge.modules.engine.pairformer import pairformer_block
 
-    layer = SimpleNamespace(
-        to_scale=SimpleNamespace(weight=SimpleNamespace(dtype=torch.bfloat16))
-    )
-    a, s = (
-        SimpleNamespace(is_cuda=cuda, dtype=activation),
-        SimpleNamespace(dtype=condition),
-    )
-    expected = cuda and activation == torch.bfloat16 and condition == torch.bfloat16
-    assert conditioning_support(layer, a, s).accepted == expected
+    model = nn.Module()
+    model.block = pairformer_block(d_pair=16, triangle_model="af3", d_single=32, n_head_single=2, n_head_tri_attention=2,
+                                   d_hidden_tri_attention=8)
+    report = policy.apply_plan(model, BackendPlan.make("pytorch", None, "fallback"), torch.device("cpu"))
+    assert model.block.backend == "pytorch"
+    assert {"block.tri_multi_outgoing", "block.tri_atten_ending", "block.transition_pair", "block.single_attention"} <= set(report)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.parametrize("compile_", [False, True])
+def test_the_token_dit_stack_graph_replays_the_eager_result(compile_):
+    from foldforge.models.execution import ExecutedCallable
+    from foldforge.modules.engine.configure import configure_model
+    from foldforge.modules.engine.transformers import token_dit_stack
+
+    torch.manual_seed(7)
+    stack = token_dit_stack("alphafold3", n_blocks=4, d_single=768, d_cond=384, d_pair=128, n_head=16)
+    with torch.no_grad():
+        for name, p in stack.named_parameters():
+            if p.ndim > 1:
+                p.normal_(0, 0.04)
+            elif "weight" in name:
+                p.fill_(1.0)
+            else:
+                p.zero_()
+    stack = configure_model(stack, "miniworld", torch.bfloat16, "cuda")
+    policy.apply_plan(stack, BackendPlan.make("miniworld", None, "fallback"), torch.device("cuda"))
+    length = 256
+    act = torch.randn(2, length, 768, device="cuda", dtype=torch.bfloat16)
+    single = torch.randn(2, length, 384, device="cuda", dtype=torch.bfloat16)
+    pair = torch.randn(length, length, 128, device="cuda", dtype=torch.bfloat16)
+    mask = torch.rand(length, device="cuda") > 0.15
+    key_mask = mask[None]
+
+    def step(x: torch.Tensor) -> torch.Tensor:
+        return stack(x, mask, single, pair, key_mask=key_mask)
+
+    policy_ = SimpleNamespace(compile=compile_, cuda_graph=True, max_graphs=2)
+    graphed = ExecutedCallable(step, policy_, "test.denoiser")
+    with torch.no_grad():
+        expected = step(act.clone())
+        first = graphed(act.clone()).clone()
+        second = graphed(act.clone()).clone()
+    assert graphed.captures == 1
+    assert graphed.replays == 2
+    torch.testing.assert_close(first, expected, rtol=0.02, atol=0.02)
+    torch.testing.assert_close(second, first, rtol=0, atol=0)

@@ -279,11 +279,11 @@ def test_the_language_model_packs_the_protein_tokens_it_is_given():
 
 
 def test_pair_only_families_build_neither_single_track_nor_pair_attention():
-    from foldforge.models.architectures.af3 import Evoformer
+    from foldforge.models.checkpoints.legacy import dense_model
 
     spec = SPECS["esmfold2"]
     with torch.device("meta"):
-        evoformer = Evoformer(spec)
+        evoformer = dense_model(spec).evoformer
     block = evoformer.trunk_pairformer[0]
     assert not block.with_single
     assert not block.with_pair_attention
@@ -298,11 +298,11 @@ def test_pair_only_families_build_neither_single_track_nor_pair_attention():
 
 def test_only_the_atom_blocks_take_the_rms_conditioning():
     """Gating on the family alone would strip the token blocks that have it."""
-    from foldforge.models.architectures.af3 import AlphaFold3
+    from foldforge.models.checkpoints.legacy import dense_model
     from foldforge.modules.dense.diffusion_transformer import RMSNorm
 
     with torch.device("meta"):
-        model = AlphaFold3(spec=SPECS["esmfold2"])
+        model = dense_model(SPECS["esmfold2"])
     atom = model.diffusion_head.atom_cross_att_encoder.atom_transformer_encoder
     token = model.diffusion_head.transformer
 
@@ -315,11 +315,11 @@ def test_only_the_atom_blocks_take_the_rms_conditioning():
 
 
 def test_structural_token_families_carry_their_expander_and_refiner():
-    from foldforge.models.architectures.af3 import Evoformer
+    from foldforge.models.checkpoints.legacy import dense_model
 
     spec = SPECS["opendde"]
     with torch.device("meta"):
-        evoformer = Evoformer(spec)
+        evoformer = dense_model(spec).evoformer
     assert evoformer.structural_token_expander is not None
     assert len(evoformer.structural_token_refiner) == spec.structural_refiner_layers
     block = evoformer.structural_token_refiner[0]
@@ -330,7 +330,7 @@ def test_structural_token_families_carry_their_expander_and_refiner():
 
     # Every other family builds neither.
     with torch.device("meta"):
-        plain = Evoformer(SPECS["alphafold3"])
+        plain = dense_model(SPECS["alphafold3"]).evoformer
     assert plain.structural_token_expander is None
 
 
@@ -458,7 +458,7 @@ def test_the_outer_product_mean_is_afs_for_every_family():
     The clamped divisor and the bias-after-divide some releases use were
     unified: resetting either moved no fold beyond 0.1 A.
     """
-    from foldforge.modules.dense import primitives
+    from foldforge.models.checkpoints.legacy import primitives
 
     torch.manual_seed(0)
     msa, mask = torch.randn(2, 5, 8), torch.ones(2, 5)

@@ -17,8 +17,8 @@ def test_defaults_are_the_behaviour_without_the_old_variables():
 
 
 def test_engine_skip_override_and_validation():
-    config = Config.model_validate({"engine": {"skip": ["pairformers", "engine_opm"]}})
-    assert config.engine.skip == ("pairformers", "engine_opm")
+    config = Config.model_validate({"engine": {"skip": ["engine_modules"]}})
+    assert config.engine.skip == ("engine_modules",)
     assert set(config.engine.skip) <= set(ENGINE_SKIP_KEYS)
     with pytest.raises(ValidationError):
         Config.model_validate({"engine": {"skip": ["engine_nonsense"]}})

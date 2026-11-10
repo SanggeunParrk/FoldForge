@@ -13,25 +13,25 @@
 import torch
 import torch.nn as nn
 
-from foldforge.blocks.pairformer import _parallel_residual
-from foldforge.modules.dense.attention import GridSelfAttention, MSAAttention
-from foldforge.modules.dense.diffusion_transformer import SelfAttention
-from foldforge.modules.dense.primitives import OuterProductMean, Transition
-from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
-from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
-from foldforge.modules.engine.modules import engine_of
-from foldforge.modules.engine.routing import transition_residual, triangle_residual
-from foldforge.modules.reference.composition import (
+from foldforge.models.checkpoints.legacy.attention import (
+    GridSelfAttention,
+    MSAAttention,
+)
+from foldforge.models.checkpoints.legacy.primitives import OuterProductMean, Transition
+from foldforge.models.checkpoints.legacy.reference.composition import (
     MSAUpdateConfig,
     msa_pair_update,
     msa_row_update,
 )
-
-
-def _engine_attached(*modules: nn.Module) -> bool:
-    """Whether any part of a parallel stage has an engine module: the stage then sums residual outputs (the engine
-    modules own their residual), else the dense deltas as released."""
-    return any(engine_of(module) is not None for module in modules)
+from foldforge.models.checkpoints.legacy.routing import (
+    transition_residual,
+    triangle_residual,
+)
+from foldforge.models.checkpoints.legacy.transformer import SelfAttention
+from foldforge.models.checkpoints.legacy.triangle_multiplication import (
+    TriangleMultiplication,
+)
+from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 
 
 class PairformerBlock(nn.Module):
@@ -133,6 +133,19 @@ class PairformerBlock(nn.Module):
                     else single_intermediate_factor
                 ),
             )
+
+    def run_dense(
+        self,
+        pair: torch.Tensor,
+        pair_mask: torch.Tensor,
+        single: torch.Tensor | None,
+        seq_mask: torch.Tensor | None,
+        extra_pair_bias: torch.Tensor | None,
+    ):
+        """The call of :func:`foldforge.modules.engine.graph.run_block` on this block (the dense calling convention)."""
+        if single is None:
+            return self(pair, pair_mask=pair_mask)
+        return self(pair, pair_mask, single, seq_mask, extra_pair_bias=extra_pair_bias)
 
     def forward(
         self,
@@ -284,14 +297,6 @@ class EvoformerBlock(nn.Module):
             if self.parallel:
                 # The transition reads the MSA entering the block, as the
                 # attention does, and both deltas are summed into it.
-                if _engine_attached(self.msa_attention1, self.msa_transition):
-                    return _parallel_residual(
-                        value,
-                        [
-                            self.msa_attention1.residual(value, msa_mask, updated_pair),
-                            transition_residual(self.msa_transition, value),
-                        ],
-                    )
                 return (
                     value
                     + self.msa_attention1(value, msa_mask, updated_pair)
@@ -310,31 +315,6 @@ class EvoformerBlock(nn.Module):
 
         def update_pair(value):
             """Update pair."""
-            if self.parallel and _engine_attached(
-                self.triangle_multiplication_outgoing,
-                self.triangle_multiplication_incoming,
-                self.pair_transition,
-                *((self.pair_attention1, self.pair_attention2) if self.with_pair_attention else ()),
-            ):
-                # Engine modules own their residuals: the two parallel stages sum the parts' residual outputs
-                # (``x + sum_i (y_i - x)``, FP32 sums and one rounding).
-                value = _parallel_residual(
-                    value,
-                    [
-                        triangle_residual(self.triangle_multiplication_outgoing, value, pair_mask),
-                        triangle_residual(self.triangle_multiplication_incoming, value, pair_mask),
-                        transition_residual(self.pair_transition, value),
-                    ],
-                )
-                if not self.with_pair_attention:
-                    return value
-                return _parallel_residual(
-                    value,
-                    [
-                        self.pair_attention1.residual(value, pair_mask),
-                        self.pair_attention2.residual(value, pair_mask),
-                    ],
-                )
             if self.parallel:
                 value = value + (
                     self.triangle_multiplication_outgoing(value, pair_mask)

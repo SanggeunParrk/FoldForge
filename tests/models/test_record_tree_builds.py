@@ -20,11 +20,10 @@ from foldforge.modules.dense.spec import SPECS
 
 
 def _translation(family: str) -> dict:
-    from foldforge.models.architectures.af3 import AlphaFold3
-    from foldforge.models.checkpoints import haiku
+    from foldforge.models.checkpoints.legacy import dense_model, haiku
 
     with torch.device("meta"):
-        model = AlphaFold3(spec=SPECS[family])
+        model = dense_model(SPECS[family])
     return haiku.get_translation_dict(model)
 
 
@@ -41,7 +40,7 @@ def test_every_family_builds_its_record_tree(family):
 
 def haiku_flatten(records: dict) -> list[str]:
     """Return every record path the loader would ask the checkpoint for."""
-    from foldforge.models.checkpoints import haiku
+    from foldforge.models.checkpoints.legacy import haiku
 
     return list(haiku._process_translations_dict(d=records, _key_prefix=""))  # noqa: SLF001 - the loader's own walk
 

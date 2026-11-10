@@ -202,18 +202,12 @@ def test_cli_calls_public_api_and_prints_report(monkeypatch):
 
 
 @pytest.mark.parametrize("fails", [False, True])
-def test_library_restores_engine_and_precision_after_execution(
-    fake_pipeline, monkeypatch, fails
-):
-    from miniworld_engine import settings
-
+def test_library_restores_precision_after_execution(fake_pipeline, monkeypatch, fails):
     options, _ = fake_pipeline
-    original_policy = settings.current()
     original_precision = torch.get_float32_matmul_precision()
 
     def execute(_request, **_kwargs: Any) -> tuple:
         torch.set_float32_matmul_precision("high")
-        settings.configure(run_autotune=not original_policy.run_autotune)
         if fails:
             message = "execution failed"
             raise RuntimeError(message)
@@ -225,31 +219,20 @@ def test_library_restores_engine_and_precision_after_execution(
             foldforge.predict(foldforge.protein("AG"), **options)
     else:
         foldforge.predict(foldforge.protein("AG"), **options)
-    assert settings.current() == original_policy
     assert torch.get_float32_matmul_precision() == original_precision
 
 
-def test_engine_cache_override_restores_root_and_loaded_entries(tmp_path, monkeypatch):
-    from miniworld_engine.autotune import cache
+def test_engine_cache_dir_is_accepted_and_ignored_with_one_warning(tmp_path):
+    import warnings
 
-    from foldforge.modules.engine.cache import cache_directory
+    from foldforge import api
 
-    original_root = cache._CACHE_ROOT
-    original_loaded = {("op", "gpu"): {"original": True}}
-    monkeypatch.setattr(cache, "_load_cache", original_loaded.copy())
-
-    def fail_inside_override() -> None:
-        with cache_directory(tmp_path):
-            assert tmp_path == cache._CACHE_ROOT
-            assert cache._load_cache == {}
-            cache._load_cache[("op", "gpu")] = {"temporary": True}
-            message = "failed"
-            raise RuntimeError(message)
-
-    with pytest.raises(RuntimeError, match="failed"):
-        fail_inside_override()
-    assert original_root == cache._CACHE_ROOT
-    assert cache._load_cache == original_loaded
+    api._CACHE_DIR_WARNED = False
+    with pytest.warns(DeprecationWarning, match="engine_cache_dir"):
+        api._warn_engine_cache_dir()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        api._warn_engine_cache_dir()  # once per process
 
 
 def test_mapping_msa_path_does_not_acquire_conflicting_inline_default():

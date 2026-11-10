@@ -115,17 +115,12 @@ def _static_inputs(on: bool):
     """
     if not on:
         return contextlib.nullcontext()
-    from miniworld_engine.modules import runtime
+    from foldforge.modules.engine.capture import static_inputs, static_weights
 
     stack = contextlib.ExitStack()
-    stack.enter_context(runtime.static_weights())
-    stack.enter_context(runtime.static_inputs())
+    stack.enter_context(static_weights())
+    stack.enter_context(static_inputs())
     return stack
-
-
-def copy_containers(value):
-    """Restore per-call dictionaries without copying immutable input tensors."""
-    return _map(value, lambda t: t)
 
 
 class _Graph:
@@ -245,28 +240,6 @@ class ExecutedCallable:
             else fn
         )
 
-    def release_large_graphs(self, max_bytes=None):
-        """Free large graph pools at a request boundary so eager stages can run.
-
-        Small graphs remain reusable. Large denoisers still replay throughout
-        sampling, then recapture on the next request using the compiled callable.
-        """
-        if not self.graphs:
-            return
-        if max_bytes is None:
-            max_bytes = (
-                torch.cuda.get_device_properties(
-                    torch.cuda.current_device()
-                ).total_memory
-                // 3
-            )
-        if sum(graph.retained_bytes for graph in self.graphs.values()) <= max_bytes:
-            return
-        torch.cuda.synchronize()
-        self.evictions += len(self.graphs)
-        self.graphs.clear()
-        torch.cuda.empty_cache()
-
     def __call__(self, *args, **kwargs):
         if torch.is_grad_enabled():
             raise RuntimeError("Inference execution requires no_grad or inference_mode")
@@ -334,6 +307,26 @@ Result = TypeVar("Result")
 MAX_BENCHMARK_REPEATS = 20
 
 
+def _autocast_entries(model: torch.nn.Module) -> None:
+    """Run the model's entry points under its activation autocast (``master`` precision: fp32 parameters, bf16 activations; a no-op for
+    ``fp32``). Installed once per model; the graph-captured sites inside run in the same context."""
+    if getattr(model, "foldforge_autocast_entries", False):
+        return
+    from foldforge.modules.engine.configure import activation_autocast
+
+    for name in ("run_trunk", "sample_diffusion", "forward"):
+        inner = getattr(model, name, None)
+        if inner is None:
+            continue
+
+        def entry(*args, _inner=inner, **kwargs):
+            with activation_autocast(model):
+                return _inner(*args, **kwargs)
+
+        setattr(model, name, entry)
+    model.foldforge_autocast_entries = True
+
+
 class Execution:
     """Install actual call wrappers; reports never infer execution from flags."""
 
@@ -349,13 +342,14 @@ class Execution:
         # The engine's FP32 kernels are TF32 tensor core kernels: they serve where TF32
         # is allowed, and in the
         # diffusion head of the af3_default policy (``reference_precision``).
-        from foldforge.modules.engine.routing import set_tf32_policy
+        from foldforge.modules.engine.configure import set_tf32_policy
 
         set_tf32_policy(
             model,
             tf32=tf32,
             diffusion_tf32=bool(getattr(model, "reference_precision", False)),
         )
+        _autocast_entries(model)
         self.autocast_scopes = getattr(model, "reference_autocast_scopes", [])
         head = getattr(model, "confidence_head", None)
         if head is not None and hasattr(head, "sample_chunk_override"):
@@ -366,8 +360,6 @@ class Execution:
         self.initial_graphs = counters["stats"]["unique_graphs"]
         self.compiled_seen = False
         self.compiled_before_request = False
-        # Bucketing by PADDING the denoiser belonged to the flat layout, which
-        # no family is on any more: the dense graph buckets its own inputs.
         if not (config.compile or config.cuda_graph):
             return
         if config.scope == "model":
@@ -381,7 +373,7 @@ class Execution:
                     config.compile,
                 )
             ]
-            if config.scope == "trunk" and getattr(model.spec, "trunk_graph", True):
+            if config.scope == "trunk":
                 # One graph per trunk pass (first / middle / last differ in their
                 # flags), the confidence head and the distogram head: everything
                 # that runs on the GPU between featurisation and decoding.

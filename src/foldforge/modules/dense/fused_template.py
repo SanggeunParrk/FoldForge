@@ -23,9 +23,9 @@ import torch.nn.functional as F
 from foldforge.data.features import dense as features
 from foldforge.data.features import dense_protein as protein_data_processing
 from foldforge.modules.dense import confidence as scoring
-from foldforge.modules.dense import pairformer
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
-from foldforge.modules.reference.composition import template_embedding_mean
+from foldforge.modules.dense.template import template_embedding_mean
+from foldforge.modules.engine import graph as engine_graph
 from foldforge.utils.device_constants import built_on_device, on_device
 
 _EPS = 1e-10
@@ -206,22 +206,22 @@ class FusedTemplateEmbedding(nn.Module):
         self.z_norm = nn.LayerNorm(spec.pair_channel)
         self.z_proj = nn.Linear(spec.pair_channel, channels, bias=False)
         self.a_proj = nn.Linear(width, channels, bias=False)
-        self.tmpl_pairformer = nn.ModuleList(
-            [
-                pairformer.PairformerBlock(
-                    c_pair=channels,
-                    n_heads_pair=spec.template_heads or spec.pair_heads,
-                    num_intermediate_factor=spec.template_transition_factor,
-                    with_single=False,
-                    spec=spec,
-                    pair_qkv_dim=spec.template_qkv_dim,
-                    tri_hidden_dim=spec.template_hidden_dim,
-                )
-                for _ in range(spec.template_layers)
-            ]
-        )
+        self.tmpl_pairformer = nn.ModuleList([self._block(spec, channels) for _ in range(spec.template_layers)])
         self.v_norm = nn.LayerNorm(channels)
         self.u_proj = nn.Linear(channels, spec.pair_channel, bias=False)
+
+    @staticmethod
+    def _block(spec: DenseSpec, channels: int) -> nn.Module:
+        """One pair-stack block of the template embedder."""
+        return engine_graph.make_pairformer_block(
+            spec,
+            d_pair=channels,
+            n_head_pair=spec.template_heads or spec.pair_heads,
+            qkv_dim=spec.template_qkv_dim,
+            transition_n=spec.template_transition_factor,
+            tri_hidden=spec.template_hidden_dim,
+            batched="template",
+        )
 
     def forward(
         self,
@@ -286,7 +286,7 @@ class FusedTemplateEmbedding(nn.Module):
             values = torch.stack([prepare(index) for index in range(count)])
             stacked = values
             for block in self.tmpl_pairformer:
-                stacked = block(stacked, padding_mask_2d)
+                stacked = engine_graph.run_block(block, stacked, padding_mask_2d)
             batched = finish(values, stacked)
 
             def embed(index: int) -> torch.Tensor:
@@ -298,7 +298,7 @@ class FusedTemplateEmbedding(nn.Module):
                 value = prepare(index)
                 stacked = value
                 for block in self.tmpl_pairformer:
-                    stacked = block(stacked, padding_mask_2d)
+                    stacked = engine_graph.run_block(block, stacked, padding_mask_2d)
                 return finish(value, stacked)
 
         return template_embedding_mean(
@@ -343,5 +343,5 @@ class FusedTemplateEmbedding(nn.Module):
             present = present + filled
         value = query + self.a_proj(feature / present.clamp_min(1.0))
         for block in self.tmpl_pairformer:
-            value = block(value, padding_mask_2d)
+            value = engine_graph.run_block(block, value, padding_mask_2d)
         return self.u_proj(torch.relu(self.v_norm(value)))

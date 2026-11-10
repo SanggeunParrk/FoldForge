@@ -9,6 +9,7 @@
 # if received directly from Google. Use is subject to terms of use available at
 # https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import torch
@@ -18,11 +19,40 @@ from foldforge.data.constants import residue_names
 from foldforge.data.features import dense as features
 from foldforge.data.features import dense_protein as protein_data_processing
 from foldforge.modules.dense import confidence as scoring
-from foldforge.modules.dense import pairformer
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
-from foldforge.modules.reference.composition import template_embedding_mean
+from foldforge.modules.engine import graph as engine_graph
 from foldforge.utils import dense_geometry as geometry
 from foldforge.utils.device_constants import on_device
+
+
+def template_embedding_mean(
+    count: int,
+    *,
+    embed: Callable[[int], torch.Tensor],
+    empty: torch.Tensor,
+    project: Callable[[torch.Tensor], torch.Tensor],
+    eps: float = 1e-7,
+    present: Callable[[int], torch.Tensor] | None = None,
+) -> torch.Tensor:
+    """Aggregate model-specific template features after their shared pair stack.
+
+    Sequential accumulation preserves the released BF16 reduction order. The empty tensor supplies shape/device/dtype when there are no
+    templates.
+
+    ``present`` makes the divisor the number of slots that carry a template rather than the number of slots. The two agree on a fully
+    populated input and differ by the padding factor on any other, which is a rescaling of the whole term and not a small one. It returns a
+    0-d boolean tensor and the count stays on the device: a host read would break a CUDA-graph capture.
+    """
+    if count < 0:
+        raise ValueError("Template count cannot be negative")
+    total = empty
+    filled = torch.zeros((), device=empty.device)
+    for index in range(count):
+        total = total + embed(index)
+        if present is not None:
+            filled = filled + present(index)
+    divisor = filled.clamp_min(1.0) if present is not None else count + eps
+    return project(torch.relu(total / divisor))
 
 
 @dataclass
@@ -200,20 +230,21 @@ class SingleTemplateEmbedding(nn.Module):
         )
 
         self.template_embedding_iteration = nn.ModuleList(
-            [
-                pairformer.PairformerBlock(
-                    c_pair=self.num_channels,
-                    n_heads_pair=spec.template_heads or spec.pair_heads,
-                    num_intermediate_factor=2,
-                    spec=spec,
-                    with_single=False,
-                    pair_qkv_dim=spec.template_qkv_dim,
-                )
-                for _ in range(self.template_stack_num_layer)
-            ]
+            [self._block(spec) for _ in range(self.template_stack_num_layer)]
         )
 
         self.output_layer_norm = nn.LayerNorm(self.num_channels)
+
+    def _block(self, spec: DenseSpec) -> nn.Module:
+        """One pair-stack block of the template embedder."""
+        return engine_graph.make_pairformer_block(
+            spec,
+            d_pair=self.num_channels,
+            n_head_pair=spec.template_heads or spec.pair_heads,
+            qkv_dim=spec.template_qkv_dim,
+            transition_n=2,
+            batched="template",
+        )
 
     def _masked_class_distogram(
         self, positions: torch.Tensor, covered: torch.Tensor
@@ -401,7 +432,7 @@ class SingleTemplateEmbedding(nn.Module):
                 coverage.append(self._coverage_2d)
         act = torch.stack(acts)
         for pairformer_block in self.template_embedding_iteration:
-            act = pairformer_block(act, pair_mask=padding_mask_2d)
+            act = engine_graph.run_block(pairformer_block, act, padding_mask_2d)
         act = self.output_layer_norm(act)
         if self.spec.template_coverage_mask:
             act = act * torch.stack(coverage)[..., None].to(act.dtype)
@@ -418,7 +449,7 @@ class SingleTemplateEmbedding(nn.Module):
         act = self.construct_input(query_embedding, templates, multichain_mask_2d)
 
         for pairformer_block in self.template_embedding_iteration:
-            act = pairformer_block(act, pair_mask=padding_mask_2d)
+            act = engine_graph.run_block(pairformer_block, act, padding_mask_2d)
 
         act = self.output_layer_norm(act)
         if self.spec.template_coverage_mask:

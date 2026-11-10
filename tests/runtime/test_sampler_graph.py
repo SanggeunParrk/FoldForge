@@ -13,17 +13,29 @@ pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA requ
 
 
 def _glue_available() -> bool:
+    """Whether the engine's sampler glue modules serve fp32 CUDA coordinates here."""
     if not torch.cuda.is_available():
         return False
     try:
-        from miniworld_engine.kernels.sampler_ops import interface
+        from miniworld_engine.modules import AlignEuler, AugmentNoise
     except ImportError:
         return False
-    return torch.cuda.get_device_capability() == (9, 0) and interface is not None
+    backend = "cuda" if torch.cuda.get_device_capability() == (9, 0) else "triton"
+    coords = torch.empty(2, 8, 3, device="cuda")
+    scalar = torch.empty((), device="cuda")
+    mask = torch.empty(8, device="cuda")
+    augment = AugmentNoise(backend=backend).unsupported(
+        coords, mask, torch.empty(2, 2, 3, device="cuda"),
+        torch.empty(2, 3, device="cuda"), coords, scalar, scalar,
+    )
+    align = AlignEuler(backend=backend).unsupported(
+        coords, coords, mask, torch.empty(2, device="cuda"), scalar
+    )
+    return augment is None and align is None
 
 
 needs_glue = pytest.mark.skipif(
-    not _glue_available(), reason="engine sampler_ops on an H100 required"
+    not _glue_available(), reason="engine sampler glue modules must serve this card"
 )
 
 CONFIGS = {

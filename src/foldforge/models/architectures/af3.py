@@ -24,10 +24,10 @@ from foldforge.modules.dense.pair_init import (
     SummedInputEmbedder,
     token_bond_types,
 )
-from foldforge.modules.dense.pairformer import EvoformerBlock, PairformerBlock
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 from foldforge.modules.dense.structural_tokens import StructuralTokenExpander
 from foldforge.modules.dense.template import TemplateEmbedding
+from foldforge.modules.engine import graph as engine_graph
 from foldforge.utils.rigid_align import kabsch_rotation
 
 # Copyright 2024 DeepMind Technologies Limited
@@ -186,12 +186,7 @@ class Evoformer(nn.Module):
             )
             self.msa_stack = nn.ModuleList(
                 [
-                    EvoformerBlock(
-                        c_msa=self.msa_channel,
-                        c_pair=self.pair_channel,
-                        n_heads_pair=spec.pair_heads,
-                        spec=spec,
-                    )
+                    self._msa_block(spec)
                     for _ in range(self.msa_stack_num_layer)
                 ]
             )
@@ -206,19 +201,7 @@ class Evoformer(nn.Module):
         )
 
         self.trunk_pairformer = nn.ModuleList(
-            [
-                PairformerBlock(
-                    c_pair=self.pair_channel,
-                    c_single=self.seq_channel,
-                    n_heads_pair=spec.pair_heads,
-                    num_intermediate_factor=spec.pairformer_transition_factor,
-                    with_single=spec.trunk_single_track,
-                    with_pair_attention=spec.pair_attention,
-                    spec=spec,
-                    pair_qkv_dim=spec.pair_qkv_dim,
-                )
-                for _ in range(self.pairformer_num_layer)
-            ]
+            [self._trunk_block(spec) for _ in range(self.pairformer_num_layer)]
         )
 
         # ESMFold2 recycles through a discretised diagonal SSM rather than an
@@ -259,35 +242,40 @@ class Evoformer(nn.Module):
                 c_target_feat=self.c_target_feat,
             )
             self.structural_token_refiner = nn.ModuleList(
-                [
-                    PairformerBlock(
-                        c_pair=self.pair_channel,
-                        c_single=self.seq_channel,
-                        n_heads=spec.structural_refiner_heads,
-                        n_heads_pair=spec.pair_heads,
-                        num_intermediate_factor=(
-                            spec.structural_refiner_transition_factor
-                        ),
-                        single_intermediate_factor=(spec.pairformer_transition_factor),
-                        with_single=True,
-                        spec=spec,
-                        pair_qkv_dim=spec.pair_qkv_dim,
-                    )
-                    for _ in range(spec.structural_refiner_layers)
-                ]
+                [self._refiner_block(spec) for _ in range(spec.structural_refiner_layers)]
             )
 
-    def _pair_only_block(self, spec: DenseSpec) -> PairformerBlock:
+    def _refiner_block(self, spec: DenseSpec) -> nn.Module:
+        """One block of OpenDDE's structural-token refiner (the engine class; its single attention takes the expander's
+        bias through ``extra_pair_bias``)."""
+        return engine_graph.make_pairformer_block(
+            spec,
+            d_pair=self.pair_channel,
+            d_single=self.seq_channel,
+            qkv_dim=spec.pair_qkv_dim,
+            transition_n=spec.structural_refiner_transition_factor,
+            single_transition_n=spec.pairformer_transition_factor,
+            n_head_single=spec.structural_refiner_heads,
+        )
+
+    def _trunk_block(self, spec: DenseSpec) -> nn.Module:
+        """One trunk pairformer block: the engine class."""
+        return engine_graph.make_pairformer_block(
+            spec,
+            d_pair=self.pair_channel,
+            d_single=self.seq_channel if spec.trunk_single_track else 0,
+            qkv_dim=spec.pair_qkv_dim,
+            pair_attention=spec.pair_attention,
+        )
+
+    def _msa_block(self, spec: DenseSpec) -> nn.Module:
+        """One MSA-stack block: engine parts."""
+        return engine_graph.make_evoformer_block(spec, self.msa_channel, self.pair_channel, spec.pair_heads)
+
+    def _pair_only_block(self, spec: DenseSpec) -> nn.Module:
         """Build one trunk block with neither a single track nor pair attentions."""
-        return PairformerBlock(
-            c_pair=self.pair_channel,
-            c_single=self.seq_channel,
-            n_heads_pair=spec.pair_heads,
-            num_intermediate_factor=spec.pairformer_transition_factor,
-            with_single=False,
-            with_pair_attention=spec.pair_attention,
-            spec=spec,
-            pair_qkv_dim=spec.pair_qkv_dim,
+        return engine_graph.make_pairformer_block(
+            spec, d_pair=self.pair_channel, qkv_dim=spec.pair_qkv_dim, pair_attention=spec.pair_attention
         )
 
     def _embed_lm_pair(
@@ -321,7 +309,7 @@ class Evoformer(nn.Module):
             lm = lm * keep.to(lm.dtype) / (1.0 - rate)
         if self.lm_encoder is not None:
             for block in self.lm_encoder:
-                lm = block(lm, pair_mask)
+                lm = engine_graph.run_block(block, lm, pair_mask)
         return pair_activations + lm
 
     def expand_structural(
@@ -357,8 +345,8 @@ class Evoformer(nn.Module):
         seq_mask = batch.token_features.mask
         pair_mask = (seq_mask[:, None] * seq_mask[None, :]).to(pair.dtype)
         for block in self.structural_token_refiner:
-            pair, single = block(
-                pair, pair_mask, single, seq_mask, extra_pair_bias=bias
+            pair, single = engine_graph.run_block(
+                block, pair, pair_mask, single, seq_mask, extra_pair_bias=bias
             )
         return {
             **embeddings,
@@ -600,7 +588,7 @@ class Evoformer(nn.Module):
             self.prev_single_embedding_layer_norm(prev["single"].to(single_init.dtype))
         )
         for block in self.trunk_pairformer:
-            pair_activations = block(pair_activations, pair_mask)
+            pair_activations = engine_graph.run_block(block, pair_activations, pair_mask)
 
         pair_pre_coda = pair_activations
         pair_activations = self._finalize_pair_only(
@@ -622,7 +610,7 @@ class Evoformer(nn.Module):
         if self.parcae_readout is not None and last_pass:
             pair = self.parcae_readout(pair)
             for block in self.trunk_coda:
-                pair = block(pair, mask)
+                pair = engine_graph.run_block(block, pair, mask)
         return pair
 
     def _pair_only_injection(
@@ -779,7 +767,8 @@ class Evoformer(nn.Module):
         )
 
         for pairformer_b in self.trunk_pairformer:
-            pair_activations, single_activations = pairformer_b(
+            pair_activations, single_activations = engine_graph.run_block(
+                pairformer_b,
                 pair_activations,
                 pair_mask,
                 single_activations,
@@ -848,6 +837,13 @@ class AlphaFold3(nn.Module):
             spec=spec,
         )
 
+    @property
+    def activation_dtype(self) -> torch.dtype:
+        """The dtype the trunk's activations start in: bf16 for a ``master`` model (fp32 parameters, activations under
+        :func:`~foldforge.modules.engine.configure.activation_autocast`), fp32 otherwise. Set by ``configure_model``; parameters are
+        always fp32."""
+        return getattr(self, "foldforge_activation_dtype", torch.float32)
+
     def create_target_feat_embedding(
         self, batch: feat_batch.Batch
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -868,7 +864,7 @@ class AlphaFold3(nn.Module):
             batch=batch,
         )
 
-        dtype = self.evoformer.left_single.weight.dtype
+        dtype = self.activation_dtype
         if self.spec.input_embedder == "summed":
             summed = self.input_embedder(batch, enc.token_act).to(dtype)
             return summed, summed
@@ -1163,6 +1159,9 @@ class AlphaFold3(nn.Module):
 
     def run_trunk(self, batch: dict[str, torch.Tensor]) -> TrunkOutput:
         """Prepare residue/structural representations once for repeated sampling."""
+        # Featurisation may hand float64 arrays (reference conformer positions of some families); autocast leaves float64 alone, so a
+        # float64 input would meet a bf16 weight. Single precision is what every family's graph computes in.
+        batch = {key: value.float() if value.dtype == torch.float64 else value for key, value in batch.items()}
         batch_data = self._prepare_batch(batch)
         embeddings = self._run_trunk(batch_data)
         diffusion = self._prepare_diffusion_inputs(batch, batch_data, embeddings)

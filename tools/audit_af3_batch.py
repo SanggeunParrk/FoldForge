@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from miniworld_engine.kernels.augmented_attention import whole_op
+from miniworld_engine.modules import AugmentedAttentionPairBias
 
 from foldforge.models.inference import run
 from foldforge.models.io import runtime
@@ -20,19 +20,21 @@ def main() -> int:
     assert torch.cuda.is_available()
     report = {"calls": [], "attention_shapes": []}
     original_bind = runtime.Runtime.bind
-    original_attention = whole_op.augmented_attention_pair_bias
+    original_attention = AugmentedAttentionPairBias.forward
     recording = False
 
     def attention(
-        q: torch.Tensor,
-        k: torch.Tensor,
-        v: torch.Tensor,
-        bias: torch.Tensor,
-        mask: torch.Tensor | None,
+        module: AugmentedAttentionPairBias,
+        single: torch.Tensor,
+        cond: torch.Tensor,
+        pair: torch.Tensor,
+        *args: Any,
+        **kwargs: Any,
     ) -> torch.Tensor:
+        # single [A, B, L, d], pair [B, L, L, d_pair]: A samples share one pair bias
         if recording:
-            report["attention_shapes"].append([list(q.shape), list(bias.shape)])
-        return original_attention(q, k, v, bias, mask)
+            report["attention_shapes"].append([list(single.shape), list(pair.shape)])
+        return original_attention(module, single, cond, pair, *args, **kwargs)
 
     def bind(owner: runtime.Runtime, model: Any) -> Any:
         assert not owner.request.execution.compile
@@ -76,7 +78,7 @@ def main() -> int:
         return original_bind(owner, model)
 
     runtime.Runtime.bind = bind
-    whole_op.augmented_attention_pair_bias = attention
+    AugmentedAttentionPairBias.forward = attention
     try:
         status = run("af3", sys.argv[2:])
         assert len(report["calls"]) == report["steps"]
@@ -91,7 +93,7 @@ def main() -> int:
         return status
     finally:
         runtime.Runtime.bind = original_bind
-        whole_op.augmented_attention_pair_bias = original_attention
+        AugmentedAttentionPairBias.forward = original_attention
         Path(sys.argv[1]).write_text(json.dumps(report, indent=2) + "\n")
 
 

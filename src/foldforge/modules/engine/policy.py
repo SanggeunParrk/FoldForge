@@ -1,64 +1,111 @@
-"""Shared support predicates and the boundary that observes/enforces a decision.
+"""FoldForge's side of the engine's backend contract: per-module backend choice, the guard that asks ``unsupported`` before a call, and
+the fallback / error policy.
 
-Predicates never execute kernels. Only callers that already enforced backend
-refusals supply an op/backend to accept_support; ordinary eligibility checks
-keep their existing silent fallback, including engine.skip and precision rules.
+The engine never falls back (a call outside a backend's range raises ``BackendUnsupported``) and has no global switch. This module does
+what the engine leaves to its caller:
+
+1. :func:`apply_plan` walks a model, gives every engine op module the backend the plan chose for ITS class
+   (:func:`~foldforge.modules.engine.backends.choose_backend`) and installs the guard. Composite blocks (``PairformerBlock``,
+   ``Pairformer``) stay on ``pytorch`` themselves and their children are set one by one, so an op that has no kernel is refused alone
+   instead of taking the whole block down.
+2. The guard asks ``module.unsupported(*args)`` before the call. A reason under ``engine.unsupported: fallback`` runs the engine
+   ``pytorch`` backend of that module for the call and logs the reason ONCE; under ``error`` it raises ``BackendUnsupportedError``.
 """
 
 from __future__ import annotations
 
-import torch
-from torch import nn
+import logging
+from typing import TYPE_CHECKING, Any
 
-from foldforge.layers.implementation import ImplementationType
-from foldforge.modules.engine.backends import Support, call_refusal
-from foldforge.modules.engine.serving import observe_support
+from foldforge.modules.engine.backends import BackendPlan, BackendUnsupportedError, op_of
+from foldforge.modules.engine.serving import observe_call
 
+if TYPE_CHECKING:
+    from torch import nn
 
-def backend_support(
-    module: nn.Module, backend: object, x: torch.Tensor | None = None
-) -> Support:
-    """Check backend selection and, when supplied, the existing CUDA requirement."""
-    if getattr(module, "foldforge_implementation", None) != backend:
-        return Support(refusal="backend_not_selected")
-    if x is not None and not x.is_cuda:
-        return Support(refusal="cuda_required")
-    return Support()
+logger = logging.getLogger("foldforge.backend")
+
+_LOGGED: set[tuple[str, str, str]] = set()
+_GUARDED = "_foldforge_guarded"
+_COMPOSITES = ("PairformerBlock", "Pairformer")
 
 
-def miniworld_support(
-    module: nn.Module, x: torch.Tensor, *, fp32: bool = False
-) -> Support:
-    """The common BF16 or explicitly allowed FP32/TF32 activation policy."""
-    selected = backend_support(module, ImplementationType.MINIWORLD_ENGINE, x)
-    if not selected.accepted:
-        return selected
-    if x.dtype != (torch.float32 if fp32 else torch.bfloat16):
-        return Support(refusal="activation_dtype")
-    if fp32 and not getattr(module, "foldforge_tf32", False):
-        return Support(refusal="tf32_not_allowed")
-    return Support()
+def forget_logged_refusals() -> None:
+    """Let the next refused call log again (tests; a long-lived server that wants a fresh line per request)."""
+    _LOGGED.clear()
 
 
-def accept_support(
-    module: nn.Module,
-    support: Support,
-    *,
-    op: str | None = None,
-    backend: str | None = None,
-) -> bool:
-    """Observe a check; apply legacy refusal policy only at explicit boundaries."""
-    observe_support(module, support)
-    if op is not None and backend is not None:
-        return not call_refusal(
-            getattr(module, "foldforge_unsupported", "fallback"), op, backend, support
-        )
-    return support.accepted
+def refuse(module: nn.Module, reason: str) -> bool:
+    """A call the module's backend refuses: True when the caller must run the pytorch backend, after ONE log line per (class, backend,
+    reason); raises under ``engine.unsupported: error`` (the module's ``foldforge_unsupported``)."""
+    cls, backend = type(module).__name__, module.backend
+    if getattr(module, "foldforge_unsupported", "fallback") == "error":
+        message = f"{cls} backend {backend!r} refuses a call (engine.unsupported: error): {reason}"
+        raise BackendUnsupportedError(message)
+    key = (cls, backend, reason)
+    if key not in _LOGGED:
+        _LOGGED.add(key)
+        logger.warning("%s backend %s refuses a call: %s; running its pytorch backend for it", cls, backend, reason)
+    return True
 
 
-def refused(
-    module: nn.Module, op: str, backend: str, reason: str | Support | None
-) -> bool:
-    """Compatibility-shaped refusal check through the same observation/policy boundary."""
-    support = reason if isinstance(reason, Support) else Support(refusal=reason)
-    return not accept_support(module, support, op=op, backend=backend)
+def guard(module: nn.Module, unsupported: str = "fallback") -> nn.Module:
+    """Wrap ``module.forward`` so that a call the selected backend refuses follows ``unsupported`` (idempotent; the policy is read per
+    call from ``module.foldforge_unsupported``)."""
+    module.foldforge_unsupported = unsupported
+    if module.__dict__.get(_GUARDED):
+        return module
+    original = module.forward
+
+    def forward(*args: Any, **kwargs: Any) -> Any:
+        backend = module.backend
+        if backend == "pytorch":
+            observe_call(module, backend, None)
+            return original(*args, **kwargs)
+        reason = module.unsupported(*args, **kwargs)
+        if reason is None:
+            observe_call(module, backend, None)
+            return getattr(module, f"_forward_{backend}")(*args, **kwargs)
+        refuse(module, reason)
+        observe_call(module, backend, reason)
+        module.backend = "pytorch"
+        try:
+            return module._forward_pytorch(*args, **kwargs)
+        finally:
+            module.backend = backend
+
+    module.forward = forward
+    object.__setattr__(module, _GUARDED, True)
+    return module
+
+
+def apply_plan(model: nn.Module, plan: BackendPlan, device: object | None = None) -> dict[str, dict[str, str | None]]:
+    """Give every engine op module of ``model`` its backend and guard; returns ``{module name: {"backend", "requested", "reason"}}``.
+
+    Does not descend into an op module (its parts are not ops of their own: a ``Transition``'s ``LayerNorm`` is a parameter holder). The
+    sampler glue (``AugmentNoise`` ...) is an op like the others."""
+    report: dict[str, dict[str, str | None]] = {}
+
+    def visit(name: str, module: nn.Module) -> None:
+        if type(module).__name__ in _COMPOSITES and hasattr(module, "set_backend"):
+            module.set_backend("pytorch")  # also puts every child on pytorch; the loop below gives each its own backend
+            module.foldforge_unsupported = plan.unsupported
+        elif op_of(module) is not None:
+            backend, reason = plan.for_class(type(module), device)
+            if reason is not None and plan.unsupported == "error":
+                raise BackendUnsupportedError(f"{name or '<root>'} ({type(module).__name__}): {reason}")
+            module.set_backend(backend)
+            guard(module, plan.unsupported)
+            op = op_of(module)
+            report[name] = {"op": op, "backend": backend, "requested": plan.requested(op), "reason": reason}
+            return
+        for child_name, child in module.named_children():
+            visit(f"{name}.{child_name}" if name else child_name, child)
+
+    visit("", model)
+    refused = {n: r for n, r in report.items() if r["reason"] is not None}
+    if refused:
+        lines = "; ".join(f"{n} ({r['requested']}: {r['reason']})" for n, r in sorted(refused.items())[:8])
+        logger.warning("backend %s: %d module(s) run the engine pytorch backend: %s%s", plan.backend, len(refused), lines,
+                       " ..." if len(refused) > 8 else "")
+    return report

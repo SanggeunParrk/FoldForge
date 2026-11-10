@@ -49,11 +49,7 @@ def inputs(length=129, atoms=129, msa=3, device="cpu"):
 
 
 def test_policy_keeps_atom_msa_edges_and_uses_128_step_tokens():
-    from miniworld_engine.autotune.shape_key import ATOM_SHAPES as ENGINE_ATOMS
-    from miniworld_engine.autotune.shape_key import TOKEN_SHAPES as ENGINE_TOKENS
-    from miniworld_engine.autotune.shape_key import token_key
-
-    assert ENGINE_ATOMS == ATOM_SHAPES
+    assert ATOM_SHAPES == (1024, 2048, 4096, 8192)
     assert MSA_SHAPES == (1024, 2048, 4096, 8192, 16384)
     from foldforge.models.bucketing import ATOM_BUCKETS
 
@@ -66,9 +62,6 @@ def test_policy_keeps_atom_msa_edges_and_uses_128_step_tokens():
     assert BucketShape.select(1140, 4591, 2049) == BucketShape(
         1140, 4591, 2049, 1152, 8192, 4096
     )
-    # Physical padding never changes the engine's tuning key or its top clamp.
-    assert ENGINE_TOKENS == (128, 256, 384, 512, 640, 768)
-    assert token_key(1152, K=384) == token_key(768, K=384)
     assert tuple(range(128, 8193, 128)) == TOKEN_SHAPES
     for size in (0, -1):
         with pytest.raises(ValueError, match="tokens"):

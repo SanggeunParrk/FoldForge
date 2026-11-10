@@ -1,6 +1,6 @@
 {
-  "foldforge.models.af3.ported.nn.diffusion_transformer": "foldforge.modules.dense.diffusion_transformer",
-  "foldforge.models.af3.ported.nn.pairformer": "foldforge.modules.dense.pairformer",
-  "foldforge.models.af3.ported.nn.primitives": "foldforge.modules.dense.primitives",
+  "foldforge.models.af3.ported.nn.diffusion_transformer": "foldforge.models.checkpoints.legacy.transformer",
+  "foldforge.models.af3.ported.nn.pairformer": "foldforge.models.checkpoints.legacy.pairformer",
+  "foldforge.models.af3.ported.nn.primitives": "foldforge.models.checkpoints.legacy.primitives",
   "foldforge.models.af3.ported.nn.template": "foldforge.modules.dense.template"
 }

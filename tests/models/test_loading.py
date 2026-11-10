@@ -44,7 +44,7 @@ def test_every_backend_spelling_reaches_one_loading_lifecycle(
     the CLI and the report call ``miniworld``; the loader normalises it once
     so a benchmark row never carries two spellings of one backend.
     """
-    from foldforge.models.checkpoints import haiku
+    from foldforge.models.checkpoints import miniworld
 
     class DenseModel(TinyModel):
         def __init__(self, **kwargs: Any) -> None:
@@ -57,22 +57,23 @@ def test_every_backend_spelling_reaches_one_loading_lifecycle(
 
     seen = []
 
-    def import_weights(model, checkpoint) -> dict[str, int]:
+    def import_weights(model, checkpoint, *, family=None) -> dict[str, int]:
         seen.append((checkpoint, len(model.state_dict())))
         return {"state_entries": len(model.state_dict())}
 
-    monkeypatch.setattr(haiku, "import_jax_weights_", import_weights)
+    monkeypatch.setattr(miniworld, "load_into", import_weights)
     monkeypatch.setattr(
         loading, "import_module", lambda _: SimpleNamespace(AlphaFold3=DenseModel)
     )
-    model = load("af3", tmp_path / "af3.bin.zst", backend=requested, device="cpu")
+    model = load("boltz2", tmp_path / "boltz2.miniworld.pt", backend=requested, device="cpu")
     report = model.foldforge_load_report
-    assert [path for path, _ in seen] == [tmp_path / "af3.bin.zst"]
+    assert [path for path, _ in seen] == [tmp_path / "boltz2.miniworld.pt"]
     assert report["backend"] == recorded
     assert report["strict"] is True
     assert report["state_entries"] == seen[0][1]
-    # The precision split is the loader's, not the backend's.
-    assert model.projection.weight.dtype == torch.bfloat16
+    # Parameters stay fp32 (master precision): the split is the loader's, not the backend's.
+    assert model.projection.weight.dtype == torch.float32
+    assert model.foldforge_precision == "master"
     assert model.norm.weight.dtype == torch.float32
 
 
@@ -92,8 +93,8 @@ def test_registry_returns_one_loader_and_retired_packages_are_absent():
         )
 
 
-def test_haiku_checkpoint_is_imported_before_precision(tmp_path, monkeypatch):
-    from foldforge.models.checkpoints import haiku
+def test_miniworld_checkpoint_is_loaded_before_precision(tmp_path, monkeypatch):
+    from foldforge.models.checkpoints import miniworld
 
     class DenseModel(TinyModel):
         def __init__(self, **kwargs: Any) -> None:
@@ -104,30 +105,32 @@ def test_haiku_checkpoint_is_imported_before_precision(tmp_path, monkeypatch):
             fourier.register_buffer("bias", torch.zeros(4))
             self.diffusion_head.fourier_embeddings = fourier
 
-    def import_weights(model, checkpoint) -> dict[str, int]:
-        assert checkpoint == tmp_path / "af3.bin.zst"
+    def import_weights(model, checkpoint, *, family=None) -> dict[str, int]:
+        assert checkpoint == tmp_path / "boltz2.miniworld.pt"
         assert model.projection.weight.dtype == torch.float32
         with torch.no_grad():
             model.norm.weight.fill_(1.000123)
         return {"state_entries": len(model.state_dict())}
 
-    monkeypatch.setattr(haiku, "import_jax_weights_", import_weights)
+    monkeypatch.setattr(miniworld, "load_into", import_weights)
     monkeypatch.setattr(
         loading, "import_module", lambda _: SimpleNamespace(AlphaFold3=DenseModel)
     )
-    model = load("af3", tmp_path / "af3.bin.zst", backend="pytorch", device="cpu")
-    assert model.projection.weight.dtype == torch.bfloat16
+    model = load("boltz2", tmp_path / "boltz2.miniworld.pt", backend="pytorch", device="cpu")
+    assert model.projection.weight.dtype == torch.float32
+    assert model.foldforge_precision == "master"
     assert model.norm.weight.dtype == torch.float32
     assert model.diffusion_head.fourier_embeddings.weight.dtype == torch.float32
     torch.testing.assert_close(
         model.norm.weight, torch.full((4,), 1.000123), atol=0, rtol=0
     )
     assert model.foldforge_load_report["strict"] is True
-    assert model.foldforge_load_report["engine_pairformer_blocks"] == 0
+    assert model.foldforge_load_report["precision"] == "master"
+    assert model.foldforge_load_report["parameter_dtype"] == str(torch.float32)
 
 
-def test_af3_default_keeps_released_mixed_parameters(tmp_path, monkeypatch):
-    from foldforge.models.checkpoints import haiku
+def test_af3_default_keeps_released_values_in_fp32_master_parameters(tmp_path, monkeypatch):
+    from foldforge.models.checkpoints import miniworld
 
     class DenseModel(TinyModel):
         def __init__(self, **kwargs: Any) -> None:
@@ -139,28 +142,29 @@ def test_af3_default_keeps_released_mixed_parameters(tmp_path, monkeypatch):
             fourier.register_buffer("bias", torch.zeros(4))
             self.diffusion_head.fourier_embeddings = fourier
 
-    def import_weights(model, checkpoint, *, preserve_dtype=False) -> dict[str, int]:
-        assert preserve_dtype
-        assert checkpoint == tmp_path / "af3.bin.zst"
+    def import_weights(model, checkpoint, *, family=None) -> dict[str, int]:
+        assert checkpoint == tmp_path / "boltz2.miniworld.pt"
         with torch.no_grad():
-            model.projection.weight.data = model.projection.weight.bfloat16()
+            # a released bf16 value, exact in fp32
+            model.projection.weight.data = model.projection.weight.bfloat16().float()
             model.diffusion_head.projection.weight.fill_(1.000123)
             model.norm.weight.fill_(1.000123)
         return {"state_entries": len(model.state_dict())}
 
-    monkeypatch.setattr(haiku, "import_jax_weights_", import_weights)
+    monkeypatch.setattr(miniworld, "load_into", import_weights)
     monkeypatch.setattr(
         loading, "import_module", lambda _: SimpleNamespace(AlphaFold3=DenseModel)
     )
     model = load(
-        "af3",
-        tmp_path / "af3.bin.zst",
+        "boltz2",
+        tmp_path / "boltz2.miniworld.pt",
         backend="pytorch",
         device="cpu",
         precision_policy="af3_default",
     )
-    assert model.projection.weight.dtype == torch.bfloat16
+    assert model.projection.weight.dtype == torch.float32
     assert model.diffusion_head.projection.weight.dtype == torch.float32
+    assert model.foldforge_precision == "master"
     torch.testing.assert_close(
         model.diffusion_head.projection.weight,
         torch.full((4, 4), 1.000123),
@@ -174,18 +178,15 @@ def test_af3_default_keeps_released_mixed_parameters(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-def test_haiku_assign_preserves_source_dtype_and_exact_values(dtype):
-    from foldforge.models.checkpoints.haiku import Param, ParamType, assign
+def test_haiku_assign_loads_released_values_exactly_into_fp32(dtype):
+    """A released bf16 (or fp32) value is exact in an fp32 parameter: the loader copies, it does not round to a storage dtype."""
+    from foldforge.models.checkpoints.legacy.haiku import Param, ParamType, assign
 
     source = torch.full((3, 4), 1.000123, dtype=dtype)
-    target = nn.Parameter(torch.zeros((4, 3), dtype=torch.bfloat16))
-    assign(
-        {"weight": Param(target, ParamType.linear_weight)},
-        {"weight": source},
-        preserve_dtype=True,
-    )
-    assert target.dtype == dtype
-    torch.testing.assert_close(target, source.T, atol=0, rtol=0)
+    target = nn.Parameter(torch.zeros((4, 3), dtype=torch.float32))
+    assign({"weight": Param(target, ParamType.linear_weight)}, {"weight": source})
+    assert target.dtype == torch.float32
+    torch.testing.assert_close(target, source.T.float(), atol=0, rtol=0)
 
 
 @pytest.mark.parametrize("family", sorted(SPECS))
@@ -272,24 +273,6 @@ def test_resolved_spec_is_complete_and_strict_json(family, mode):
     assert report["pair_channel"] == spec.pair_channel
     assert report["atom_key_window"] == spec.atom_key_window
     assert report["affine_norms"] == sorted(spec.affine_norms)
-
-
-@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32])
-def test_native_bf16_clears_a_projection_s_fp32_compute_override(dtype):
-    """Native BF16 has to reach the GEMM, not only the stored weights.
-
-    A released geometry or conditioning projection may carry an FP32 compute
-    override; under a BF16 policy that override would quietly keep the matmul
-    in FP32 while the weights say otherwise. The rule is layout-independent, so
-    it is asked directly rather than through whichever loader still exists.
-    """
-    from foldforge.modules.engine.native_linear import NativeLinear
-
-    layer = NativeLinear(4, 4, bias=False)
-    layer.compute_dtype = torch.float32
-    loading.clear_native_compute_override(nn.Sequential(nn.LayerNorm(4), layer), dtype)
-
-    assert layer.compute_dtype == (None if dtype == torch.bfloat16 else torch.float32)
 
 
 def test_every_registered_family_names_a_distinct_default_checkpoint():

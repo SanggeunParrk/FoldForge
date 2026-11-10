@@ -1,44 +1,29 @@
-"""The order in which a loaded model gets its engine modules.
+"""Gives a loaded model's engine modules their backends.
 
-The pairformer wrappers come first (they create the modules the installer looks for), the engine
-modules next (they read the released ``DiffusionTransition`` blocks, which the conditioning pass
-turns into other classes), the conditioning pass last.
+FoldForge's graph holds engine classes as its own modules, so installing is only: apply the backend plan to every engine op module
+(per class, with the guard that implements ``engine.unsupported``), and record what was chosen. The graph already holds the engine classes, so no
+module is converted or wrapped.
 """
 
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any
 
-import torch
-
-from foldforge.modules.engine.backends import OP_CLASSES, BackendPlan
-from foldforge.modules.engine.conditioning import install_conditioning
-from foldforge.modules.engine.configure import implementation_of
-from foldforge.modules.engine.installation import (
-    installation_report,
-    phase_decisions,
-    record_installation,
-    record_phase,
-)
-from foldforge.modules.engine.modules import install_engine_modules
-from foldforge.modules.engine.pairformer import install_pairformers
+from foldforge.modules.engine.backends import BackendPlan
+from foldforge.modules.engine.policy import apply_plan
 
 if TYPE_CHECKING:
     from collections.abc import Collection
-    from typing import Any
 
+    import torch
     from torch import nn
 
 
 @contextlib.contextmanager
 def skip_engine_init():
-    """Engine modules built while this is active keep their uninitialised weights.
-
-    Every engine module the installers build is filled from the loaded weights straight away; the
-    truncated-normal initialiser it would otherwise run first (SciPy, ~40 ms per matrix) took
-    30 of the 43 seconds of a load.
-    """
+    """Engine modules built while this is active keep their uninitialised weights (a load fills every one of them straight away; the
+    truncated-normal initialiser (SciPy) it would run first costs ~40 ms per matrix)."""
     from miniworld_engine.modules import primitives
 
     original = primitives.InitType.apply
@@ -49,105 +34,27 @@ def skip_engine_init():
         primitives.InitType.apply = original
 
 
-def apply_plan(model: nn.Module, plan: BackendPlan) -> None:
-    """Give every module of an op the implementation the plan resolved for it.
-
-    ``configure_model`` set one ``foldforge_implementation`` on every module (the model's ``backend``). An op the plan
-    pins elsewhere (``engine.ops``), or that its backend has no kernel for and so runs the PyTorch reference, gets its
-    own here, by the class that carries the op (``backends.OP_CLASSES``). With the default plan nothing changes.
-    """
-    owner = {name: op for op, names in OP_CLASSES.items() for name in names}
-    for module in model.modules():
-        op = owner.get(type(module).__name__)
-        if op is None:
-            continue
-        backend = plan.of(op)
-        if op == "sampler_ops":
-            # the engine's fused rigid-motion / pooling kernels: a switch, read where the glue is chosen
-            module.foldforge_sampler_ops = backend == "miniworld"
-            continue
-        module.foldforge_implementation = implementation_of(backend)
-        module.foldforge_unsupported = plan.unsupported
-        if op == "single_attention":
-            module.attention.foldforge_implementation = implementation_of(backend)
-            module.attention.foldforge_unsupported = plan.unsupported
-    model.foldforge_sampler_ops = plan.of("sampler_ops") == "miniworld"
-    # The engine's OPM / pair weighted averaging modules take their own H100 paths before the Anthropic payload, even when
-    # built with implementation="anthropic"; this switches those off, so that the backend named is the kernel that runs.
-    off = {
-        **({"opm_train": False} if plan.of("opm") == "anthropic" else {}),
-        **(
-            {"pwa_train": False, "pwa_infer": False}
-            if plan.of("msa_pwa") == "anthropic"
-            else {}
-        ),
-    }
-    if off:
-        from miniworld_engine import settings
-
-        settings.configure(**off)
-    if plan.uses("cuequivariance"):
-        from cuequivariance_ops_torch import init_triton_cache
-
-        init_triton_cache()
-
-
 def install_engine(
     model: nn.Module,
-    dtype: torch.dtype,
     device: str | torch.device,
     *,
-    modules: bool,
+    modules: bool = True,
     skip: Collection[str] = (),
     plan: BackendPlan | None = None,
 ) -> nn.Module:
-    """Wrap the pairformers, attach the engine modules (``modules``), convert the conditioning blocks.
+    """Apply ``plan`` (default: ``miniworld`` everywhere) to ``model``'s engine modules.
 
-    ``skip`` (``engine.skip`` of the config, a debugging aid) lists the parts left dense: ``pairformers``,
-    ``conditioning`` and the ``engine_*`` module keys. ``plan`` is the backend of every op (``None``: all on
-    ``miniworld``, which is what a model loaded without ``engine.ops`` gets).
-    """
-    skip = set(skip)
+    ``modules=False`` (a CPU load, ``engine.skip`` containing ``engine_modules``) puts every module on ``pytorch``. The model's load report
+    gets the plan and the per-module choices (``engine_backends``). The dense sampler glue has no engine wiring yet, so the model's
+    ``foldforge_sampler_ops`` is False."""
+    import torch as _torch
+
     plan = BackendPlan.make() if plan is None else plan
-    record_phase(model, "pairformers", {})
-    record_phase(model, "conditioning", {})
-    with skip_engine_init():
-        if "pairformers" not in skip:
-            model = install_pairformers(model)
-        apply_plan(model, plan)
-        if modules:
-            model.foldforge_load_report.update(
-                install_engine_modules(
-                    model, torch.empty(0, dtype=dtype, device=device), skip, plan
-                )
-            )
-        else:
-            record_installation(
-                model,
-                {
-                    "enabled": False,
-                    "coverage": "engine_module_candidates",
-                    "is_runtime_dispatch": False,
-                    "reason": "engine_modules_disabled",
-                    "modules": {},
-                },
-            )
-        if "conditioning" not in skip:
-            model = install_conditioning(model)
-        report = installation_report(model)
-        load_report = cast("dict[str, Any]", model.foldforge_load_report)
-        report["phases"] = {
-            "pairformers": {
-                "status": "skipped" if "pairformers" in skip else "processed",
-                "converted": 0
-                if "pairformers" in skip
-                else load_report.get("engine_pairformer_blocks", 0),
-            },
-            "conditioning": {
-                "status": "skipped" if "conditioning" in skip else "processed"
-            },
-        }
-        for name, decisions in phase_decisions(model).items():
-            report["phases"][name]["decisions"] = decisions
-        load_report["engine_installation"] = report
-        return model
+    if not modules or "engine_modules" in set(skip):
+        plan = BackendPlan.make("pytorch", None, plan.unsupported)
+    choices = apply_plan(model, plan, _torch.device(device))
+    model.foldforge_sampler_ops = False
+    report: dict[str, Any] = getattr(model, "foldforge_load_report", {})
+    report["engine_backends"] = {"plan": plan.report(), "modules": choices}
+    model.foldforge_load_report = report
+    return model

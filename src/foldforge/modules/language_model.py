@@ -26,11 +26,11 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from jaxtyping import Bool, Float, Int
-from miniworld_engine.modules.primitives import LayerNorm
-from miniworld_engine.utils.typecheck import typecheck
+from miniworld_engine.modules import LayerNorm
 from torch import nn
 
 from foldforge.data.constants import residue_names
+from foldforge.diffusion._typecheck import typecheck
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

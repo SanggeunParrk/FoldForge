@@ -178,3 +178,52 @@ def _plan_action(spec: dict[str, Any], *, source_dir: Path | None) -> str:
         if spec.get("format") == "converted"
         else "download + convert"
     )
+
+
+@weights.command("convert")
+@click.argument("models", nargs=-1)
+@click.option("--all", "all_models", is_flag=True, help="Convert every registered model whose released blob is present.")
+@click.option("--blob", type=click.Path(path_type=Path, dir_okay=False, exists=True), help="Released blob (one model only).")
+@click.option("--out", type=click.Path(path_type=Path, dir_okay=False), help="Output file (one model only).")
+@click.option("--mode", type=click.Choice(["fast", "exact"]), default="fast", show_default=True)
+def convert(models: tuple[str, ...], *, all_models: bool, blob: Path | None, out: Path | None, mode: str) -> None:
+    """Convert released blobs (``<model>.bin.zst``) to the miniworld checkpoint format (``<model>.miniworld.pt``), once.
+
+    The loader reads only the converted file and never converts at run time. See docs/guides/CHECKPOINT-FORMAT.md.
+
+    Examples: foldforge weights convert af3
+
+    foldforge weights convert --all
+    """
+    from foldforge.models.checkpoints import DEFAULT_FILES, resolve
+    from foldforge.models.checkpoints.miniworld import NATIVE_FILES, convert_model
+
+    if all_models == bool(models):
+        message = "Provide model names or --all."
+        raise click.UsageError(message)
+    if (blob or out) and len(models) != 1:
+        message = "--blob / --out need exactly one model."
+        raise click.UsageError(message)
+    unknown = set(models) - set(NATIVE_FILES)
+    if unknown:
+        message = f"Unknown models: {', '.join(sorted(unknown))}; choose from {', '.join(sorted(NATIVE_FILES))}."
+        raise click.UsageError(message)
+    selected = list(NATIVE_FILES) if all_models else list(dict.fromkeys(models))
+    failures = 0
+    for model in selected:
+        try:
+            if all_models:
+                resolve(model, DEFAULT_FILES[model])  # --all: skip the models whose blob is not installed
+        except FileNotFoundError:
+            click.echo(f"SKIP {model}: no released blob ({DEFAULT_FILES[model]}); foldforge weights download {model}")
+            continue
+        try:
+            report = convert_model(model, blob=blob, out=out, mode=mode)
+        except Exception as error:  # noqa: BLE001 - report each model, keep going
+            failures += 1
+            click.echo(f"FAILED {model}: {error}")
+            continue
+        click.echo(f"OK {model}: {report['out']} ({report['records']} tensors)")
+    if failures:
+        message = f"{failures} conversion(s) failed."
+        raise click.ClickException(message)

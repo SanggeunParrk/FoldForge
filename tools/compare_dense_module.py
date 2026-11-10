@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from foldforge.models.checkpoints.haiku import import_jax_weights_
+from foldforge.models.checkpoints.legacy.haiku import import_jax_weights_
 from foldforge.modules.dense.spec import SPECS
 
 
@@ -24,23 +24,12 @@ def main() -> int:
     parser.add_argument("--kind", required=True)
     parser.add_argument("--inputs", type=Path, required=True)
     parser.add_argument("--reference", type=Path, required=True)
-    parser.add_argument(
-        "--loaded", help="registry name: compare the fully loaded model"
-    )
     args = parser.parse_args()
-    from foldforge.models.architectures.af3 import AlphaFold3
+    from foldforge.models.checkpoints.legacy import dense_model
 
-    if args.loaded:
-        # The full load path: precision conversion and the engine block wrappers.
-        from foldforge.models import load
-
-        model = load(
-            args.loaded, args.blob, backend="pytorch", dtype=torch.float32, device="cpu"
-        )
-    else:
-        model = AlphaFold3(spec=SPECS[args.family])
-        import_jax_weights_(model, args.blob)
-        model = model.float().eval()
+    model = dense_model(SPECS[args.family])  # the released-layout graph the Haiku blob is read into (converter-only)
+    import_jax_weights_(model, args.blob)
+    model = model.float().eval()
     data = {k: torch.from_numpy(v) for k, v in np.load(args.inputs).items()}
     with torch.no_grad():
         if args.kind == "token_transformer":

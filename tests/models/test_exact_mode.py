@@ -36,7 +36,7 @@ def _msa(rows: torch.Tensor, deletions: torch.Tensor | None = None) -> MSA:
 def test_fast_is_the_registered_spec_and_exact_adds_only_its_conventions():
     assert MODES == ("fast", "exact")
     for family, spec in SPECS.items():
-        assert spec_for(family, "fast") is spec
+        assert spec_for(family, "fast") == spec
         exact = spec_for(family, "exact")
         for name, value in EXACT_CONVENTIONS.get(family, {}).items():
             assert getattr(exact, name) == value
@@ -84,8 +84,10 @@ def test_without_alignment_empties_the_statistics():
 
 
 def test_length_divided_triangle_equals_scaling_the_norm_epsilon():
-    from foldforge.modules.dense.triangle_multiplication import TriangleMultiplication
-    from foldforge.modules.engine.routing import triangle_residual
+    from foldforge.models.checkpoints.legacy.routing import triangle_residual
+    from foldforge.models.checkpoints.legacy.triangle_multiplication import (
+        TriangleMultiplication,
+    )
 
     torch.manual_seed(0)
     plain = TriangleMultiplication(c_pair=8)
@@ -101,7 +103,7 @@ def test_length_divided_triangle_equals_scaling_the_norm_epsilon():
 
 def test_the_outer_product_divisor_and_its_bias_placement_are_stated_apart():
     """One family takes the clamped divisor without the bias placement."""
-    from foldforge.modules.dense import primitives
+    from foldforge.models.checkpoints.legacy import primitives
 
     torch.manual_seed(0)
     msa, mask = torch.randn(2, 5, 8), torch.ones(2, 5)

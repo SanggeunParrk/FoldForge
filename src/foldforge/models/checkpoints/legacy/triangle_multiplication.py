@@ -13,7 +13,7 @@
 import torch
 import torch.nn as nn
 
-from foldforge.modules.engine.routing import (
+from foldforge.models.checkpoints.legacy.routing import (
     reference_triangle,
 )
 

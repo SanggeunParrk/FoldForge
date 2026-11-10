@@ -14,7 +14,7 @@
 import torch
 import torch.nn as nn
 
-from foldforge.modules.engine.routing import reference_transition, served_by
+from foldforge.models.checkpoints.legacy.routing import reference_transition
 
 
 class Transition(nn.Module):
@@ -85,10 +85,6 @@ class OuterProductMean(nn.Module):
 
     def forward(self, msa: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """Compute the module output."""
-        built = served_by(self, msa)
-        if built is not None:
-            # The raw update (the engine adds no residual without one), from the CUDA kernels.
-            return built(msa[None], (mask > 0)[None])[0]
         mask = mask.to(msa.dtype).unsqueeze(-1)
         msa = self.layer_norm_input(msa)
         left_act = mask * self.left_projection(msa)
@@ -97,7 +93,9 @@ class OuterProductMean(nn.Module):
         if self.groups > 1:
             return self._grouped(left_act, right_act)
 
-        from foldforge.modules.reference.attention import af3_outer_product_mean
+        from foldforge.models.checkpoints.legacy.reference.attention import (
+            af3_outer_product_mean,
+        )
 
         if not self.bias_after_norm and not self.clamped_norm:
             # AF3's normalisation: mean over MSA rows, 1e-3 offset, bias before

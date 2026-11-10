@@ -13,7 +13,7 @@ from pathlib import Path
 
 import torch
 
-from foldforge.models.checkpoints import haiku
+from foldforge.models.checkpoints.legacy import haiku
 from foldforge.modules.dense.spec import SPECS
 
 

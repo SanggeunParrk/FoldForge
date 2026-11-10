@@ -39,9 +39,6 @@ Compatibility tools for reproducing the recorded validation runs:
 
 ## Kernel caches and dispatch
 
-- `build_autotune_cache.py` / `.sbatch`: bounded, resumable model-shape gap builder
-  that runs the ordinary released-model CLI. Rejects PyTorch baselines as cache
-  builds. See [cache build commands](../docs/guides/CACHE-BUILD.md).
 - `op_dispatch_audit.py` / `.sbatch`: which engine ops a fold actually enters and
   whether the fused residual rode along.
 - `audit_model_boundaries.py --out docs/archive/model-boundaries-<date>.csv`:

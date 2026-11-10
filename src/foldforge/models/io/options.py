@@ -246,7 +246,7 @@ class FoldCommand(click.RichCommand):
 @click.option(
     "--engine-cache-dir",
     type=click.Path(path_type=Path, file_okay=False),
-    help="Use this engine autotune cache for the run.",
+    help="Deprecated and ignored: the engine has no autotune cache.",
 )
 @click.option(
     "--save-images",

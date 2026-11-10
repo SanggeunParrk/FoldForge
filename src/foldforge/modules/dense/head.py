@@ -17,9 +17,10 @@ import torch.nn.functional as F
 
 from foldforge.data.constants import atom_types
 from foldforge.data.features import dense_batch as feat_batch
-from foldforge.modules.dense import featurization, pairformer, template
+from foldforge.modules.dense import featurization, template
 from foldforge.modules.dense.pair_init import ContactConditioning, token_bond_types
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
+from foldforge.modules.engine import graph as engine_graph
 from foldforge.utils import atom_layout
 from foldforge.utils.device_constants import built_on_device
 
@@ -311,19 +312,7 @@ class ConfidenceHead(nn.Module):
             self.row_pool_out = nn.Linear(self.c_pair, self.c_single, bias=False)
 
         self.confidence_pairformer = nn.ModuleList(
-            [
-                pairformer.PairformerBlock(
-                    c_single=self.c_single,
-                    c_pair=self.c_pair,
-                    n_heads_pair=spec.pair_heads,
-                    num_intermediate_factor=spec.pairformer_transition_factor,
-                    with_single=True,
-                    with_pair_attention=spec.pair_attention,
-                    spec=spec,
-                    dual_output=spec.confidence_dual_output,
-                )
-                for _ in range(n_pairformer_layers)
-            ]
+            [self._block(spec) for _ in range(n_pairformer_layers)]
         )
 
         head_norm = nn.LayerNorm if spec.confidence_head_norms else nn.Identity
@@ -379,6 +368,17 @@ class ConfidenceHead(nn.Module):
             self.experimentally_resolved_logits = nn.Linear(
                 self.c_single, self.num_atom * 2, bias=False
             )
+
+    def _block(self, spec: DenseSpec) -> nn.Module:
+        """One confidence pairformer block."""
+        return engine_graph.make_pairformer_block(
+            spec,
+            d_pair=self.c_pair,
+            d_single=self.c_single,
+            pair_attention=spec.pair_attention,
+            confidence=True,
+            batched="sample",
+        )
 
     def _build_input_embedding(
         self, c_single: int, c_pair: int, c_target_feat: int
@@ -553,7 +553,7 @@ class ConfidenceHead(nn.Module):
 
         # pairformer stack
         for layer in self.confidence_pairformer:
-            pair_act, single_act = layer(pair_act, pair_mask, single_act, seq_mask)
+            pair_act, single_act = engine_graph.run_block(layer, pair_act, pair_mask, single_act, seq_mask)
 
         if self.row_pool_attn is not None:
             # The single is pooled FROM THE PAIR, and after the stack, not
@@ -653,7 +653,7 @@ class ConfidenceHead(nn.Module):
 
         for layer in self.confidence_pairformer:
             if getattr(layer, "supports_sample_batch", False):
-                pair_act, single_act = layer(pair_act, pair_mask, single_act, seq_mask)
+                pair_act, single_act = engine_graph.run_block(layer, pair_act, pair_mask, single_act, seq_mask)
             else:
                 pairs, singles = zip(
                     *(

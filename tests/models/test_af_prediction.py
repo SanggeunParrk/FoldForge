@@ -42,7 +42,7 @@ def test_af3_confidence_excludes_padding_atoms():
 
 @pytest.mark.parametrize("directory", [False, True])
 def test_af3_honors_checkpoint_path(tmp_path, directory):
-    from foldforge.models.checkpoints import haiku as params
+    from foldforge.models.checkpoints.legacy import haiku as params
 
     selected = tmp_path if directory else tmp_path / "custom-name.bin.zst"
     expected = tmp_path / "af3.bin.zst" if directory else selected

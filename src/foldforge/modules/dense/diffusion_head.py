@@ -8,16 +8,13 @@ from foldforge.modules.dense.atom_cross_attention import (
     AtomCrossAttDecoder,
     AtomCrossAttEncoder,
 )
-from foldforge.modules.dense.diffusion_transformer import (
-    DiffusionTransformer,
-    DiffusionTransition,
-)
 from foldforge.modules.dense.preconditioning import (
     reconstruct_coordinates,
     scale_coordinates,
 )
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
-from foldforge.modules.reference.fourier import fourier_features
+from foldforge.modules.engine import graph as engine_graph
+from foldforge.modules.engine import modules as engine_modules
 
 # Copyright 2024 xfold authors
 # Copyright 2024 DeepMind Technologies Limited
@@ -34,12 +31,12 @@ from foldforge.modules.reference.fourier import fourier_features
 def _plus_transition(transition: nn.Module, x: torch.Tensor) -> torch.Tensor:
     """``x + transition(x)``.
 
-    An engine-served transition (``engine.conditioning.ReleasedTransition``) returns
-    the sum itself, the residual folded into its kernel: adding its delta back would
+    The engine ``Transition`` owns its residual and returns the sum itself: adding its delta back would
     round twice in bf16.
     """
-    residual = getattr(transition, "residual", None)
-    return residual(x) if residual is not None else x + transition(x)
+    if isinstance(transition, engine_modules.Transition):
+        return transition(x)
+    return x + transition(x)
 
 
 # Carefully measured by averaging multimer training set.
@@ -48,6 +45,11 @@ SIGMA_DATA = 16.0
 #: Rows (steps x tokens) the batched conditioning of a whole trajectory passes through
 #:the transitions at once.
 MAX_TABLE_ROWS = 32768
+
+
+def fourier_features(value: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor) -> torch.Tensor:
+    """``cos(2 pi (value * weight + bias))`` for scalar noise levels, with the checkpoint's fixed projection."""
+    return torch.cos(2 * torch.pi * (value[..., None] * weight + bias))
 
 
 class FourierEmbeddings(nn.Module):
@@ -119,12 +121,8 @@ class DiffusionHead(nn.Module):
             self.c_pair_cond_initial, self.pair_channel, bias=False
         )
 
-        self.pair_transition_0 = DiffusionTransition(
-            self.pair_channel, c_single_cond=None
-        )
-        self.pair_transition_1 = DiffusionTransition(
-            self.pair_channel, c_single_cond=None
-        )
+        self.pair_transition_0 = self._transition(spec, self.pair_channel)
+        self.pair_transition_1 = self._transition(spec, self.pair_channel)
 
         self.cond_final_norm = spec.diffusion_cond_final_norm
         if self.cond_final_norm:
@@ -157,12 +155,8 @@ class DiffusionHead(nn.Module):
             self.c_noise_embedding, self.seq_channel, bias=False
         )
 
-        self.single_transition_0 = DiffusionTransition(
-            self.seq_channel, c_single_cond=None
-        )
-        self.single_transition_1 = DiffusionTransition(
-            self.seq_channel, c_single_cond=None
-        )
+        self.single_transition_0 = self._transition(spec, self.seq_channel)
+        self.single_transition_1 = self._transition(spec, self.seq_channel)
         if spec.diffusion_cond_final_norm:
             self.single_cond_final_norm = nn.LayerNorm(self.seq_channel, bias=True)
 
@@ -185,11 +179,8 @@ class DiffusionHead(nn.Module):
             self.seq_channel, self.c_act, bias=False
         )
 
-        self.transformer = DiffusionTransformer(
-            c_single_cond=seq_channel,
-            c_pair_cond=pair_channel,
-            num_blocks=spec.diffusion_blocks,
-            spec=spec,
+        self.transformer = engine_graph.make_token_transformer(
+            spec, c_act=self.c_act, d_cond=seq_channel, d_pair=pair_channel, num_blocks=spec.diffusion_blocks
         )
 
         self.output_norm = nn.LayerNorm(self.c_act, bias="output_norm" in affine)
@@ -197,6 +188,11 @@ class DiffusionHead(nn.Module):
         self.atom_cross_att_decoder = AtomCrossAttDecoder(spec=spec)
 
         self.fourier_embeddings = FourierEmbeddings(dim=256)
+
+    @staticmethod
+    def _transition(spec: DenseSpec, width: int) -> nn.Module:  # noqa: ARG004
+        """A conditioning transition (no conditioning input, factor 2): the engine `Transition`."""
+        return engine_graph.make_conditioning_transition(width)
 
     def _fold_conditioning(
         self,

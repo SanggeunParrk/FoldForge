@@ -1,8 +1,8 @@
 """Inference padding uses explicit semantic axes.
 
-Autotune floor/clamping selects a *configuration*, never a physical tensor size.
-Tokens round up to multiples of 128. Atoms retain the engine allocation ladder;
-MSA uses its own ladder. Real inputs are never truncated.
+A bucket is a physical tensor size chosen by FoldForge, independent of any engine
+configuration table. Tokens round up to multiples of 128; atoms use the
+allocation ladder below; MSA uses its own ladder. Real inputs are never truncated.
 """
 
 from __future__ import annotations
@@ -11,23 +11,23 @@ from bisect import bisect_left
 from dataclasses import dataclass
 
 import torch
-from miniworld_engine.autotune.shape_key import ATOM_SHAPES
 
 TOKEN_BUCKET_SIZE = 128
+ATOM_SHAPES = (1024, 2048, 4096, 8192)  # FoldForge atom ladder, below the two long-input rungs
 # Finite sequence for AF3's featurizer API, covering every supported atom count.
-# This is an inference allocation list, not the engine's autotune TOKEN_SHAPES.
+# This is an inference allocation list owned by FoldForge.
 TOKEN_SHAPES = tuple(range(TOKEN_BUCKET_SIZE, ATOM_SHAPES[-1] + 1, TOKEN_BUCKET_SIZE))
 # 1024 is the shared inference policy's per-recycle MSA sample; without it every
 # adapter padded those rows to 2048 and ran the MSA stack half on padding.
 MSA_SHAPES = (1024, 2048, 4096, 8192, 16384)
-# Inference atom allocation ladder. The engine tunes up to 8192 atoms and clamps
-# larger launches onto that configuration; the two extra rungs only size padding
-# so long homo-oligomer inputs can run until memory, not the ladder, stops them.
+# FoldForge's own atom ladder (the engine keeps no shape-key constant any more); the two
+# extra rungs only size padding so long homo-oligomer inputs can run until memory,
+# not the ladder, stops them.
 ATOM_BUCKETS = (*ATOM_SHAPES, 16384, 32768)
 
 
 def token_bucket(size: int) -> int:
-    """Round real or expanded structural tokens up without an autotune-size cap."""
+    """Round real or expanded structural tokens up to the next multiple of 128."""
     if size < 1:
         message = f"tokens must be positive, got {size}"
         raise ValueError(message)
@@ -90,7 +90,7 @@ def bucket_af3(example: dict) -> tuple[dict, BucketShape]:
     """Rebuild flat-atom gathers with the official layout API, trim empty MSA rows.
 
     The caller must request the 128-step inference TOKEN_SHAPES from the
-    official featurizer first (not the engine autotune ladder).
+    official featurizer first (a multiple of 128).
     Dense token-by-24 geometry stays dense; only flat cross-attention uses A.
     """
     import numpy as np  # noqa: PLC0415 - optional AF3 input dependencies

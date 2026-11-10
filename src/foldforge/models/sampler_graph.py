@@ -15,6 +15,7 @@ drops it.
 
 from __future__ import annotations
 
+import functools
 from typing import TYPE_CHECKING, Any
 
 import torch
@@ -22,7 +23,6 @@ import torch
 if TYPE_CHECKING:
     import contextlib
     from collections.abc import Callable
-    from types import ModuleType
 
     from foldforge.diffusion.edm.sampling import EulerSampler
 
@@ -52,29 +52,71 @@ def _hatted(config: EulerSampler.Config, sigmas: torch.Tensor) -> torch.Tensor:
     return sigma * factor
 
 
+class _Glue:
+    """The engine's fused rigid-motion glue modules of one sampler call."""
+
+    def __init__(self, augment: Any, align: Any, mask: torch.Tensor) -> None:
+        self.augment, self.align, self.mask = augment, align, mask
+        self._served: dict[tuple, bool] = {}
+
+    def serves(self, flat: torch.Tensor) -> bool:
+        """Whether both modules accept coordinates like ``flat`` (checked once per layout).
+
+        Placeholder tensors (``torch.empty``) stand for the random draws, so the check
+        consumes no random numbers.
+        """
+        key = (tuple(flat.shape), flat.dtype, flat.device)
+        if key not in self._served:
+            batch = flat.shape[0]
+            empty = functools.partial(torch.empty, dtype=flat.dtype, device=flat.device)
+            scalar = empty(())
+            self._served[key] = (
+                self.augment.unsupported(
+                    flat,
+                    self.mask,
+                    empty((batch, 2, 3)),
+                    empty((batch, 3)),
+                    empty(flat.shape),
+                    scalar,
+                    scalar,
+                )
+                is None
+                and self.align.unsupported(flat, flat, self.mask, empty((2,)), scalar)
+                is None
+            )
+        return self._served[key]
+
+
+def _engine_backend(device: torch.device) -> str | None:
+    """The engine backend of the sampler glue on ``device``: ``cuda`` (H100), else ``triton``."""
+    if device.type != "cuda":
+        return None
+    return "cuda" if torch.cuda.get_device_capability(device) == (9, 0) else "triton"
+
+
 def _rigid_glue(
     sampler: EulerSampler, rigid_mask: torch.Tensor | None, coordinate_dims: int
-) -> tuple[ModuleType, torch.Tensor, dict[str, Any]] | None:
-    """Select fused sampler glue and its churn settings.
+) -> _Glue | None:
+    """Build the engine's fused sampler glue modules, or None when it does not serve.
 
-    The engine's fused rigid-motion glue (``sampler_ops``) and its churn settings,
-    or None when it does not serve.
-
-    It serves the dense layout's step: fp32 coordinates, one random rigid motion per
-    sample before the noise, one Kabsch alignment after the denoiser, on an H100
-    whose engine ships the kernels (an older engine, another GPU or a batched sigma
-    keeps the torch ops).
+    ``AugmentNoise`` and ``AlignEuler`` (``miniworld_engine.modules``) are built ONCE
+    per sampler call, here, never inside a graph capture. They serve the dense
+    layout's step: fp32 coordinates, one random rigid motion per sample before the
+    noise, one Kabsch alignment after the denoiser. Their ``unsupported`` says per
+    call whether the backend (``cuda`` on an H100, ``triton`` on other CUDA cards)
+    accepts it; a batched sigma or a non-CUDA mask keeps the torch ops.
     """
     config = sampler.config
     if rigid_mask is None or config.batched_sigma or coordinate_dims != 2:  # noqa: PLR2004 - dense token and atom axes
         return None
-    try:
-        from miniworld_engine.kernels.sampler_ops import (  # noqa: PLC0415 - optional backend
-            interface,
-        )
-    except ImportError:
+    backend = _engine_backend(rigid_mask.device)
+    if backend is None:
         return None
-    mask = rigid_mask.reshape(-1).to(torch.float32).contiguous()
+    from miniworld_engine.modules import (  # noqa: PLC0415 - engine is optional here
+        AlignEuler,
+        AugmentNoise,
+    )
+
     window = config.churn_gamma is not None
     churn = {
         "window": window,
@@ -86,7 +128,12 @@ def _rigid_glue(
         "variance_floor": config.variance_floor,
         "clamp": bool(config.clamp_variance or config.variance_floor),
     }
-    return interface, mask, churn
+    mask = rigid_mask.reshape(-1).to(torch.float32).contiguous()
+    return _Glue(
+        AugmentNoise(**churn, backend=backend),
+        AlignEuler(step_scale=config.step_scale, backend=backend),
+        mask,
+    )
 
 
 def build_step(
@@ -126,7 +173,7 @@ def build_step(
         sigma_next: torch.Tensor,
         row: torch.Tensor | None,
     ) -> torch.Tensor:
-        interface, mask, churn = glue
+        mask = glue.mask
         batch = coords.shape[0]
         flat = coords.reshape(batch, -1, 3)
         frame = torch.randn((batch, 2, 3), device=coords.device, dtype=coords.dtype)
@@ -134,8 +181,8 @@ def build_step(
         noise = torch.randn(
             flat.shape, device=coords.device, dtype=coords.dtype, generator=generator
         )
-        noisy, scalars = interface.augment_noise(
-            flat, mask, frame, shift, noise, sigma, sigma_next, **churn
+        noisy, scalars = glue.augment(
+            flat, mask, frame, shift, noise, sigma, sigma_next
         )
         noisy = noisy.view(coords.shape)
         denoised = (
@@ -143,13 +190,12 @@ def build_step(
             if row is None
             else denoise(noisy, scalars[0], row)
         )
-        flat_out = interface.align_euler(
+        flat_out = glue.align(
             noisy.view(batch, -1, 3),
             denoised.reshape(batch, -1, 3).to(torch.float32),
             mask,
             scalars,
             sigma_next,
-            config.step_scale,
         )
         return flat_out.view(coords.shape)
 
@@ -162,7 +208,7 @@ def build_step(
         if (
             glue is not None
             and coords.ndim == coordinate_dims + 2
-            and glue[0].serves(coords.reshape(coords.shape[0], -1, 3), glue[1])
+            and glue.serves(coords.reshape(coords.shape[0], -1, 3))
         ):
             return fused_step(coords, sigma, sigma_next, row)
         if augment is not None:

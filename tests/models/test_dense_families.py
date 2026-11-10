@@ -12,10 +12,10 @@ from foldforge.modules.dense.spec import ALPHAFOLD3, SPECS
 
 
 def _meta_model(family: str) -> torch.nn.Module:
-    from foldforge.models.architectures.af3 import AlphaFold3
+    from foldforge.models.checkpoints.legacy import dense_model
 
     with torch.device("meta"):
-        return AlphaFold3(spec=SPECS[family])
+        return dense_model(SPECS[family])
 
 
 def test_every_dense_registry_row_names_a_spec_and_the_one_architecture():
@@ -89,7 +89,7 @@ def test_per_block_pair_norm_has_one_norm_and_projection_per_block():
 def test_transposed_column_bias_only_touches_the_column_direction():
     from dataclasses import replace
 
-    from foldforge.modules.dense.attention import GridSelfAttention
+    from foldforge.models.checkpoints.legacy.attention import GridSelfAttention
 
     flagged = replace(ALPHAFOLD3, transposed_column_pair_bias=True)
     assert not GridSelfAttention(

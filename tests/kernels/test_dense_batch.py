@@ -13,9 +13,10 @@ from foldforge.diffusion.augmentation import (
     masked_dense_rigid_motion,
 )
 from foldforge.models.architectures.af3 import AlphaFold3
-from foldforge.modules.dense.diffusion_transformer import CrossAttention, SelfAttention
+from foldforge.models.checkpoints.legacy.transformer import SelfAttention
+from foldforge.modules.dense.diffusion_transformer import CrossAttention
 from foldforge.modules.dense.spec import ALPHAFOLD3
-from foldforge.modules.engine.configure import configure_model
+from foldforge.modules.engine.configure import activation_autocast, configure_model
 
 
 def test_dense_augmentation_has_independent_sample_transforms():
@@ -58,16 +59,15 @@ def test_sampler_calls_one_batched_denoiser_per_step():
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.parametrize("backend", ["pytorch", "miniworld"])
-def test_token_attention_batched_matches_separate(backend):
+def test_token_attention_batched_matches_separate():
     torch.manual_seed(7)
-    model = configure_model(SelfAttention(192, 96, 4, use_single_cond=True), backend)
+    model = configure_model(SelfAttention(192, 96, 4, use_single_cond=True), "pytorch", torch.bfloat16, "cuda")
     x = torch.randn(5, 128, 192, device="cuda", dtype=torch.bfloat16)
     cond = torch.randn(128, 96, device="cuda", dtype=torch.bfloat16)
     mask = torch.ones(128, device="cuda", dtype=torch.bool)
     mask[-8:] = False
     bias = torch.randn(4, 128, 128, device="cuda", dtype=torch.bfloat16)
-    with torch.inference_mode():
+    with torch.inference_mode(), activation_autocast(model):
         actual = model(x, mask, bias, cond)
         expected = torch.stack([model(sample, mask, bias, cond) for sample in x])
     torch.testing.assert_close(actual, expected, atol=0.01, rtol=0.03)
@@ -76,7 +76,7 @@ def test_token_attention_batched_matches_separate(backend):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 def test_atom_attention_broadcasts_shared_masks_and_conditioning():
     torch.manual_seed(5)
-    model = configure_model(CrossAttention(), "pytorch", dtype=torch.float32)
+    model = configure_model(CrossAttention(), "pytorch", torch.float32, "cuda")
     q = torch.randn(5, 2, 4, 128, device="cuda")
     k = torch.randn(5, 2, 8, 128, device="cuda")
     cq, ck = torch.randn_like(q[0]), torch.randn_like(k[0])

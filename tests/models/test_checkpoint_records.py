@@ -8,7 +8,7 @@ import pytest
 import torch
 import zstandard
 
-from foldforge.models.checkpoints.haiku import (
+from foldforge.models.checkpoints.legacy.haiku import (
     RecordError,
     encode_record,
     open_for_reading,
@@ -82,7 +82,7 @@ def test_numeric_shard_selection(tmp_path: Path):
 
 @pytest.mark.parametrize("shape", [(3, 2), (4, 3, 2), (2, 2, 3, 2)])
 def test_assign_transposes_single_and_stacked_weights(shape):
-    from foldforge.models.checkpoints.haiku import Param, ParamType, assign
+    from foldforge.models.checkpoints.legacy.haiku import Param, ParamType, assign
 
     source = torch.arange(np.prod(shape), dtype=torch.float32).reshape(shape)
     count = int(np.prod(shape[:-2]))
@@ -99,7 +99,7 @@ def test_assign_transposes_single_and_stacked_weights(shape):
 
 
 def test_assign_rejects_wrong_stack_count_and_shape():
-    from foldforge.models.checkpoints.haiku import Param, assign
+    from foldforge.models.checkpoints.legacy.haiku import Param, assign
 
     parameter = Param(param=[torch.zeros(3), torch.zeros(3)], stacked=True)
     with pytest.raises(ValueError, match=r"projection.*count mismatch"):

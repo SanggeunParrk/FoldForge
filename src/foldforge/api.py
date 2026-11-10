@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
@@ -89,6 +90,22 @@ class _ModelOptions:
     device: torch.device | None = None
 
 
+_CACHE_DIR_WARNED = False
+
+
+def _warn_engine_cache_dir() -> None:
+    """Warn once: the engine has no autotune cache any more, the argument is ignored."""
+    global _CACHE_DIR_WARNED  # noqa: PLW0603 - one-time process flag
+    if _CACHE_DIR_WARNED:
+        return
+    _CACHE_DIR_WARNED = True
+    message = (
+        "engine_cache_dir is deprecated and ignored: miniworld-engine 2.5.0 has no "
+        "autotune cache (launch configs come from the engine's pretuned tables)"
+    )
+    warnings.warn(message, DeprecationWarning, stacklevel=3)
+
+
 def _model_options(
     model: str,
     config: Any,
@@ -97,8 +114,8 @@ def _model_options(
 ) -> _ModelOptions:
     """Validate model policy and checkpoint independently of any target."""
     from foldforge.models import registered_models
-    from foldforge.models.checkpoints import DEFAULT_FILES, resolve
     from foldforge.models.checkpoints.lock import check_size
+    from foldforge.models.checkpoints.miniworld import resolve_native
 
     if model not in registered_models():
         message = (
@@ -109,20 +126,14 @@ def _model_options(
     weights = (
         Path(checkpoint).expanduser().resolve()
         if checkpoint is not None
-        else resolve(model, DEFAULT_FILES[model])
+        else resolve_native(model)  # <model>.miniworld.pt; a missing file raises with the `foldforge weights convert` command
     )
     if not weights.exists():
         raise FileNotFoundError(weights)
     check_size(weights)
-    cache = (
-        Path(engine_cache_dir).expanduser().resolve()
-        if engine_cache_dir is not None
-        else None
-    )
-    if cache is not None and not cache.is_dir():
-        message = "engine_cache_dir must be an existing directory"
-        raise ValueError(message)
-    return _ModelOptions(model, weights, resolved, cache)
+    if engine_cache_dir is not None:
+        _warn_engine_cache_dir()
+    return _ModelOptions(model, weights, resolved, None)
 
 
 def _validate_payload_capabilities(model: str, data: dict[str, Any]) -> None:
@@ -305,12 +316,10 @@ class Predictor:
         options: _ModelOptions,
         network: AlphaFold3,
         execution: Execution,
-        engine_settings: Any,
     ) -> None:
         self._options = options
         self._network: Any = network
         self._execution: Any = execution
-        self._engine_settings = engine_settings
         self._language_models: dict[str, Any] = {}
         self._guard = CallGuard()
         self._token = object()
@@ -355,24 +364,14 @@ class Predictor:
 
     @contextmanager
     def _scope(self) -> Iterator[None]:
-        from dataclasses import fields
-
-        from miniworld_engine import settings
-
-        from foldforge.modules.engine.cache import cache_directory, inference_settings
+        from foldforge.modules.engine.configure import inference_settings
 
         device_scope = (
             torch.cuda.device(self.device)
             if self.device.type == "cuda"
             else nullcontext()
         )
-        with device_scope, inference_settings(), cache_directory(self._options.cache):
-            settings.configure(
-                **{
-                    field.name: getattr(self._engine_settings, field.name)
-                    for field in fields(self._engine_settings)
-                }
-            )
+        with device_scope, inference_settings():
             yield
 
     def __call__(
@@ -533,11 +532,9 @@ def load_model(
     device: str | torch.device | None = None,
 ) -> Predictor:
     """Load weights once and return a callable predictor, independent of inputs."""
-    from miniworld_engine import settings
-
     from foldforge.models.execution import Execution
     from foldforge.models.loading import load_configured
-    from foldforge.modules.engine.cache import cache_directory, inference_settings
+    from foldforge.modules.engine.configure import inference_settings
     from foldforge.utils.seed import seed_context
 
     options = _model_options(model, config, checkpoint, engine_cache_dir)
@@ -552,15 +549,13 @@ def load_model(
         PROCESS_LOCK,
         device_scope,
         inference_settings(),
-        cache_directory(options.cache),
         seed_context(options.config.trunk_seed),
     ):
         network = load_configured(
             model, options.checkpoint, options.config, device=selected_device
         )
         execution = Execution(network, model, options.config.execution)
-        policy = settings.current()
-    return Predictor(options, network, execution, policy)
+    return Predictor(options, network, execution)
 
 
 def predict(

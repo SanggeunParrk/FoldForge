@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING, Any, cast
 import torch
 
 from foldforge.models import entry
-from foldforge.models.checkpoints import DEFAULT_FILES, resolve
 from foldforge.models.msa_policy import RECORD
 from foldforge.modules.engine.backends import BACKENDS, BackendPlan
 
@@ -73,23 +72,6 @@ def _resolved_spec(spec: Any) -> dict[str, Any]:
         return item
 
     return value(dataclasses.asdict(spec))
-
-
-def clear_native_compute_override(model: Any, dtype: Any) -> None:
-    """Under native BF16, drop a projection's FP32 compute override.
-
-    Native BF16 must apply to the GEMM, not only the stored weights: a released
-    geometry or conditioning projection may carry an FP32 compute override, and
-    left in place it keeps the matmul in FP32 while the weights say otherwise.
-    Nothing here reads the layout -- the rule is the same wherever it applies.
-    """
-    if dtype != torch.bfloat16:
-        return
-    from foldforge.modules.engine.native_linear import NativeLinear
-
-    for layer in model.modules():
-        if isinstance(layer, NativeLinear):
-            layer.compute_dtype = None
 
 
 def reorder_esm_nucleic_columns(model: Any) -> int:
@@ -188,8 +170,12 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     if spec.architecture is None:
         raise NotImplementedError(name)
     family = spec.family
+    from foldforge.models.checkpoints import miniworld
+    from foldforge.modules.dense.spec import spec_for
+
+    dense_spec = spec_for(family or "alphafold3", mode)
     if checkpoint is None:
-        checkpoint = resolve(name, DEFAULT_FILES[name])
+        checkpoint = miniworld.resolve_native(name)
     checkpoint = Path(checkpoint)
     from foldforge.models.checkpoints.lock import check_size
 
@@ -201,62 +187,58 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     if spec.layout != "dense_atoms":
         message = f"{name} has no loader: every family is a row of the dense graph"
         raise NotImplementedError(message)
-    from foldforge.models.checkpoints.haiku import import_jax_weights_
-    from foldforge.modules.dense.spec import spec_for
-
-    dense_spec = spec_for(family or "alphafold3", mode)
     if dense_spec_override:
         # Porting aid: flip forward conventions of a family to price each one.
         # Fields that change a parameter shape make the strict load fail loudly.
         dense_spec = dataclasses.replace(dense_spec, **dense_spec_override)
         report["dense_spec_override"] = json.dumps(dense_spec_override)
-    model = architecture(
-        num_recycles=recycles,
-        num_samples=samples,
-        diffusion_steps=steps,
-        spec=dense_spec,
-    )
+    from foldforge.modules.engine.install import skip_engine_init
+
+    if not miniworld.is_native(checkpoint):
+        message = (
+            f"{name} loads the miniworld checkpoint format; {checkpoint.name} is not one (a released blob?). "
+            f"Convert it once: foldforge weights convert {name}"
+        )
+        raise ValueError(message)
+    # a load fills every engine parameter straight away: skip the engine modules' own initialisation
+    with skip_engine_init():
+        model = architecture(
+            num_recycles=recycles,
+            num_samples=samples,
+            diffusion_steps=steps,
+            spec=dense_spec,
+        )
     report["family"] = dense_spec.family
     report["mode"] = mode
     # Record the resolved spec, after family inheritance, exact-mode and debug
     # overrides. These describe the loaded equation, not observed execution.
     report["resolved_spec"] = _resolved_spec(dense_spec)
-    report.update(
-        import_jax_weights_(model, checkpoint, preserve_dtype=True)
-        if precision_policy == "af3_default"
-        else import_jax_weights_(model, checkpoint)
-    )
+    # Parameters stay fp32 (``master`` or plain ``fp32``): the released bf16 values load
+    # into fp32 exactly, so the af3_default policy needs no native-bf16 parameters.
+    report.update(miniworld.load_into(model, checkpoint, family=dense_spec.family))
     if dense_spec.single_cond_layout == "esm":
         report["esm_nucleic_columns"] = reorder_esm_nucleic_columns(model)
 
     setattr(model, "foldforge_load_report", report)  # noqa: B010 - runtime metadata
-    from foldforge.modules.engine.configure import configure_model
+    from foldforge.modules.engine.configure import configure_model, set_tf32_policy
     from foldforge.modules.engine.install import install_engine
-    from foldforge.modules.engine.routing import set_tf32_policy
 
     source = model.get_submodule("diffusion_head.fourier_embeddings")
     fourier_fp32 = (source.weight.float().clone(), source.bias.float().clone())
     if precision_policy == "af3_default":
         model.reference_precision = True
-        # Configure shared wrappers in FP32, preserving every released FP32
-        # value. Restore only originally BF16 tensors; their round trip via
-        # FP32 is exact. This also preserves FP32 input/output projections.
-        released_dtypes = {id(p): p.dtype for p in model.parameters()}
-        model = configure_model(model, backend, torch.float32, device)
-        for parameter in model.parameters():
-            parameter.data = parameter.data.to(released_dtypes[id(parameter)])
-    else:
-        model = configure_model(model, backend, dtype, device)
+    # ``dtype`` is the activation dtype: bf16 -> ``master`` (fp32 parameters under
+    # autocast), fp32 -> ``fp32``. Every parameter keeps its loaded fp32 value.
+    model = configure_model(model, backend, dtype, device)
     # Noise Fourier features stay FP32 whatever the parameter dtype.
     fourier = model.get_submodule("diffusion_head.fourier_embeddings")
     fourier.weight = fourier_fp32[0].to(device)
     fourier.bias = fourier_fp32[1].to(device)
-    from foldforge.modules.engine.modules import clear_engine_weight_caches
+    from foldforge.modules.engine.capture import clear_weight_caches
 
-    clear_engine_weight_caches()
+    clear_weight_caches()
     model = install_engine(
         model,
-        dtype,
         device,
         modules=plan.uses("miniworld", "anthropic")
         and torch.device(device).type == "cuda",
@@ -268,21 +250,20 @@ def load_checkpoint(  # noqa: C901, PLR0912, PLR0915 - one explicit checkpoint l
     # atom blocks always have; everything else waits for ``execution.tf32``
     # (models.execution.Execution).
     set_tf32_policy(model, tf32=False, diffusion_tf32=precision_policy == "af3_default")
-    if dtype == torch.bfloat16 and precision_policy != "af3_default":
-        clear_native_compute_override(model, dtype)
     report.update(
         backend=backend,
         backends=plan.report(),
-        parameter_dtype=str(dtype),
+        parameter_dtype=str(torch.float32),
+        precision=model.foldforge_precision,
+        activation_dtype=str(dtype),
         device=str(device),
         msa_policy=RECORD,
     )
     if precision_policy == "af3_default":
         report.update(
             precision_policy="af3_default",
-            parameter_dtype="mixed (released checkpoint dtypes)",
-            # the released dtypes: AF3's trunk is BF16, Protenix's checkpoint is FP32
-            # throughout
+            # fp32 parameters holding the released values (AF3's trunk is released in
+            # BF16, Protenix's checkpoint in FP32; both are exact in fp32)
             trunk_parameter_dtype=sorted(
                 {str(p.dtype) for p in getattr(model, "evoformer", model).parameters()}
             ),

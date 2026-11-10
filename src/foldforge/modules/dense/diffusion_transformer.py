@@ -8,7 +8,13 @@
 # out at https://github.com/google-deepmind/alphafold3. You may only use these
 # if received directly from Google. Use is subject to terms of use available at
 # https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md
+"""The conditioned (adaptive) layers and the atom cross attention transformer of FoldForge's own atom stack.
 
+ESMFold2's atom stack is FoldForge-own (the engine's ESMFold2 atom block is pair-free sliding-window attention; FoldForge's has an atom pair and
+rotary q / k: ``docs/ENGINE-UNSUPPORTED.md``), so :class:`DiffusionCrossAttTransformer` is a runtime module for that family. The released
+dense token transformer (``DiffusionTransformer``) that the offline converter reads Haiku blobs into lives in
+``foldforge.models.checkpoints.legacy``.
+"""
 
 import functools
 from collections.abc import Callable
@@ -20,14 +26,99 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
-from foldforge.modules.engine.routing import (
-    reference_adaln,
-    reference_conditioned_transition,
-)
-from foldforge.modules.engine.transformers import serve_atom, serve_token
-from foldforge.modules.reference.attention import dot_product_attention
-from foldforge.modules.reference.composition import conditioned_residual
 from foldforge.utils import atom_layout
+
+Tensor = torch.Tensor
+Projection = Callable[[Tensor], Tensor]
+
+
+def swiglu(x: Tensor, project_a: Projection, project_b: Projection | None = None) -> Tensor:
+    """``silu(a) * b`` from one packed projection (chunked) or two separate checkpoint projections."""
+    if project_b is None:
+        a, b = project_a(x).chunk(2, dim=-1)
+    else:
+        a, b = project_a(x), project_b(x)
+    return F.silu(a) * b
+
+
+def adaptive_normalization(
+    x: Tensor,
+    cond: Tensor | None,
+    *,
+    normalize: Projection,
+    normalize_cond: Projection | None = None,
+    scale: Projection | None = None,
+    shift: Projection | None = None,
+    identity_scale: bool = False,
+    activate_cond: bool = False,
+) -> Tensor:
+    """Conditioned normalization, with the original separate normalization steps.
+
+    ``identity_scale`` selects the identity-centred form, ``(s + 1) * x``, over the sigmoid one. Both start near the identity at
+    initialisation, so which a checkpoint was trained under is invisible until its weights are loaded. Families on that form also leave the
+    conditioning unnormalised, which is why ``normalize_cond`` may be absent here and is not a no-op when it is not: a LayerNorm re-centres
+    and re-scales even at unit scale.
+
+    ``activate_cond`` passes the conditioning through SiLU before the scale and shift read it, which one family's atom blocks do in place of
+    normalising it.
+    """
+    value = normalize(x)
+    if cond is None:
+        return value
+    if scale is None or shift is None:
+        msg = "Conditioned normalization requires a scale and a shift"
+        raise ValueError(msg)
+    if normalize_cond is None and not identity_scale:
+        msg = "Sigmoid conditioning requires the condition norm"
+        raise ValueError(msg)
+    context = cond if normalize_cond is None else normalize_cond(cond)
+    if activate_cond:
+        context = F.silu(context)
+    gate = scale(context) + 1.0 if identity_scale else torch.sigmoid(scale(context))
+    return gate * value + shift(context)
+
+
+def conditioned_residual(
+    single: Tensor,
+    cond: Tensor,
+    *,
+    attention: Callable[[Tensor], Tensor],
+    transition: Callable[[Tensor, Tensor], Tensor],
+    residual_path: Callable[[Tensor], Tensor] | None = None,
+) -> Tensor:
+    """Compose raw attention and transition deltas with one residual each (``residual_path`` wraps each delta, e.g. dropout)."""
+    delta = attention(single)
+    single = single + (delta if residual_path is None else residual_path(delta))
+    delta = transition(single, cond)
+    return single + (delta if residual_path is None else residual_path(delta))
+
+
+def reference_adaln(module: nn.Module, x: torch.Tensor, cond: torch.Tensor | None) -> torch.Tensor:
+    """Bind optional single-conditioning to the shared adaptive normalization."""
+    conditioned = module.use_single_cond
+    if (cond is not None) != conditioned:
+        message = "Condition presence must match the checkpoint configuration"
+        raise ValueError(message)
+    return adaptive_normalization(
+        x,
+        cond,
+        normalize=module.layer_norm,
+        normalize_cond=getattr(module, "single_cond_layer_norm", None) if conditioned else None,
+        scale=module.single_cond_scale if conditioned else None,
+        shift=module.single_cond_bias if conditioned else None,
+        identity_scale=getattr(module, "identity_scale", False),
+        activate_cond=getattr(module, "activate_cond", False),
+    )
+
+
+def reference_conditioned_transition(module: nn.Module, x: torch.Tensor, cond: torch.Tensor | None) -> torch.Tensor:
+    """Bind the transition layout; normalization, SwiGLU and gating are shared."""
+    hidden = swiglu(
+        module.adaptive_layernorm(x, cond),
+        lambda value: value.to(module.transition1.weight.dtype) @ module.transition1.weight.T,
+        None,
+    )
+    return module.adaptive_zero_init(hidden, cond)
 
 
 def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
@@ -266,280 +357,6 @@ class GatedDiffusionTransition(DiffusionTransition):
 def conditioned_transition(spec: DenseSpec) -> type[DiffusionTransition]:
     """Transition class for blocks conditioned on a single representation."""
     return GatedDiffusionTransition if spec.transition_up_gate else DiffusionTransition
-
-
-class SelfAttention(nn.Module):
-    """Represent self attention."""
-
-    def __init__(
-        self,
-        c_x: int = 768,
-        c_single_cond: int = 384,
-        num_head: int = 16,
-        use_single_cond: bool = False,
-        kq_norm: bool = False,
-        identity_scale: bool = False,
-        norm_eps: float = 1e-5,
-        gating_query: bool = True,
-        project_output: bool = True,
-        gate_bias: float = 0.0,
-    ) -> None:
-
-        super().__init__()
-        self.kq_norm = kq_norm
-        self.use_gating_query = gating_query
-        # Added to the gate LOGITS, before the sigmoid. A bias there cannot be
-        # folded into the projection that produces them, because a sigmoid does
-        # not commute with a linear map.
-        self.gate_bias = gate_bias
-        if kq_norm:
-            self.query_layer_norm = nn.LayerNorm(c_x)
-            self.key_layer_norm = nn.LayerNorm(c_x)
-
-        self.c_x = c_x
-        self.c_single_cond = c_single_cond
-        self.num_head = num_head
-
-        self.qkv_dim = self.c_x // self.num_head
-        self.use_single_cond = use_single_cond
-
-        self.adaptive_layernorm = AdaptiveLayerNorm(
-            self.c_x,
-            self.c_single_cond,
-            self.use_single_cond,
-            identity_scale=identity_scale,
-            eps=norm_eps,
-        )
-
-        self.q_projection = nn.Linear(self.c_x, self.c_x, bias=True)
-        self.k_projection = nn.Linear(self.c_x, self.c_x, bias=False)
-        self.v_projection = nn.Linear(self.c_x, self.c_x, bias=False)
-
-        if self.use_gating_query:
-            self.gating_query = nn.Linear(self.c_x, self.c_x, bias=False)
-
-        self.adaptive_zero_init = AdaLNZero(
-            self.c_x,
-            self.c_x,
-            self.c_single_cond,
-            self.use_single_cond,
-            project=project_output,
-        )
-
-    def forward(
-        self,
-        x: torch.Tensor,
-        mask: torch.Tensor,
-        pair_logits: torch.Tensor | None = None,
-        single_cond: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        """Args:
-
-        x (torch.Tensor): (num_tokens, ch)
-        mask (torch.Tensor): (num_tokens,)
-        pair_logits (torch.Tensor, optional): (num_heads, num_tokens, num_tokens)
-        """
-        if (single_cond is None) != (self.use_single_cond is False):
-            message = (
-                "Invalid state: (single_cond is None) == (self.use_single_cond is"
-                " False)"
-            )
-            raise ValueError(message)
-
-        x = self.adaptive_layernorm(x, single_cond)
-
-        q = self.q_projection(x)
-        k = self.k_projection(x)
-        v = self.v_projection(x)
-        if self.kq_norm:
-            # Over the flattened head axis, before the per-head scaling.
-            q, k = self.query_layer_norm(q), self.key_layer_norm(k)
-
-        q, k, v = (
-            einops.rearrange(t, "... n (h c) -> ... h n c", h=self.num_head)
-            if x.ndim > 2
-            else einops.rearrange(t, "n (h c) -> h n c", h=self.num_head).unsqueeze(0)
-            for t in [q, k, v]
-        )
-
-        weighted_avg = dot_product_attention(q, k, v, mask=mask, bias=pair_logits)
-
-        if x.ndim == 2:
-            weighted_avg = weighted_avg.squeeze(0)
-        weighted_avg = einops.rearrange(weighted_avg, "... h q c -> ... q (h c)")
-
-        gate_logits = self.gating_query(x) if self.use_gating_query else None
-        if gate_logits is not None and self.gate_bias:
-            gate_logits = gate_logits + self.gate_bias
-        return self.adaptive_zero_init(
-            weighted_avg, single_cond, gate_logits=gate_logits
-        )
-
-
-class DiffusionTransformer(nn.Module):
-    """Represent diffusion transformer."""
-
-    def __init__(
-        self,
-        c_act: int = 768,
-        c_single_cond: int = 384,
-        c_pair_cond: int = 128,
-        num_head: int = 16,
-        num_blocks: int = 24,
-        super_block_size: int = 4,
-        spec: DenseSpec = ALPHAFOLD3,
-    ) -> None:
-
-        super().__init__()
-        self.per_block_pair = spec.per_block_pair_layer_norm
-        self.parallel = spec.parallel_attention_transition
-
-        self.c_act = c_act
-        self.c_single_cond = c_single_cond
-        self.c_pair_cond = c_pair_cond
-        self.num_head = num_head
-        self.num_blocks = num_blocks
-        self.super_block_size = super_block_size
-
-        self.num_super_blocks = self.num_blocks // self.super_block_size
-
-        if self.per_block_pair:
-            # One pair norm and one projection per block, as the vendor trained it.
-            self.pair_input_layer_norm = nn.ModuleList(
-                [
-                    nn.LayerNorm(
-                        self.c_pair_cond,
-                        bias="pair_input_layer_norm" in spec.affine_norms,
-                    )
-                    for _ in range(self.num_blocks)
-                ]
-            )
-            self.pair_logits_projection = nn.ModuleList(
-                [
-                    nn.Linear(self.c_pair_cond, self.num_head, bias=False)
-                    for _ in range(self.num_blocks)
-                ]
-            )
-        else:
-            self.pair_input_layer_norm = nn.LayerNorm(
-                self.c_pair_cond,
-                bias="pair_input_layer_norm" in spec.affine_norms,
-            )
-            self.pair_logits_projection = nn.ModuleList(
-                [
-                    nn.Linear(
-                        self.c_pair_cond,
-                        self.super_block_size * self.num_head,
-                        bias=False,
-                    )
-                    for _ in range(self.num_super_blocks)
-                ]
-            )
-
-        self.self_attention = nn.ModuleList(
-            [
-                SelfAttention(
-                    self.c_act,
-                    self.c_single_cond,
-                    use_single_cond=True,
-                    kq_norm=spec.attention_kq_norm,
-                    identity_scale=spec.adaptive_identity_scale,
-                    gating_query=spec.token_attention_gating_query,
-                    norm_eps=spec.adaptive_norm_eps,
-                )
-                for _ in range(self.num_blocks)
-            ]
-        )
-        self.transition_block = nn.ModuleList(
-            [
-                conditioned_transition(spec)(
-                    self.c_act,
-                    self.c_single_cond,
-                    use_single_cond=True,
-                    identity_scale=spec.adaptive_identity_scale,
-                    norm_eps=spec.adaptive_norm_eps,
-                )
-                for _ in range(self.num_blocks)
-            ]
-        )
-
-    def forward(
-        self,
-        act: torch.Tensor,
-        mask: torch.Tensor,
-        single_cond: torch.Tensor,
-        pair_cond: torch.Tensor,
-        extra_pair_bias: torch.Tensor | None = None,
-        key_mask: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        """Compute the module output.
-
-        ``key_mask`` is ``[1, N_token]`` bool: ``mask > 0`` made by the caller. The engine keys its
-        hoisted pair bias on that tensor's address, so a caller that runs the sampler's steps
-        passes one tensor for all of them; made here, it would be a new tensor at every call
-        (and inside a compiled region, at every replay).
-
-        ``extra_pair_bias`` is (N_token, N_token), added to every head's pair
-        logits in every block. Only the structural-token family supplies one:
-        its expander states the token relationships the pair itself cannot,
-        having just been built rather than trained on this token set.
-        """
-        served = serve_token(
-            self, act, mask, single_cond, pair_cond, key_mask, extra_pair_bias
-        )
-        if served is not None:
-            return served
-        if self.per_block_pair:
-            for idx in range(self.num_blocks):
-                pair_logits = self.pair_logits_projection[idx](
-                    self.pair_input_layer_norm[idx](pair_cond)
-                ).permute(2, 0, 1)
-                if extra_pair_bias is not None:
-                    pair_logits = pair_logits + extra_pair_bias[None].to(
-                        pair_logits.dtype
-                    )
-                if self.parallel:
-                    act = (
-                        act
-                        + self.self_attention[idx](act, mask, pair_logits, single_cond)
-                        + self.transition_block[idx](act, single_cond)
-                    )
-                    continue
-                act = conditioned_residual(
-                    act,
-                    single_cond,
-                    attention=lambda value, idx=idx, pair_logits=pair_logits: (
-                        self.self_attention[idx](value, mask, pair_logits, single_cond)
-                    ),
-                    transition=self.transition_block[idx],
-                )
-            return act
-
-        pair_act = self.pair_input_layer_norm(pair_cond)
-
-        for super_block_i in range(self.num_super_blocks):
-            pair_logits = self.pair_logits_projection[super_block_i](pair_act)
-            pair_logits = einops.rearrange(
-                pair_logits, "n s (b h) -> b h n s", h=self.num_head
-            )
-            if extra_pair_bias is not None:
-                pair_logits = pair_logits + extra_pair_bias[None, None].to(
-                    pair_logits.dtype
-                )
-            for j in range(self.super_block_size):
-                idx = super_block_i * self.super_block_size + j
-                act = conditioned_residual(
-                    act,
-                    single_cond,
-                    attention=lambda value, idx=idx, j=j, pair_logits=pair_logits: (
-                        self.self_attention[idx](
-                            value, mask, pair_logits[j], single_cond
-                        )
-                    ),
-                    transition=self.transition_block[idx],
-                )
-
-        return act
 
 
 class CrossAttention(nn.Module):
@@ -814,19 +631,6 @@ class DiffusionCrossAttTransformer(nn.Module):
         caller (``uid``: the atoms' conformer ids, for a family whose pair mask is same-conformer): the engine hoists its pair bias per tensor object, and a view made here would be a
         new object at every call.
         """
-        served = serve_atom(
-            self,
-            queries_act,
-            queries_mask,
-            queries_single_cond,
-            pair_cond,
-            pair_mask,
-            rope_q,
-            rope_k,
-            engine_inputs,
-        )
-        if served is not None:
-            return served
         if self.per_block_pair:
             pair_logits = [
                 projection(norm(pair_cond)).permute(0, 3, 1, 2)

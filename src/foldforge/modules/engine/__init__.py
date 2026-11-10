@@ -1,1 +1,1 @@
-"""Engine routing: which dense modules call miniworld-engine, and how they are installed."""
+"""The miniworld-engine as FoldForge uses it: engine-class factories and graph pieces, the backend plan and its guard."""

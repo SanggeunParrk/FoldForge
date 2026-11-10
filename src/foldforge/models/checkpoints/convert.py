@@ -41,7 +41,7 @@ MODELS = (
 
 def _seed_reference_params(reference: Path) -> None:
     """Expose only the local record codec to the external parameter key maps."""
-    from foldforge.models.checkpoints import haiku
+    from foldforge.models.checkpoints.legacy import haiku
 
     source = reference / "src" / "alphafold3"
     for name, path in {

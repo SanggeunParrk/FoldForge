@@ -19,7 +19,7 @@ import numpy as np
 import pytest
 import torch
 
-from foldforge.modules.engine.backends import SERVES
+from foldforge.modules.engine.backends import ALIASES, SERVES
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 
@@ -42,26 +42,15 @@ PLDDT = 3.0
 
 
 def _checkpoint_or_skip(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Skip without the validated AF3 blob and the CCD database.
-
-    ``FOLDFORGE_TEST_ALLOW_SIZE_MISMATCH=1`` accepts a converted blob whose size
-    differs from ``checkpoints.lock`` (timing and equivalence runs on a machine that
-    holds another converter's output).
-    """
+    """Skip without the AF3 checkpoint in the miniworld format (``python -m foldforge.models.checkpoints.miniworld convert af3``)
+    and the CCD database."""
     from foldforge.data.ccd import default_path
-    from foldforge.models.checkpoints import DEFAULT_FILES, lock, resolve
+    from foldforge.models.checkpoints import miniworld, resolve
 
     try:
-        path = resolve("af3", DEFAULT_FILES["af3"])
+        resolve("af3", miniworld.NATIVE_FILES["af3"])
     except Exception:  # noqa: BLE001 - any resolution failure means the weights are not here
-        pytest.skip("the AF3 checkpoint is not available")
-    if os.environ.get("FOLDFORGE_TEST_ALLOW_SIZE_MISMATCH"):
-        monkeypatch.setattr(lock, "check_size", lambda _path: None)
-    else:
-        try:
-            lock.check_size(path)
-        except lock.CheckpointMismatchError:
-            pytest.skip("the AF3 checkpoint is not the validated blob")
+        pytest.skip("the AF3 checkpoint is not converted to the miniworld format")
     if not Path(default_path()).exists():
         pytest.skip("the CCD database is not available")
 
@@ -147,7 +136,15 @@ def test_a_fold_on_each_backend_agrees_with_the_pytorch_backend(
     coordinates, plddt, ops = folds(backend, monkeypatch)
     assert ops["backend"] == backend
     for op, ran in ops["ops"].items():
-        assert ran == (backend if backend in SERVES[op] else "pytorch"), op
+        # the plan records the ENGINE backend that runs the op: `miniworld` is cuda on an H100 (triton / pytorch elsewhere),
+        # `cuequivariance` is `cueq`; an op the backend does not serve runs pytorch
+        if backend not in SERVES[op]:
+            allowed = {"pytorch"}
+        elif backend == "miniworld":
+            allowed = {"cuda", "triton", "pytorch"}
+        else:
+            allowed = {ALIASES.get(backend, backend)}
+        assert ran in allowed, (op, ran)
     assert coordinates.shape == reference.shape
     assert np.isfinite(coordinates).all()
     fit = superposed_rms(coordinates, reference)

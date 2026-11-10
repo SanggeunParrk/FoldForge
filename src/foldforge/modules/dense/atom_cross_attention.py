@@ -11,6 +11,7 @@
 
 
 import dataclasses
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -23,26 +24,59 @@ from foldforge.modules.dense.diffusion_transformer import (
     DiffusionCrossAttTransformer,
 )
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
+from foldforge.modules.engine import graph as engine_graph
+from foldforge.modules.engine.transformers import atom_dit_stack, engine_key_window
 from foldforge.utils import atom_layout
+
+_POOL_MODULES: dict[str, Any] = {}
+
+
+def _pool_module(device: torch.device):
+    """The engine's ``PoolAtoms`` for ``device`` (``cuda`` on an H100, ``triton`` on other CUDA cards), built once."""
+    if device.type != "cuda":
+        return None
+    backend = "cuda" if torch.cuda.get_device_capability(device) == (9, 0) else "triton"
+    if backend not in _POOL_MODULES:
+        from miniworld_engine.modules import PoolAtoms
+
+        _POOL_MODULES[backend] = PoolAtoms(backend=backend)
+    return _POOL_MODULES[backend]
 
 
 def _pool_engine(queries_act, gather, atom_mask):
-    """Run  pool engine.
+    """Pool atom features to tokens with the engine, or None where it does not serve.
 
     The pooled token activation from the engine's one-pass gather + relu + masked
-    mean, or None where it does not serve.
-
-    It serves bf16 atom features ``[samples, subsets, queries, C]`` on an H100 whose
-    engine ships ``sampler_ops``.
+    mean (``PoolAtoms.unsupported`` decides per call), for bf16 atom features
+    ``[samples, subsets, queries, C]``; None keeps the torch pooling below.
     """
-    try:
-        from miniworld_engine.kernels.sampler_ops import interface
-    except ImportError:
-        return None
-    if queries_act.ndim != 4 or not interface.pool_atoms_serves(queries_act):
+    module = _pool_module(queries_act.device)
+    if module is None or queries_act.ndim != 4:
         return None
     flat = queries_act.reshape(queries_act.shape[0], -1, queries_act.shape[-1])
-    return interface.pool_atoms(flat, gather.gather_idxs, gather.gather_mask, atom_mask)
+    args = (flat, gather.gather_idxs, gather.gather_mask, atom_mask)
+    if module.unsupported(*args) is not None:
+        return None
+    return module(*args)
+
+
+def _atom_transformer(spec: DenseSpec, c_query: int) -> nn.Module:
+    """The three-block atom transformer: engine ``AtomDiT`` blocks, or FoldForge's own :class:`DiffusionCrossAttTransformer` for ESMFold2 (and
+    for the converter's released-layout graph, where ``uses_engine`` is off)."""
+    # esmfold2_*: the engine's ESMFold2 atom block is pair-free SWA; FoldForge's ESMFold2 atom stack has atom pair + rope, so it stays
+    # FoldForge-own (docs/ENGINE-UNSUPPORTED.md). ``atom_dit is None`` in the family's ModelKeys is that fact.
+    if engine_graph.uses_engine() and engine_graph.has_engine_atom_dit(spec):
+        return atom_dit_stack(
+            spec.family,
+            n_blocks=3,
+            d_single=c_query,
+            d_cond=c_query,
+            d_pair=16,
+            n_head=4,
+            key_window=engine_key_window(spec.atom_key_window)[0],
+            adaln_eps=engine_graph.chai1_adaln_eps(spec),
+        )
+    return DiffusionCrossAttTransformer(c_query=c_query, spec=spec)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -294,9 +328,7 @@ class AtomCrossAttEncoder(nn.Module):
             "atom_pair_edges", torch.tensor(self.ATOM_PAIR_BINS), persistent=False
         )
         self.c_query = 128
-        self.atom_transformer_encoder = DiffusionCrossAttTransformer(
-            c_query=self.c_query, spec=spec
-        )
+        self.atom_transformer_encoder = _atom_transformer(spec, self.c_query)
 
         self.project_atom_features_for_aggr = nn.Linear(
             self.c_query, self.per_token_channels, bias=False
@@ -817,9 +849,7 @@ class AtomCrossAttDecoder(nn.Module):
             768, self.per_atom_channels, bias=False
         )
 
-        self.atom_transformer_decoder = DiffusionCrossAttTransformer(
-            c_query=self.per_atom_channels, spec=spec
-        )
+        self.atom_transformer_decoder = _atom_transformer(spec, self.per_atom_channels)
 
         # A second, affine norm over the encoder's atom conditioning. AF3 reuses
         # the encoder's unchanged.

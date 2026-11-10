@@ -14,14 +14,10 @@ import einops
 import torch
 import torch.nn as nn
 
-from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
-from foldforge.modules.engine.attention_ops import (
-    anthropic_attention as anthropic_attention,
+from foldforge.models.checkpoints.legacy.reference.attention import (
+    dot_product_attention,
 )
-from foldforge.modules.engine.attention_ops import serve_projected_triangle
-from foldforge.modules.engine.modules import residue_mask
-from foldforge.modules.engine.routing import served_by
-from foldforge.modules.reference.attention import dot_product_attention
+from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 
 
 def _row_chunked_attention(
@@ -119,9 +115,7 @@ class GridSelfAttention(nn.Module):
             for t in [q, k, v]
         )
 
-        weighted_avg = serve_projected_triangle(self, q, k, v, bias, mask)
-        if weighted_avg is None:
-            weighted_avg = _row_chunked_attention(q, k, v, mask=mask, bias=bias)
+        weighted_avg = _row_chunked_attention(q, k, v, mask=mask, bias=bias)
 
         weighted_avg = einops.rearrange(weighted_avg, "b h n d -> b n (h d)")
 
@@ -165,13 +159,7 @@ class GridSelfAttention(nn.Module):
         return out
 
     def residual(self, pair: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        """``pair + forward(pair, mask)``; the engine module owns the residual when installed.
-
-        ``mask`` is the outer-product pair mask, as everywhere in the dense graph.
-        """
-        built = served_by(self, pair)
-        if built is not None:
-            return built(pair[None], residue_mask(mask))[0]
+        """``pair + forward(pair, mask)``; ``mask`` is the outer-product pair mask, as everywhere in the dense graph."""
         return pair + self(pair, mask)
 
 
@@ -227,9 +215,5 @@ class MSAAttention(nn.Module):
     def residual(
         self, msa: torch.Tensor, msa_mask: torch.Tensor, pair: torch.Tensor
     ) -> torch.Tensor:
-        """``msa + forward(msa, msa_mask, pair)``; the engine module owns the residual when installed."""
-        built = served_by(self, msa)
-        if built is not None:
-            key_mask = (msa_mask.max(dim=0).values > 0)[None]
-            return built(msa[None], pair[None], key_mask)[0]
+        """``msa + forward(msa, msa_mask, pair)``."""
         return msa + self(msa, msa_mask, pair)

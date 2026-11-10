@@ -23,7 +23,7 @@ def main() -> int:
         )
         metadata = Parser().parsestr(wheel.read(metadata_path).decode())
         requires = metadata.get_all("Requires-Dist", [])
-        assert any(r.startswith("miniworld-engine==2.3.12") for r in requires)
+        assert any(r.startswith("miniworld-engine==2.5.0") for r in requires)
         assert any(r.startswith("foldforge-af3-data==3.0.2") for r in requires)
         assert "foldforge/py.typed" in wheel.namelist()
         assert "weights" in metadata.get_all("Provides-Extra", [])
@@ -33,8 +33,10 @@ def main() -> int:
             "download.py",
             "convert.py",
             "commands.py",
+            "miniworld.py",
         ):
             assert f"foldforge/models/checkpoints/{name}" in wheel.namelist()
+        assert "foldforge/models/checkpoints/legacy/haiku.py" in wheel.namelist()  # the offline converter's graph ships with the wheel
     if args.installed:
         import foldforge as ff
 

@@ -22,7 +22,7 @@ from support import REFERENCE_ROOT, REPOSITORY_ROOT
 from foldforge import paths
 from foldforge.data.ccd import CCDDatabase
 from foldforge.data.inputs.build import load
-from foldforge.modules.reference.attention import attention
+from foldforge.models.checkpoints.legacy.reference.attention import attention
 
 REPOSITORY = REPOSITORY_ROOT
 REFERENCE = Path(
@@ -37,7 +37,7 @@ DATABASE = Path(os.environ.get("FOLDFORGE_TEST_CCD_DB", str(paths.ccd_db())))
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
 @pytest.mark.parametrize("family", ["protenix", "opendde"])
 def test_released_attention_equation(family, dtype, efficient):
-    module = importlib.import_module("foldforge.modules.reference.attention")
+    module = importlib.import_module("foldforge.models.checkpoints.legacy.reference.attention")
     original = json.loads((REFERENCE_ROOT / "attention_oracles.json").read_text())[
         family
     ]
@@ -105,16 +105,6 @@ def test_attention_replacement_mask_and_backward():
         torch.testing.assert_close(a, b)
 
 
-def test_native_linear_conversion_is_idempotent():
-    from foldforge.modules.engine.native_linear import NativeLinear
-
-    layer = NativeLinear(4, 3)
-    layer.compute_dtype = torch.float32
-    twice = NativeLinear.from_linear(layer)
-    assert twice.compute_dtype == torch.float32
-    assert twice.weight is layer.weight
-
-
 def test_miniworld_spec_fasta_homomer_and_ligand(tmp_path):
     (tmp_path / "a.fa").write_text(">a | polypeptide(L) | Chain:A\nACD\n")
     (tmp_path / "b.fa").write_text(">b | non-polymer | Chain:B\n(ATP)\n")
@@ -175,7 +165,9 @@ def test_empty_heavy_atom_record():
 
 
 def test_af3_opm_mask_normalization_and_bias():
-    from foldforge.modules.reference.attention import af3_outer_product_mean
+    from foldforge.models.checkpoints.legacy.reference.attention import (
+        af3_outer_product_mean,
+    )
 
     left, right = torch.randn(7, 5, 3), torch.randn(7, 5, 3)
     mask = (torch.rand(7, 5, 1) > 0.2).float()

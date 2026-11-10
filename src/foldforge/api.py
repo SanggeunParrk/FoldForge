@@ -498,6 +498,46 @@ class Predictor:
                         record, request, model=self._network, execution=self._execution
                     )
 
+
+    def sample_diffusion_group(
+        self,
+        trunks: list[TrunkState],
+        *,
+        samples: int | None = None,
+        steps: int | None = None,
+        seed: int | None = None,
+        atoms_grouped: bool = True,
+    ) -> list[PredictionResult]:
+        """Sample several retained trunks (trunk_seeds of one input) in ONE sampler run; one result per trunk, in order.
+
+        See `models.io.runtime.sample_diffusion_group`. Raises ``GroupedUnsupported`` when the model or the engine state cannot serve it; sample the trunks one by one then."""
+        from contextlib import ExitStack
+
+        from foldforge.data.inputs.validation import validate_inference_seed
+        from foldforge.models.io.paths import output_directory  # noqa: F401 - kept parallel with sample_diffusion
+        from foldforge.models.io.runtime import sample_diffusion_group
+
+        with self._operation(), ExitStack() as stack:
+            for trunk in trunks:
+                if not isinstance(trunk, TrunkState) or trunk._owner is not self._token:
+                    message = "A trunk state must belong to this exact loaded predictor"
+                    raise TrunkStateError(message)
+                stack.enter_context(trunk._guard.acquire())
+            records = [t._require() for t in trunks]
+            first = records[0].request
+            request = replace(
+                first,
+                samples=_positive(samples, "samples") if samples is not None else first.samples,
+                steps=_positive(steps, "steps") if steps is not None else first.steps,
+                diffusion_seed=validate_inference_seed(seed) if seed is not None else first.diffusion_seed,
+                out=None,
+                write_outputs=False,
+            )
+            config = request.to_config()
+            with self._scope():
+                request = prepare_prediction(PredictionPlan(request, config, self._options.cache))
+                return sample_diffusion_group(records, request, model=self._network, execution=self._execution, atoms_grouped=atoms_grouped)
+
     def close(self) -> None:
         """Release weights, auxiliary models and all surviving trunk states."""
         import gc

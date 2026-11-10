@@ -190,6 +190,7 @@ def finish_case(
     execution: Execution,
     *,
     extra: dict[str, Any] | None = None,
+    require_compile: bool = True,
 ) -> PredictionResult:
     """Decode/validate the same result contract for whole and staged inference."""
     decoded = case.decode(output, measurements)
@@ -207,7 +208,8 @@ def finish_case(
         "trunk_passes": request.recycles,
         "recycles": request.recycles,
         "autocast": False,
-        **execution.report(),
+        # the default keeps the call every caller / test double already knows; only the grouped path relaxes the compiled-graph requirement
+        **(execution.report() if require_compile else execution.report(require_compile=False)),
         **measurements,
         **(extra or {}),
     }
@@ -352,3 +354,68 @@ def run(request: Request) -> int:
             json.dumps(json_value(result.report), indent=2, allow_nan=False), flush=True
         )
     return 0
+
+
+def sample_diffusion_group(
+    records: list[TrunkRecord], request: Request, *, model: AlphaFold3, execution: Execution, atoms_grouped: bool = True
+) -> list[PredictionResult]:
+    """NT retained trunks sampled TOGETHER (trunk_seed x diffusion_seed batching, ``models.grouped``); one result per trunk, built like `sample_diffusion`'s.
+
+    The folds share ``request`` (samples, steps, diffusion seed); each result carries its own trunk_seed. The noise of the NT * A samples comes from ONE stream seeded with
+    ``request.diffusion_seed``, so a fold's samples are not the ones a separate `sample_diffusion` of that fold would draw: same distribution, other draws.
+    Raises ``GroupedUnsupported`` before sampling anything when the model cannot be grouped."""
+    from dataclasses import replace
+
+    from foldforge.models.grouped import GroupedSampler
+
+    sampler = getattr(model, "foldforge_grouped_sampler", None)
+    if sampler is None or sampler.atoms_grouped != atoms_grouped:
+        sampler = GroupedSampler(model, atoms_grouped=atoms_grouped)
+        model.foldforge_grouped_sampler = sampler
+    database = CCDDatabase(request.ccd_db)
+    start = time.monotonic()
+    with (
+        seed_context(request.trunk_seed),
+        database.activate(),
+        model_schedule(model, request),
+    ):
+        records[0].rng.restore()
+        bind_sampling_seed(model, request.diffusion_seed)
+        execution.begin_request()
+        # the model's entry points run under its activation autocast (master precision); this staged entry bypasses them, so it opens the same scope
+        from foldforge.modules.engine.configure import activation_autocast
+
+        with torch.no_grad(), activation_autocast(model):
+            nt, a = len(records), request.samples
+            positions = sampler.sample([r.value for r in records], a)
+            torch.cuda.synchronize()
+            view = positions.view(a, nt, *positions.shape[1:])
+            outputs = []
+            for b, rec in enumerate(records):
+                tr = rec.value
+                mask = tr.diffusion.batch.predicted_structure_info.atom_mask
+                samples = tr.diffusion.restore({"atom_positions": view[:, b].contiguous(), "mask": torch.tile(mask[None], (a, 1))})
+                outputs.append(model._predict_heads(tr.batch, tr.embeddings, samples))
+            torch.cuda.synchronize()
+        elapsed = time.monotonic() - start
+        return [
+            finish_case(
+                rec.case,
+                output,
+                {},
+                replace(request, trunk_seed=rec.request.trunk_seed),
+                execution,
+                extra={
+                    "stage": "diffusion",
+                    "device": rec.report["device"],
+                    "trunk_reused": True,
+                    "trunk_execution": rec.report,
+                    "diffusion_elapsed_seconds": elapsed,
+                    "elapsed_seconds": rec.elapsed_seconds + elapsed,
+                    "trunk_passes": request.recycles,
+                    "grouped_trunks": nt,
+                },
+                require_compile=False,      # the grouped denoiser replaces the compiled per-fold step, so "a compiled graph executed" cannot be required
+            )
+            for rec, output in zip(records, outputs, strict=True)
+        ]

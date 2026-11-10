@@ -231,6 +231,8 @@ class ExecutedCallable:
         self.replays = 0
         self.captures = 0
         self.evictions = 0
+        #: Bytes of GPU memory the previous capture of this callable reserved (0 before the first): the next capture is made only when about this much is free.
+        self.last_capture_bytes = 0
         self.graphs = OrderedDict()
         self.fn = (
             torch.compile(
@@ -246,6 +248,23 @@ class ExecutedCallable:
             if config.compile
             else fn
         )
+
+    def _make_room(self) -> None:
+        """Before a capture: when less than 1.5x the previous capture's reserved memory is free, drop this callable's least recently used graphs.
+
+        Each graph keeps a private memory pool; a size-sorted run captures a few new graphs per token bucket and the pools of all of them add up. Dropping
+        the oldest graphs (they are captured again if their bucket is visited again) turns a hard out-of-memory into an eviction.
+        """
+        if not self.graphs or not self.last_capture_bytes:
+            return
+        need = int(1.5 * self.last_capture_bytes)
+        if torch.cuda.mem_get_info()[0] >= need:
+            return
+        torch.cuda.synchronize()
+        while self.graphs and torch.cuda.mem_get_info()[0] < need:
+            self.graphs.popitem(last=False)
+            self.evictions += 1
+            torch.cuda.empty_cache()
 
     def __call__(self, *args, **kwargs):
         if torch.is_grad_enabled():
@@ -278,6 +297,8 @@ class ExecutedCallable:
                 torch.cuda.synchronize()
                 self.graphs.popitem(last=False)
                 self.evictions += 1
+            self._make_room()
+            reserved_before = torch.cuda.memory_reserved()
             try:
                 self.graphs[signature] = _Graph(
                     self.fn,
@@ -286,10 +307,18 @@ class ExecutedCallable:
                     static_inputs=self.static_inputs,
                     pool_snapshot=getattr(self.config, "graph_pool_snapshot", False),
                 )
+            except torch.OutOfMemoryError as exc:
+                # Stays an OutOfMemoryError (with the site named) so a caller's out-of-memory handling still sees it.
+                raise torch.OutOfMemoryError(
+                    f"CUDA graph capture failed at {self.label}: {exc}"
+                ) from exc
             except Exception as exc:
                 raise RuntimeError(
                     f"CUDA graph capture failed at {self.label}: {exc}"
                 ) from exc
+            self.last_capture_bytes = max(
+                0, torch.cuda.memory_reserved() - reserved_before
+            )
             self.captures += 1
         self.graphs.move_to_end(signature)
         self.replays += 1

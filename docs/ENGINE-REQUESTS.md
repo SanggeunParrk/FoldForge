@@ -6,7 +6,7 @@ Requests only: what FoldForge would like the engine to provide. What the engine 
 Priority: **P1** blocks a clean integration or costs most of a fold's speed on the main path (H100, bf16); **P2** removes a FoldForge workaround
 or a per-family slow path; **P3** convenience, documentation, or a wish for exactness in a corner.
 
-Numbering is stable (R1 ... R14); a request that is done is struck out here, not renumbered. Earlier lists were merged: the former items 1 / 5
+Numbering is stable (R1 ... R18); a request that is done is struck out here, not renumbered. Earlier lists were merged: the former items 1 / 5
 are R1, 4 / 8 are R2, 3 / F4 are R6, 6 is R5, 9 / D2 are R4, 7 / 11 are R10, D1 is R7, F1 is R8, F2 is R9, F3 is R11.
 
 | # | Priority | Request | Retires |
@@ -25,6 +25,10 @@ are R1, 4 / 8 are R2, 3 / F4 are R6, 6 is R5, 9 / D2 are R4, 7 / 11 are R10, D1 
 | R12 | P3 | `parallel_residual`: a fused residual add of parallel branches | U-removed (parallel_residual) |
 | R13 | P3 | An option on `AtomDiTOpenFold3` for AF3's mask form under 128 real atoms | U-equivalence (atom window < 128 atoms) |
 | R14 | P3 | Class-docstring invariants for the shared-KV atom AdaLN and RoseTTAFold3's zero query bias (or a `query_bias` constructor option) | U-layout (shared KV, zero query bias) |
+| R15 | P2 | Export the dead-module loader: `mark_dead_modules(model, threshold=1e-30)` / `clear_dead_modules(model)` from the package root | U-removed (dead-module loader) |
+| R16 | P1 (training) | `AtomDiT` blocks send a gradient to the atom-pair (pair-bias) input | U-backend (training: atom-pair conditioning) |
+| R17 | P2 (training) | An autograd-capable `PoolAtoms` (or a backward for the `sampler_ops` module) | U-backend (training: pooling) |
+| R18 | P2 | A public multi-fold (trunk_seed x diffusion_seed) contract for the DiT blocks | U-class (grouped 5x5 sampler) |
 
 ## P1
 
@@ -38,6 +42,8 @@ package root with the same semantics (a model that builds a second set of weight
 sets `count_offset`, so AF3-family rows choose between the kernels (clamp divisor, a relative difference of 1e-3 / n) and exactness (`pytorch`).
 FoldForge builds `count_offset=None` by default and runs the exact form on `pytorch` only where the mode asks for it
 (`modules.OPM_COUNT_OFFSET`). A kernel with the offset removes the choice.
+
+**R16. Gradient into the atom-pair conditioning (training).** In a training step of Protenix v1 the parameters that build the atom pair (the input embedder and diffusion head `embed_pair_distances`, `embed_pair_offsets`, `single_to_pair_cond_row` / `_col`: 8 tensors) receive no gradient at all: the engine `AtomDiT` blocks appear not to send one back through their pair-bias input. Observed, root cause not confirmed. Without it those parameters never train. Please check, and if it is missing, provide backward for the pair input of the `cuda` / `triton` / `pytorch` backends of `AtomDiT*`.
 
 ## P2
 
@@ -65,6 +71,12 @@ autocast only"). Accepting fp32 `cond` / `pair` with a bf16 `single` (or casting
 **R8. fp32 pair-stack kernels.** An fp32-activation (`precision: fp32`) fold of the Protenix lineage runs `TriangleMultiplication`,
 `TriangleAttention` and `Transition` on `pytorch` (the kernels are bf16-only). Documented behaviour; listed because every fp32 reference run is
 mostly `pytorch`.
+
+**R15. Dead-module loader.** 2.5.0 keeps the plain `dead` flag on `Transition`, `AttentionPairBias`, `TriangleAttention`, `TriangleMultiplication`, `OuterProductMean` and `MSAPairWeightedAveraging` (a flagged module returns its residual input without grad outside training) but no longer ships the function that sets it. Please export `mark_dead_modules(model, threshold=1e-30)` and `clear_dead_modules(model)` from the package root with the 2.4.x semantics (all parameters of a module below the threshold). FoldForge keeps `modules/dense/dead.py` meanwhile, which scans every class that declares `dead`; on Protenix v1 it skips 76 modules (the confidence head: 8 triangle attentions, 2 triangle multiplications, a pair transition; 34 attention-pair-bias and 31 transition modules of the trunk) with bit-identical output.
+
+**R17. `PoolAtoms` backward (training).** The `sampler_ops` modules (`AugmentNoise`, `AlignEuler`, `PoolAtoms`) are inference-only by design (no autograd), so a training step cannot use `PoolAtoms` and FoldForge switches every module to the torch pooling (`foldforge_sampler_ops=False`, `train/prepare.py`). The same op (gather + relu + masked mean over the atoms of a token) with a backward would remove the switch and the slower torch gather in the training graph (`indexing_backward_kernel` is the largest PyTorch backward kernel of a step).
+
+**R18. Multi-fold sampling contract.** FoldForge's trunk_seed x diffusion_seed sampler (`models/grouped.py`) runs the DiT blocks once over `[A, NT, ...]` inputs where each of the NT folds has its own pair, conditioning and atom pair; the engine's grouped-bias attention reads sample s's pair from fold `s % nbg`. That behaviour is not documented, and FoldForge reaches it through `stack.blocks` of the DiT stacks. Please state the contract (for example a public `pair_groups` argument) so it can be relied on. Measured end to end on FoldBench (1,522 assemblies): 1.5x for assemblies up to 256 tokens, 1.08x over the whole set, 1.0x above 1,024 tokens.
 
 ## P3
 

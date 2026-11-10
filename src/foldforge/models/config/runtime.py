@@ -63,6 +63,9 @@ class EngineConfig(BaseModel):
     #: An op the backend has no kernel for: ``fallback`` runs the PyTorch reference and
     #: logs one line, ``error`` raises.
     unsupported: Literal["fallback", "error"] = "fallback"
+    #: Residual engine modules whose every parameter is ~1e-37 (Protenix v1's confidence head, 35 / 30 trunk blocks) return their input at
+    #: inference instead of running (``modules.dense.dead``); ``False`` runs them all (a bit-exact A/B, and what training needs).
+    skip_dead_modules: bool = True
 
     @field_validator("ops")
     @classmethod
@@ -141,6 +144,10 @@ class ExecutionConfig(BaseModel):
     # one per call at large token counts; ConfidenceHead.sample_chunk). 1 is the
     # sequential path.
     confidence_sample_chunk: int | None = Field(default=None, ge=1)
+    # Read the memory pool of each captured graph (torch.cuda.memory_snapshot) to size its retained bytes. Off: that number is only read by
+    # `release_large_graphs`, which nothing calls, and in a process that captured a few hundred graphs the snapshot call crashed with heap
+    # corruption (segfault in whichever Python code ran next).
+    graph_pool_snapshot: bool = False
 
     @model_validator(mode="after")
     def graph_boundary(self) -> ExecutionConfig:

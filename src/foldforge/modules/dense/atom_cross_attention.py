@@ -11,7 +11,6 @@
 
 
 import dataclasses
-from typing import Any
 
 import torch
 import torch.nn as nn
@@ -25,22 +24,9 @@ from foldforge.modules.dense.diffusion_transformer import (
 )
 from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 from foldforge.modules.engine import graph as engine_graph
+from foldforge.modules.engine.sampler_ops import pool_atoms
 from foldforge.modules.engine.transformers import atom_dit_stack, engine_key_window
 from foldforge.utils import atom_layout
-
-_POOL_MODULES: dict[str, Any] = {}
-
-
-def _pool_module(device: torch.device):
-    """The engine's ``PoolAtoms`` for ``device`` (``cuda`` on an H100, ``triton`` on other CUDA cards), built once."""
-    if device.type != "cuda":
-        return None
-    backend = "cuda" if torch.cuda.get_device_capability(device) == (9, 0) else "triton"
-    if backend not in _POOL_MODULES:
-        from miniworld_engine.modules import PoolAtoms
-
-        _POOL_MODULES[backend] = PoolAtoms(backend=backend)
-    return _POOL_MODULES[backend]
 
 
 def _pool_engine(queries_act, gather, atom_mask):
@@ -50,7 +36,7 @@ def _pool_engine(queries_act, gather, atom_mask):
     mean (``PoolAtoms.unsupported`` decides per call), for bf16 atom features
     ``[samples, subsets, queries, C]``; None keeps the torch pooling below.
     """
-    module = _pool_module(queries_act.device)
+    module = pool_atoms(queries_act.device)
     if module is None or queries_act.ndim != 4:
         return None
     flat = queries_act.reshape(queries_act.shape[0], -1, queries_act.shape[-1])

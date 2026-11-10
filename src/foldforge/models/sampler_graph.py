@@ -87,13 +87,6 @@ class _Glue:
         return self._served[key]
 
 
-def _engine_backend(device: torch.device) -> str | None:
-    """The engine backend of the sampler glue on ``device``: ``cuda`` (H100), else ``triton``."""
-    if device.type != "cuda":
-        return None
-    return "cuda" if torch.cuda.get_device_capability(device) == (9, 0) else "triton"
-
-
 def _rigid_glue(
     sampler: EulerSampler, rigid_mask: torch.Tensor | None, coordinate_dims: int
 ) -> _Glue | None:
@@ -109,13 +102,7 @@ def _rigid_glue(
     config = sampler.config
     if rigid_mask is None or config.batched_sigma or coordinate_dims != 2:  # noqa: PLR2004 - dense token and atom axes
         return None
-    backend = _engine_backend(rigid_mask.device)
-    if backend is None:
-        return None
-    from miniworld_engine.modules import (  # noqa: PLC0415 - engine is optional here
-        AlignEuler,
-        AugmentNoise,
-    )
+    from foldforge.modules.engine.sampler_ops import augment_align  # noqa: PLC0415 - engine is optional here
 
     window = config.churn_gamma is not None
     churn = {
@@ -128,12 +115,11 @@ def _rigid_glue(
         "variance_floor": config.variance_floor,
         "clamp": bool(config.clamp_variance or config.variance_floor),
     }
+    modules = augment_align(rigid_mask.device, churn=churn, step_scale=config.step_scale)
+    if modules is None:
+        return None
     mask = rigid_mask.reshape(-1).to(torch.float32).contiguous()
-    return _Glue(
-        AugmentNoise(**churn, backend=backend),
-        AlignEuler(step_scale=config.step_scale, backend=backend),
-        mask,
-    )
+    return _Glue(*modules, mask)
 
 
 def build_step(

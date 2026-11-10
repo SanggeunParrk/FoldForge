@@ -27,6 +27,17 @@ TOLERANCE = {"rtol": 1e-4, "atol": 1e-4}
 CASES = [(family, mode) for family in ("boltz2", "rosettafold3") for mode in ("fast", "exact")]
 
 
+@pytest.fixture(autouse=True)
+def bounded_cpu_threads():
+    """The comparisons are fp32 on the CPU at 1e-4: the engine's ``pytorch`` backend and the dense twin reduce in different orders, and with 32 or more
+    intra-op threads the rounding differs by up to 8e-4 in ``test_diffusion_transformer_matches_dense`` (a 16-core Slurm allocation; 8 and 16 threads pass).
+    Pin the pool to at most 16 threads so the result does not depend on the machine."""
+    before = torch.get_num_threads()
+    torch.set_num_threads(min(before, 16))
+    yield
+    torch.set_num_threads(before)
+
+
 def small(family: str, mode: str):
     spec = spec_for(family, mode)
     return replace(spec, trunk_layers=1, msa_layers=1, confidence_layers=1, diffusion_blocks=4, template_layers=1)

@@ -124,6 +124,32 @@ class TrunkOutput:
 class Evoformer(nn.Module):
     """Represent evoformer."""
 
+    def sample_msa(self, msa_batch: features.MSA) -> features.MSA:
+        """The per-recycle MSA row draw (policy of the family), padded to its MSA bucket.
+
+        With ``foldforge_msa_presampled`` the caller does this BEFORE the evoformer call (as MiniWorld's ``subsample_msa_rows`` does for a
+        static-shape trunk), so a CUDA graph of the evoformer sees ``num_msa`` rows whatever the size of the alignment pool, instead of the pool
+        (1024 .. 16384 rows, a different graph per target)."""
+        policy = self.spec.msa_subsample
+        if policy == "keep_query":
+            msa_batch = featurization.subsample_msa_keep_query(msa_batch, self.num_msa)
+        else:
+            if policy == "shuffle":
+                msa_batch = featurization.shuffle_msa(msa_batch)
+            elif policy != "ordered":
+                message = f"unknown MSA subsampling policy {policy!r}"
+                raise ValueError(message)
+            msa_batch = featurization.truncate_msa_batch(msa_batch, self.num_msa)
+        if getattr(self, "foldforge_msa_bucketing", False):
+            extent = ceiling(msa_batch.rows.shape[0], MSA_SHAPES, "msa")
+            msa_batch = replace(
+                msa_batch,
+                rows=pad_axis(msa_batch.rows, 0, extent),
+                mask=pad_axis(msa_batch.mask, 0, extent),
+                deletion_matrix=pad_axis(msa_batch.deletion_matrix, 0, extent),
+            )
+        return msa_batch
+
     def __init__(self, spec: DenseSpec = ALPHAFOLD3) -> None:
         super().__init__()
 
@@ -494,24 +520,8 @@ class Evoformer(nn.Module):
             raise RuntimeError(message)
         dtype = pair_activations.dtype
 
-        policy = self.spec.msa_subsample
-        if policy == "keep_query":
-            msa_batch = featurization.subsample_msa_keep_query(msa_batch, self.num_msa)
-        else:
-            if policy == "shuffle":
-                msa_batch = featurization.shuffle_msa(msa_batch)
-            elif policy != "ordered":
-                message = f"unknown MSA subsampling policy {policy!r}"
-                raise ValueError(message)
-            msa_batch = featurization.truncate_msa_batch(msa_batch, self.num_msa)
-        if getattr(self, "foldforge_msa_bucketing", False):
-            extent = ceiling(msa_batch.rows.shape[0], MSA_SHAPES, "msa")
-            msa_batch = replace(
-                msa_batch,
-                rows=pad_axis(msa_batch.rows, 0, extent),
-                mask=pad_axis(msa_batch.mask, 0, extent),
-                deletion_matrix=pad_axis(msa_batch.deletion_matrix, 0, extent),
-            )
+        if not getattr(self, "foldforge_msa_presampled", False):
+            msa_batch = self.sample_msa(msa_batch)
 
         msa_mask = msa_batch.mask.to(dtype=dtype)
         msa_feat = featurization.create_msa_feat(
@@ -1024,6 +1034,7 @@ class AlphaFold3(nn.Module):
         fewer than one); a chunk of one is the sequential per-sample call.
         """
         head = self.confidence_head
+        batch_data = self._head_batch(batch_data)
         count = positions.shape[0]
         chunker = getattr(head, "sample_chunk", None)
         chunk = 1 if chunker is None else chunker(count, positions.shape[1])
@@ -1057,6 +1068,14 @@ class AlphaFold3(nn.Module):
             batch_data = replace(batch_data, msa=batch_data.msa.without_alignment())
         return batch_data
 
+    def _head_batch(self, batch_data: feat_batch.Batch) -> feat_batch.Batch:
+        """The batch a head receives. The heads read only the alignment STATISTICS (profile, deletion mean), never its rows, but the batch carries the
+        whole row pool, whose size would make every alignment depth a different CUDA graph; with the pre-sampled MSA mode it is cut to ``num_msa`` rows."""
+        evoformer = self.evoformer
+        if getattr(evoformer, "foldforge_msa_presampled", False) and evoformer.msa_stack_num_layer:
+            return replace(batch_data, msa=featurization.truncate_msa_batch(batch_data.msa, evoformer.num_msa))
+        return batch_data
+
     def _run_trunk(self, batch_data: feat_batch.Batch) -> dict[str, torch.Tensor]:
         """Initialize and recycle the trunk, drawing its MC decision once per fold."""
         num_res = batch_data.num_res
@@ -1085,8 +1104,12 @@ class AlphaFold3(nn.Module):
                 recycle_dropout = rate
         self.recycle_dropout_applied = bool(recycle_dropout)
         for pass_index in range(passes):
+            pass_batch = batch_data
+            if getattr(self.evoformer, "foldforge_msa_presampled", False) and self.evoformer.msa_stack_num_layer:
+                # A fresh iid row draw for this recycle, made here, outside the (graphed) evoformer call.
+                pass_batch = replace(batch_data, msa=self.evoformer.sample_msa(batch_data.msa))
             embeddings = self.evoformer(
-                batch=batch_data,
+                batch=pass_batch,
                 prev=embeddings,
                 target_feat=target_feat,
                 first_pass=pass_index == 0,
@@ -1149,7 +1172,7 @@ class AlphaFold3(nn.Module):
             samples["atom_positions"], embeddings, batch_data
         )
 
-        distogram = self.distogram_head(batch_data, embeddings)
+        distogram = self.distogram_head(self._head_batch(batch_data), embeddings)
 
         return {
             "diffusion_samples": samples,

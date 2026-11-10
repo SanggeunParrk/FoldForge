@@ -27,6 +27,7 @@ class ExecutionPolicy(Protocol):
     compile: bool
     cuda_graph: bool
     max_graphs: int
+    graph_pool_snapshot: bool
 
 
 def _map(value, tensor_fn):
@@ -86,8 +87,10 @@ def _flatten(value):
         if dataclasses.is_dataclass(v) and not isinstance(v, type):
             return (
                 type(v),
+                # `input_shape` of an atom-layout gather is only a validity check (the padded layout must be at least as large as the real input).
+                # It holds the UNPADDED token count and would make every target of one bucket a different graph; it never shapes a computation.
                 tuple(
-                    (f.name, visit(getattr(v, f.name)))
+                    (f.name, None if f.name == "input_shape" else visit(getattr(v, f.name)))
                     for f in dataclasses.fields(v)
                     if f.init
                 ),
@@ -124,7 +127,7 @@ def _static_inputs(on: bool):
 
 
 class _Graph:
-    def __init__(self, fn, args, kwargs, *, static_inputs=False):
+    def __init__(self, fn, args, kwargs, *, static_inputs=False, pool_snapshot=False):
         _, inputs = _flatten((args, kwargs))
         if not inputs or any(t.device.type != "cuda" for t in inputs):
             raise ValueError("CUDA graph tensor inputs must be on the GPU")
@@ -153,10 +156,14 @@ class _Graph:
             torch.cuda.synchronize()
         # Freed capture temporaries remain reserved in this private pool. Live
         # tensor allocation deltas miss them and cannot bound graph-cache memory.
-        self.retained_bytes = sum(
-            segment["total_size"]
-            for segment in torch.cuda.memory_snapshot(self.graph.pool())
-        ) + sum(value.numel() * value.element_size() for value in self.inputs)
+        # `torch.cuda.memory_snapshot(pool)` runs only under `execution.graph_pool_snapshot` (default off, see ExecutionConfig): the number is read only
+        # by `release_large_graphs`, which nothing calls, and a process that captured a few hundred graphs crashed with heap corruption after it.
+        pool_bytes = (
+            sum(segment["total_size"] for segment in torch.cuda.memory_snapshot(self.graph.pool()))
+            if pool_snapshot
+            else 0
+        )
+        self.retained_bytes = pool_bytes + sum(value.numel() * value.element_size() for value in self.inputs)
         # The tensor object and version last copied into each static input: a caller
         # that passes
         # the very same, unmodified tensor again (a fold's conditioning, the batch
@@ -273,7 +280,11 @@ class ExecutedCallable:
                 self.evictions += 1
             try:
                 self.graphs[signature] = _Graph(
-                    self.fn, args, kwargs, static_inputs=self.static_inputs
+                    self.fn,
+                    args,
+                    kwargs,
+                    static_inputs=self.static_inputs,
+                    pool_snapshot=getattr(self.config, "graph_pool_snapshot", False),
                 )
             except Exception as exc:
                 raise RuntimeError(

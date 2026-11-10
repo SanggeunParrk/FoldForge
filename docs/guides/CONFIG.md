@@ -16,10 +16,12 @@ execution:
   cuda_graph: false
   scope: denoiser           # denoiser | trunk | model
   confidence_sample_chunk: null   # samples per confidence-head call; null = the head's rule, 1 = sequential
+  graph_pool_snapshot: false    # read each captured graph's memory pool (off: crashed a long run, see below)
 engine:
   skip: []                  # [engine_modules]: every engine module on its pytorch backend, see below
   ops: {}                   # {op: backend}: single ops on another backend than `backend`, e.g. {trimul: anthropic}
   unsupported: fallback     # fallback | error: an op the backend has no kernel for
+  skip_dead_modules: true   # skip residual modules whose weights are ~1e-37 at inference, see below
 debug:
   dense_spec_override: null # DenseSpec fields to replace, e.g. {confidence_reembed_pair: true}
 ```
@@ -69,6 +71,19 @@ policy aliases (`miniworld` = the engine's own kernels, per class `cuda` on an H
 
 A debugging aid: `[engine_modules]` puts every engine module on its `pytorch` backend (what a CPU load does anyway), so the installed backends can
 be ruled out at once. An unknown value is a config error. From Python: `load(..., engine_skip=("engine_modules",))`.
+
+## `engine.skip_dead_modules`
+
+Default `true`. A residual engine module whose every parameter is below 1e-30 (Protenix v1 carries 76 of them: the confidence head's triangle
+attentions / multiplications and pair transition, 34 attention-pair-bias and 31 transition modules of the trunk) returns its input at inference
+(`modules/dense/dead.py` sets the engine's `dead` flag once the weights are final; the output is bit-identical, only the work is skipped).
+`false` runs every module: use it for a bit-exact A/B and for training (dead modules have parameters that train; `foldforge.train` clears the
+flags itself). The load report lists what was flagged under `dead_modules`.
+
+## `execution.graph_pool_snapshot`
+
+Default `false`. `true` reads the memory pool of every captured CUDA graph (`torch.cuda.memory_snapshot`) to size its retained bytes. Nothing
+uses that number, and in a process that captured a few hundred graphs the call crashed with heap corruption, so it is off.
 
 ## `engine_cache_dir` (removed)
 

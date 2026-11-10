@@ -136,8 +136,8 @@ all model/backend combinations on a new GPU.
 ### The engine pin
 
 `miniworld-engine` is pinned once in the package runtime dependencies (`==2.5.0`); Pixi
-resolves that same requirement. **The committed `pixi.lock` has not been regenerated for 2.5.0 yet: it still records the 2.4.4 wheels
-(`miniworld-engine`, `-kernels-sm90-cu129`, `-cu130`), so `pixi run --frozen` installs 2.4.4 until the lock is refreshed.** 2.5.0 brings its own prebuilt H100 kernels as the wheel
+resolves that same requirement. The committed `pixi.lock` records the 2.5.0 wheels (`miniworld-engine`, `-kernels-sm90-cu129`; the `-cu130` kernel wheel
+of 2.4.4 is gone from the lock because 2.5.0 does not ship one). An environment installed from an older lock must be refreshed (`pixi install --frozen`). 2.5.0 brings its own prebuilt H100 kernels as the wheel
 `miniworld-engine-kernels-sm90-cu129==2.5.0` (CPython 3.12, linux x86_64, CUDA 12.9 / torch 2.13); there is no CUDA 13 kernel wheel, so the `cu13`
 environment JIT-builds kernels on first use. Update the pin,
 refresh the lock and re-run the tests: the engine changes contracts between

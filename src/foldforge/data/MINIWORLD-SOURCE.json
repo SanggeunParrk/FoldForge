@@ -25,6 +25,24 @@
     "data/inputs/template_mol.py": {
       "source": "src/miniworld/data/mols/template_mol.py",
       "sha256": "8add19767a67d8fe854dab16de466a5ce9e7afe4c085664a4004c009719f3626"
+    },
+    "train/loss/diffusion.py": {
+      "source": "src/miniworld/training/phase2_graph_safe.py",
+      "sha256": "fab7661189a7a1227214785e5199a6a2ed8783fc9c52294609e9fcabe865cd86",
+      "revision": "f3a880ba62c99a8fa774024df81619658df50bcf",
+      "note": "weighted_align_gs, rot_trans_gs, sample_noise_gs, cal_loss_gs, bond_loss_gs, adapted to the dense [res, atoms_per_token] layout"
+    },
+    "train/optim.py (EMA)": {
+      "source": "src/miniworld/training/callbacks/ema.py",
+      "sha256": "1eac14e9ca2fe31339dfad0f880c9a76671f63ce1edfd2775f681607f17e7ce7",
+      "revision": "f3a880ba62c99a8fa774024df81619658df50bcf",
+      "note": "the EMA update rule, without the Fabric callback machinery"
+    },
+    "train/optim.py (LR schedule)": {
+      "source": "src/miniworld/utils/utils.py",
+      "sha256": "ab55413656f05fb376339b2c7514129b6adddd60db616ec088ed4b1f28c641ea",
+      "revision": "f3a880ba62c99a8fa774024df81619658df50bcf",
+      "note": "get_step_decay_scheduler_with_warmup"
     }
   }
 }

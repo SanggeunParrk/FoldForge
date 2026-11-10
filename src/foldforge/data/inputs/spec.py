@@ -349,7 +349,15 @@ class InferenceSpec(BaseModel):
     msa: dict[str, str] = Field(default_factory=dict)
     template_db: Path | None = None
     template: dict[str, str] = Field(default_factory=dict)
+    #: residues trimmed from the front of a chain's sequence relative to the frame its templates are aligned in (chain index -> count)
+    template_offset: dict[str, int] = Field(default_factory=dict)
     template_n: int = Field(default=4, ge=0, le=4)
+    #: covalent bonds at atom level, AF3's ``bondedAtomPairs``: each pair is two ``[chain index, residue number (1-based in the chain; the
+    #: component number for a glycan), atom name]`` endpoints. A branched (glycan) chain needs them: its FASTA names residues, not atoms.
+    bonded_atom_pairs: list[list[list[int | str]]] = Field(default_factory=list)
+    #: accept a glycan (branched FASTA) with no ``bonded_atom_pairs``: its components then reach the model as one multi-CCD ligand with nothing
+    #: joining them, which is what FoldBench's own AF3 input carries. Off by default: without it a branched chain without bonds is refused.
+    allow_unbonded_branched: bool = False
     cif_db: Path | None = None
     complex_templates: list[ComplexTemplateSpec] = Field(default_factory=list)
     diffusion_groups: list[list[int]] = Field(default_factory=list)

@@ -67,11 +67,31 @@ def text(value: object) -> str:
     return value.decode("utf-8") if isinstance(value, bytes) else str(value)
 
 
-ALPHABETS = {
-    "protein": dict(enumerate("ARNDCQEGHILKMFPSTWYVX")) | {31: "-"},
-    "rna": dict(enumerate("AUGCN", start=21)) | {31: "-"},
-    "dna": dict(enumerate("ATGCN", start=26)) | {31: "-"},
+# Token order of the nucleic alphabets differs between MSA LMDBs of the same family: MiniWorld's ResidueMapping writes RNA as A U G C and
+# DNA as A T G C (21.. / 26..), the FoldBench LMDBs as A G C U and A G C T (AlphaFold 3's order). The first order of each kind is the
+# default; ``Alignment.load`` takes the one under which the stored query letters equal the first aligned row, so a record is always decoded
+# with the order it was written in.
+_ORDERS = {
+    "protein": ("ARNDCQEGHILKMFPSTWYVX",),
+    "rna": ("AUGCN", "AGCUN"),
+    "dna": ("ATGCN", "AGCTN"),
 }
+_FIRST_TOKEN = {"protein": 0, "rna": 21, "dna": 26}
+#: letters that stand for "unknown / modified residue" on either side of a query-versus-FASTA comparison
+_WILDCARD = {"protein": frozenset("X"), "rna": frozenset("XN"), "dna": frozenset("XN")}
+
+
+def _agree(a: str, b: str, wildcard: frozenset[str]) -> bool:
+    """Equal length, and equal letter by letter wherever neither side is an unknown / modified residue."""
+    return len(a) == len(b) and all(x == y or x in wildcard or y in wildcard for x, y in zip(a, b, strict=True))
+
+
+def alphabet_of(kind: str, order: str) -> dict[int, str]:
+    """Token -> letter for one ``order`` of ``kind`` (gap = 31)."""
+    return dict(enumerate(order, start=_FIRST_TOKEN[kind])) | {31: "-"}
+
+
+ALPHABETS = {kind: alphabet_of(kind, orders[0]) for kind, orders in _ORDERS.items()}
 UNPAIRED = frozenset({"", "query", "unknown", "none", "nan", "-1", "n/a"})
 
 
@@ -86,6 +106,8 @@ class Alignment:
     profile: np.ndarray
     deletion_mean: np.ndarray
     kind: str
+    #: token -> letter of the order this record was written in (None: the default ``ALPHABETS[kind]``)
+    alphabet: dict[int, str] | None = None
 
     @classmethod
     def load(cls, path: Path, key: str, kind: str, sequence: str) -> Alignment:  # noqa: C901 - validate one complete MSA record
@@ -108,26 +130,55 @@ class Alignment:
             raise ValueError(msg)
         # StructCooker stores query_sequence as letters; query-only MiniWorld
         # records may use integer tokens. Normalize both without guessing alphabet.
+        wildcard = _WILDCARD[kind]
+        unknown = "X" if kind == "protein" else "N"
+        alphabet = ALPHABETS[kind]
         if query.dtype.kind in {"U", "S"}:
-            letters = [text(x) for x in query]
-            mapping = {v: k for k, v in ALPHABETS[kind].items()}
-            if any(x not in mapping for x in letters):
-                msg = f"{key}: invalid query letters"
+            # an unknown / modified nucleotide is spelled N or X in a query; it is the alphabet's N either way
+            letters = [unknown if text(x) in wildcard else text(x) for x in query]
+            if not np.issubdtype(tokens.dtype, np.integer):
+                msg = f"{key}: MSA tokens must be integers"
                 raise ValueError(msg)
-            query = np.asarray([mapping[x] for x in letters], dtype=np.int32)
+            for order in _ORDERS[kind]:
+                candidate = alphabet_of(kind, order)
+                mapping = {v: k for k, v in candidate.items()}
+                if all(x in mapping for x in letters) and np.array_equal(
+                    np.asarray([mapping[x] for x in letters], dtype=np.int32), tokens[0]
+                ):
+                    alphabet = candidate
+                    query = np.asarray([mapping[x] for x in letters], dtype=np.int32)
+                    break
+            else:
+                msg = f"{key}: the query letters match the first aligned row under no known {kind} token order {_ORDERS[kind]}"
+                raise ValueError(msg)
         if not np.issubdtype(tokens.dtype, np.integer) or not np.issubdtype(
             query.dtype, np.integer
         ):
             msg = f"{key}: MSA tokens must be integers"
             raise ValueError(msg)
         if (
-            not np.isin(tokens, list(ALPHABETS[kind])).all()
-            or not np.isin(query, list(ALPHABETS[kind])).all()
+            not np.isin(tokens, list(alphabet)).all()
+            or not np.isin(query, list(alphabet)).all()
         ):
             msg = f"{key}: token outside MiniWorld {kind} alphabet"
             raise ValueError(msg)
-        decoded = "".join(ALPHABETS[kind][int(x)] for x in query)
-        if decoded != sequence or not np.array_equal(query, tokens[0]):
+        decoded = "".join(alphabet[int(x)] for x in query)
+        # a cross-linked chromophore (GFP's CR2 / CH6 ...) is ONE residue in the FASTA and three in an MSA written for the expanded chain: the
+        # extra columns after the residue are folded away (query, every aligned row, deletions, profile); `keep` selects the columns that stay.
+        keep = None
+        if len(decoded) > len(sequence):
+            extra = len(decoded) - len(sequence)
+            for p, s in enumerate(sequence):
+                if s in wildcard and _agree(decoded[:p], sequence[:p], wildcard) and _agree(decoded[p + 1 + extra :], sequence[p + 1 :], wildcard):
+                    keep = np.ones(len(decoded), dtype=bool)
+                    keep[p + 1 : p + 1 + extra] = False
+                    query, tokens, deletions = query[keep], tokens[:, keep], deletions[:, keep]
+                    decoded = "".join(alphabet[int(x)] for x in query)
+                    break
+        # the FASTA spells an unknown / modified residue X (its parent is not in the parser's table); the MSA query carries the entity's
+        # canonical letter there. Everywhere else the two must agree.
+        same = _agree(decoded, sequence, wildcard)
+        if not same or not np.array_equal(query, tokens[0]):
             msg = f"{key}: LMDB query does not match FASTA sequence"
             raise ValueError(msg)
         if not np.issubdtype(deletions.dtype, np.integer) or (deletions < 0).any():
@@ -137,6 +188,8 @@ class Alignment:
             msg = f"{key}: query row must not contain insertions"
             raise ValueError(msg)
         profile, mean = np.asarray(seq["profile"]), np.asarray(seq["deletion_mean"])
+        if keep is not None:
+            profile, mean = profile[keep], mean[keep]
         if (
             profile.ndim != 2  # noqa: PLR2004 - tensor rank or format cardinality
             or profile.shape[0] != len(query)
@@ -144,14 +197,25 @@ class Alignment:
         ):
             msg = f"{key}: invalid profile/deletion_mean shape"
             raise ValueError(msg)
-        return cls(query, tokens, deletions, species, profile, mean, kind)
+        return cls(query, tokens, deletions, species, profile, mean, kind, alphabet if alphabet is not ALPHABETS[kind] else None)
+
+    def merge_query(self, sequence: str) -> str:
+        """``sequence`` with its unknown / modified positions (``X``; ``N`` for nucleic acids) replaced by the MSA query's canonical letter.
+
+        An MSA is written for the entity's canonical sequence, so where the FASTA names a modified residue the query carries its parent; the
+        AF3 parser requires the MSA's first row to equal the chain's sequence exactly. The chain's modified residues are one-letter in the
+        released adapters (``modifications`` is empty), so taking the parent letter changes nothing else."""
+        wildcard = _WILDCARD[self.kind]
+        alphabet = self.alphabet or ALPHABETS[self.kind]
+        decoded = "".join(alphabet[int(x)] for x in self.query)
+        return "".join(d if s in wildcard and d not in wildcard else s for s, d in zip(sequence, decoded, strict=True))
 
     def a3m(self, aliases: dict[str, str], depth: int | None = None) -> str:
         # Only insertion counts are retained in MiniWorld's DB. Lowercase x
         # encodes those exact counts; no original inserted amino acids are invented.
         """Compute a3m."""
         lines = []
-        alphabet = ALPHABETS[self.kind]
+        alphabet = self.alphabet or ALPHABETS[self.kind]
         for i, (row, deletion, species) in enumerate(
             zip(self.tokens, self.deletions, self.species, strict=False)
         ):
@@ -309,21 +373,55 @@ class Template:
         }
 
 
+#: ambiguous / rare one-letter codes a template sequence may carry (Glx, Asx, Xle, selenocysteine, pyrrolysine): an unknown residue
+_AMBIGUOUS = str.maketrans("BZJUO", "XXXXX")
+MIN_TEMPLATE_IDENTITY = 0.25
+
+
+def _template_start(template: str, query: str, offset: int) -> int | None:
+    """Where the query starts inside the template's aligned frame, or None when the template cannot be placed on it.
+
+    The template records are aligned to the entity's full sequence; a FoldBench input may carry a trimmed one. Same length: start 0. An
+    explicit ``offset`` (the residues trimmed from the front) is taken as given. A longer template with no offset: the start whose letters
+    agree best with the query over the aligned residues (a homolog, so a clear winner and not a perfect match is what to look for)."""
+    length, full = len(query), len(template)
+    if offset:
+        return offset if full >= offset + length else None
+    if full == length:
+        return 0
+    if full < length:
+        return None
+    best, best_start = 0.0, None
+    for start in range(full - length + 1):
+        pairs = [(a, b) for a, b in zip(template[start : start + length], query, strict=True) if a != "-" and a != "X" and b != "X"]
+        if len(pairs) >= MIN_ALIGNED_BACKBONES:
+            identity = sum(a == b for a, b in pairs) / len(pairs)
+            if identity > best:
+                best, best_start = identity, start
+    return best_start if best >= MIN_TEMPLATE_IDENTITY else None
+
+
 def load_templates(
-    path: Path, key: str, length: int, count: int
+    path: Path, key: str, query: "str | int", count: int, offset: int = 0
 ) -> tuple[Template, ...]:
-    """Load templates."""
+    """Load the templates of ``key`` placed on ``query``. ``query`` is the chain length (int): every template must be aligned to exactly that
+    many residues, else the record is refused. ``query`` as the chain's one-letter sequence (str) also takes a template aligned in a longer
+    frame: placed by ``offset`` (residues trimmed from the front of the chain, FoldBench's ``template_offset``) or, with none, by the start that
+    agrees best with the sequence; a template that cannot be placed is skipped."""
     if count == 0:
         return ()
+    exact = isinstance(query, int)
+    length = query if exact else len(query)
     mols = read_record(path, key)["template_mols"]
     templates = []
     seen: set[str] = set()
     for name, item in mols.items():
         mol = TemplateMol.from_dict(item)
-        if len(mol.residues) != length:
+        full = len(mol.residues)
+        if exact and full != length:
             msg = f"{key}/{name}: aligned template length differs from query {length}"
             raise ValueError(msg)
-        ids = np.asarray(mol.atoms.id.value).reshape(length, 4)
+        ids = np.asarray(mol.atoms.id.value).reshape(full, 4)
         ids = np.asarray([[text(x) for x in row] for row in ids])
         allowed = np.array(["N", "CA", "C", "CB"])
         valid_ids = (ids == allowed) | (ids == "")
@@ -332,21 +430,26 @@ def load_templates(
             msg = f"{key}/{name}: expected MiniWorld N/CA/C/CB atom slots"
             raise ValueError(msg)
         positions = np.asarray(mol.atoms.xyz.value, dtype=np.float32).reshape(
-            length, 4, 3
+            full, 4, 3
         )
-        mask = np.isfinite(positions).all(axis=-1) & (ids == allowed)
-        # Slot 4 can contain CA as MiniWorld pseudo-beta fallback. This is not
-        # an observed CB; released AF3-family featurizers select glycine CA.
-        # Keep actual atom identity rather than manufacturing a CB atom.
         # StructCooker pads unaligned residues with empty strings and NaNs.
         sequence = "".join(
             text(x) or "-" for x in mol.residues.one_letter_code_can.value
-        )
-        if len(sequence) != length or any(
+        ).translate(_AMBIGUOUS)
+        if len(sequence) != full or any(
             x not in "ARNDCQEGHILKMFPSTWYVX-" for x in sequence
         ):
             msg = f"{key}/{name}: invalid protein template sequence"
             raise ValueError(msg)
+        start = 0 if exact else _template_start(sequence, query, offset)
+        if start is None:
+            continue  # cannot be placed on this (trimmed) chain
+        window = slice(start, start + length)
+        ids, positions, sequence = ids[window], positions[window], sequence[window]
+        mask = np.isfinite(positions).all(axis=-1) & (ids == allowed)
+        # Slot 4 can contain CA as MiniWorld pseudo-beta fallback. This is not
+        # an observed CB; released AF3-family featurizers select glycine CA.
+        # Keep actual atom identity rather than manufacturing a CB atom.
         mask[np.array(list(sequence)) == "-"] = False
         if int(mask[:, :3].all(axis=-1).sum()) < MIN_ALIGNED_BACKBONES:
             continue  # Same minimum backbone coverage as MiniWorld.

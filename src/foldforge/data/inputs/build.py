@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 
 from foldforge.data.inputs.fasta import (
+    _AA_1TO3,
     EntityType,
     index_to_lowercase_letter,
     parse_fasta_file,
@@ -40,6 +41,55 @@ class Chain:
     alignment: Alignment | None = None
     templates: tuple[Template, ...] = ()
     a3m_text: str | None = None
+
+
+#: the residues a polymer chain carries without a modification, by chain kind
+_STANDARD = {
+    "protein": frozenset(_AA_1TO3.values()) | {"UNK"},
+    "rna": frozenset({"A", "U", "G", "C", "N"}),
+    "dna": frozenset({"DA", "DT", "DG", "DC", "DN"}),
+}
+
+
+def _modifications(chain: Chain) -> list[dict[str, Any]]:
+    """AF3's ``modifications`` of a polymer chain: every residue whose CCD is not a standard one keeps its own chemistry (its atoms come from
+    the CCD), in the form of the AF3 input format -- ``ptmType`` / ``ptmPosition`` for a protein, ``modificationType`` / ``basePosition``
+    for RNA and DNA. The one-letter sequence holds the parent (or X) at that position."""
+    standard = _STANDARD[chain.kind]
+    out = []
+    for position, ccd in enumerate(chain.ccds, start=1):
+        if ccd in standard:
+            continue
+        out.append(
+            {"ptmType": ccd, "ptmPosition": position}
+            if chain.kind == "protein"
+            else {"modificationType": ccd, "basePosition": position}
+        )
+    return out
+
+
+def _with_af3_query(a3m: str, chain: Chain, modifications: list[dict[str, Any]]) -> str:
+    """``a3m`` with its first row (the query) replaced by the chain sequence AF3 itself derives once the modifications are applied.
+
+    AF3 replaces a modified residue by its parent in the CCD (``MSE`` -> M, ``AIB`` -> A) or, with no parent (a cap, a GFP chromophore), by
+    ``X``, and requires the MSA's first row to be feature-equivalent to that. The database's query carries the entity's canonical letter
+    there, so the row is rewritten by what AF3's own chain object reports -- the same object, not a second table."""
+    from alphafold3.common import folding_input
+
+    if chain.kind == "protein":
+        derived = folding_input.ProteinChain(
+            id=chain.id, sequence=chain.sequence, ptms=[(m["ptmType"], m["ptmPosition"]) for m in modifications]
+        ).sequence
+    else:
+        factory = folding_input.RnaChain if chain.kind == "rna" else folding_input.DnaChain
+        derived = factory(
+            id=chain.id, sequence=chain.sequence, modifications=[(m["modificationType"], m["basePosition"]) for m in modifications]
+        ).sequence
+    lines = a3m.split("\n")
+    if len(lines) < 2 or len(lines[1]) != len(derived):    # not an aligned query row of this chain: leave the text to AF3's own check
+        return a3m
+    lines[1] = derived
+    return "\n".join(lines)
 
 
 @dataclass(frozen=True)
@@ -97,10 +147,13 @@ class Input:
     def msa_text(self, chain: Chain) -> str:
         """Compute msa text."""
         if chain.alignment is not None:
-            return chain.alignment.a3m(self.msa_species)
-        if chain.a3m_text is not None:
-            return chain.a3m_text
-        return chain.a3m.read_text() if chain.a3m else ""
+            text = chain.alignment.a3m(self.msa_species)
+        elif chain.a3m_text is not None:
+            text = chain.a3m_text
+        else:
+            text = chain.a3m.read_text() if chain.a3m else ""
+        modifications = _modifications(chain)
+        return _with_af3_query(text, chain, modifications) if text and modifications else text
 
     def af3(self, seed: int = 0) -> dict[str, Any]:
         """Compute af3."""
@@ -111,7 +164,7 @@ class Input:
                 body["ccdCodes"] = list(c.ccds)
             else:
                 body["sequence"] = c.sequence
-                body["modifications"] = []
+                body["modifications"] = _modifications(c)
                 if c.kind in {"protein", "rna"}:
                     body["unpairedMsa"] = self.msa_text(c)
                 if c.kind == "protein":
@@ -120,13 +173,20 @@ class Input:
                     )
                     body["templates"] = [t.af3() for t in c.templates]
             sequences.append({c.kind: body})
-        return {
+        payload = {
             "name": self.spec.name,
             "modelSeeds": [seed],
             "sequences": sequences,
             "dialect": "alphafold3",
             "version": 2,
         }
+        bonds = getattr(self.spec, "bonded_atom_pairs", None)
+        if bonds:
+            ids = {c.index: c.id for c in self.chains}
+            payload["bondedAtomPairs"] = [
+                [[ids[int(end[0])], int(end[1]), str(end[2])] for end in pair] for pair in bonds
+            ]
+        return payload
 
     def af_family(self) -> list[dict[str, Any]]:
         """Compute af family."""
@@ -243,16 +303,18 @@ def _load_chains(
         EntityType.RNA: "rna",
         EntityType.DNA: "dna",
         EntityType.NON_POLYMER: "ligand",
+        EntityType.BRANCHED: "ligand",     # a glycan: several CCD components joined by `bonded_atom_pairs`
     }
+    bonded = {int(end[0]) for pair in spec.bonded_atom_pairs for end in pair}
     chains = []
     alignments = {}
     for i in indices:
         letter = spec.chain_letters[str(i)]
         parsed = parse_fasta_file(spec.fasta[letter], i)
-        if parsed.entity_type == EntityType.BRANCHED:
+        if parsed.entity_type == EntityType.BRANCHED and i not in bonded and not spec.allow_unbonded_branched:
             msg = (
                 "Branched FASTA needs explicit atom-level bonds for released "
-                "checkpoint adapters"
+                "checkpoint adapters (`bonded_atom_pairs` of the spec)"
             )
             raise ValueError(msg)
         kind = kinds[parsed.entity_type]
@@ -264,6 +326,8 @@ def _load_chains(
             alignments[letter] = Alignment.load(
                 spec.msa_db[letter], spec.msa[letter], kind, sequence
             )
+        if letter in alignments:
+            sequence = alignments[letter].merge_query(sequence)
         templates = ()
         if str(i) in spec.template:
             if kind != "protein":
@@ -273,7 +337,11 @@ def _load_chains(
                 message = "Template IDs require a template LMDB path"
                 raise ValueError(message)
             templates = load_templates(
-                spec.template_db, spec.template[str(i)], len(sequence), spec.template_n
+                spec.template_db,
+                spec.template[str(i)],
+                sequence,
+                spec.template_n,
+                spec.template_offset.get(str(i), 0),
             )
         chains.append(
             Chain(
@@ -281,7 +349,7 @@ def _load_chains(
                 index_to_lowercase_letter(i).upper(),
                 letter,
                 kinds[parsed.entity_type],
-                "".join(parsed.one_letter_seq),
+                sequence,
                 tuple(parsed.chemcomp_ids),
                 spec.a3m.get(letter),
                 alignments.get(letter),

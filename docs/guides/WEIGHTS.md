@@ -165,3 +165,15 @@ CPU 및 GPU 추론을 확인했습니다. AF3는 변환 없이 원본 바이트 
 IntelliFold2의 수치는 비트 단위로 같고, Chai1과 Protenix1의 차이는 FP32 합성 연산의
 반올림에 국한됩니다. Protenix2는 로컬 원본으로 변환해 참조 판정을 통과했습니다.
 기존 수치 판정 기준을 완화하지 않았습니다.
+
+## miniworld 형식 변환 (다운로드 다음 단계)
+
+추론은 다운로드한 원본 블롭(`<model>.bin.zst`)을 직접 읽지 않고, 한 번 변환한 **miniworld 형식** 파일(`<model>.miniworld.pt`)을 읽습니다.
+변환은 오프라인에서 한 번만 하며(CPU 할당으로 충분), `load_model`은 런타임에 변환하지 않고 파일이 없으면 정확한 명령과 함께 오류를 냅니다.
+
+```bash
+foldforge weights convert af3 boltz2     # 블롭 → 같은 디렉터리의 <model>.miniworld.pt
+foldforge weights convert --all          # 블롭이 설치된 모든 모델 (없는 모델은 건너뜀)
+```
+
+자세한 형식과 변환 규칙은 [CHECKPOINT-FORMAT.md](CHECKPOINT-FORMAT.md)를 보세요.

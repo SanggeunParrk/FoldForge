@@ -1,7 +1,7 @@
 # Python API
 
 Load a model and its inputs independently. Inference requires CUDA, an available
-checkpoint and the [CCD database](MINIWORLD-FORMAT.md). Loading performs no weight
+checkpoint (the converted `<model>.miniworld.pt`; loading never converts) and the [CCD database](MINIWORLD-FORMAT.md). Loading performs no weight
 download, MSA search or template search.
 
 ```python
@@ -117,7 +117,7 @@ All counts must be positive integers. Unknown config fields are rejected.
 
 | Operation | Options |
 | --- | --- |
-| `ff.load_model(name, config=None)` | `checkpoint`, `device`, `engine_cache_dir` |
+| `ff.load_model(name, config=None)` | `checkpoint` (default: `<name>.miniworld.pt` in the checkpoint directory; a missing file raises with the exact `foldforge weights convert <name>`, see [CHECKPOINT-FORMAT.md](CHECKPOINT-FORMAT.md)), `device`, `engine_cache_dir` (deprecated, ignored: the engine has no autotune cache) |
 | `model(inputs)` | `samples`, `out`, `ccd_db`, `base_dir`, `verbose` |
 | `model.run_trunk(inputs)` | `recycles`, `seed`, `ccd_db`, `base_dir`, `verbose` |
 | `model.sample_diffusion(trunk)` | `samples`, `steps`, `seed`, `out` |
@@ -149,7 +149,7 @@ standard filesystem exceptions and invalid configurations use Pydantic validatio
 ## Saving and the CLI
 
 Model calls and staged calls return CPU results without prediction artifacts by
-default. Compilation and autotuning may still write their normal caches.
+default. Compilation may still write its normal caches (the engine itself keeps no autotune cache).
 `result.save(path)` and the library's `out=path` accept a caller-owned directory,
 including an absolute path outside FoldForge's cache. Relative paths are relative
 to the working directory. `save()` returns a new result with an output manifest;

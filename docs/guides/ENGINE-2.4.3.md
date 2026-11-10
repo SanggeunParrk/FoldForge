@@ -1,5 +1,7 @@
 # miniworld-engine 2.4.3: released-checkpoint parity
 
+> Historical migration record for that engine release. The current engine integration (2.5.0) is described in [BACKENDS.md](BACKENDS.md), [../ENGINE-UNSUPPORTED.md](../ENGINE-UNSUPPORTED.md) and [CHECKPOINT-FORMAT.md](CHECKPOINT-FORMAT.md).
+
 FoldForge pins `miniworld-engine==2.4.3`. The engine now builds its modules from the released (FoldForge dense) layout:
 `<Module>.from_released(state_dict, ...)` (engine `docs/kernels/released-checkpoints.md`).
 

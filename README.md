@@ -68,8 +68,12 @@ import foldforge as ff
 model = ff.load("protenix2", backend="miniworld", dtype=torch.bfloat16, device="cuda")
 ```
 
-`backend` is `miniworld` (the default), `cuequivariance`, `anthropic` or `pytorch`; single ops can be pinned to another
-one with `engine.ops`. What each backend serves and how to compare them: [docs/guides/BACKENDS.md](docs/guides/BACKENDS.md).
+`backend` is `miniworld` (the default: the engine's own kernels, `cuda` on an H100 else `triton` else `pytorch`, per module),
+`pytorch`, `cuda`, `triton`, `anthropic` or `cueq` (the engine's backend names; `cuequivariance` is an alias of `cueq`); single ops can be
+pinned to another one with `engine.ops`, and `engine.unsupported: fallback | error` decides what a call a backend cannot take does. Precision is
+`master` (fp32 parameters, bf16 activations; config `precision: bf16`) or `fp32`. What each backend serves and how to compare them:
+[docs/guides/BACKENDS.md](docs/guides/BACKENDS.md). The weights are read from the **miniworld checkpoint format** (`<model>.miniworld.pt`,
+converted once from the released blob with `foldforge weights convert <model>`; [docs/guides/CHECKPOINT-FORMAT.md](docs/guides/CHECKPOINT-FORMAT.md)).
 
 ## Where this sits
 
@@ -84,10 +88,10 @@ a layer down:
 | terminal | **FoldForge** | the **full models**, the checkpoint installers, data pipeline, eval, CLI |
 
 Nothing here defines an op or a general-purpose block. If you are writing one,
-it goes in the engine. What used to come from team-gm and has no engine home — the routing of dense
-modules to engine ops (`modules/engine`), the reference equations of the released
-checkpoints (`modules/reference`), compile/graph execution and bucketing
-(`models/`), TFG guidance, the ESM-C model — now lives here; see [the directory guide](docs/guides/CODE-STRUCTURE.md).
+it goes in the engine. What the engine has no class for — the FoldForge-own pieces of the graph (`modules/dense`: featurization, atom cross attention, templates, heads),
+the backend plan and its guard (`modules/engine`), compile/graph execution and bucketing
+(`models/`), TFG guidance, the ESM-C model — lives here (what the engine lacks is listed in [docs/ENGINE-UNSUPPORTED.md](docs/ENGINE-UNSUPPORTED.md),
+requests in [docs/ENGINE-REQUESTS.md](docs/ENGINE-REQUESTS.md)); see [the directory guide](docs/guides/CODE-STRUCTURE.md).
 
 ## Install
 
@@ -131,8 +135,10 @@ all model/backend combinations on a new GPU.
 
 ### The engine pin
 
-`miniworld-engine` is pinned once in the package runtime dependencies; Pixi
-resolves that same requirement and `pixi.lock` records its wheel. Update the pin,
+`miniworld-engine` is pinned once in the package runtime dependencies (`==2.5.0`); Pixi
+resolves that same requirement and `pixi.lock` records its wheel. 2.5.0 brings its own prebuilt H100 kernels as the wheel
+`miniworld-engine-kernels-sm90-cu129==2.5.0` (CPython 3.12, linux x86_64, CUDA 12.9 / torch 2.13); there is no CUDA 13 kernel wheel, so the `cu13`
+environment JIT-builds kernels on first use. Update the pin,
 refresh the lock and re-run the tests: the engine changes contracts between
 releases (for example, since the 2026-10 release every `x = x + f(x)` module
 returns the residual itself — use `.delta` for the bare update).
@@ -145,8 +151,8 @@ src/foldforge/        the package
   paths.py            where weights, databases, release envs and runs live
   models/             registry, the one AF3 architecture, checkpoints, loading,
                       execution, sampling, precision, io
-  modules/            the dense graph's blocks (dense/), engine routing (engine/),
-                      reference equations (reference/), ESM-C (esmc/) and its glue
+  modules/            the FoldForge-own graph pieces (dense/), the engine adapter: backend plan,
+                      guard, converter rules (engine/), shared equations (reference/), ESM-C (esmc/)
   guidance/           TFG guidance (not wired into the AF3 sampler yet)
   data/               CCD database, chemical constants, dense features and
                       family conventions, MiniWorld input specs
@@ -176,9 +182,8 @@ $FOLDFORGE_HOME/
 
 ## Conventions
 
-- **bf16 is the default.** The released checkpoints are fp32 on disk. Model
-  loading selects the runtime precision; engine attention preserves its caller's
-  dtype. Use fp32 when a task explicitly calls for it.
+- **bf16 is the default.** Parameters are always fp32 (the miniworld-format files hold fp32; a released bf16 value is exact in fp32). `bf16`
+  runs them under bf16 autocast (engine precision `master`), `fp32` as they are. Use fp32 when a task explicitly calls for it.
 - **One MSA policy for every predictor.** Inputs keep up to 16384 alignment
   rows and each trunk pass embeds a fresh random subset of 1024 valid rows,
   the official AF3 pipeline rule, applied to all four checkpoints at load time.
@@ -186,7 +191,7 @@ $FOLDFORGE_HOME/
 - **Never quote a speed number without its conditions** — device, dtype, MSA
   depth, warm or cold, and which backend *both* sides ran. Fold times on the
   same target and config have differed by 6% across processes purely from
-  Triton autotune selection, so a before/after taken from two jobs is noise with
+  run-to-run variation (clocks, allocator state, kernel selection), so a before/after taken from two jobs is noise with
   a sign. A/B in one process, with a same-arm control that reports the noise
   floor.
 
@@ -196,7 +201,6 @@ $FOLDFORGE_HOME/
 |---|---|
 | wraps a kernel, one PyTorch reference | miniworld-engine |
 | diffusion process (EDM, decoupled x-prediction, augmentation, schedules, samplers) | `foldforge.diffusion` (self-contained: movable into its own package) |
-| block shared with MiniWorld (Pairformer) | `foldforge.blocks`, backend names `foldforge.layers` |
 | specific to one predictor | `models/architectures/<name>.py` |
 | needed by two or more predictors, no reason for the engine to carry it | `modules/` |
 
@@ -237,8 +241,9 @@ foldforge fold opendde  --spec docs/examples/inference/1ubq.yaml --out $FOLDFORG
 foldforge fold esmfold2 --spec docs/examples/inference/1ubq.yaml --out $FOLDFORGE_HOME/runs/esmfold2
 ```
 
-`--checkpoint` is optional when the release's default file is in
-`$FOLDFORGE_HOME/checkpoints/<model>/`. The command writes CIF and JSON recording the
+`--checkpoint` is optional when the release's converted file (`<model>.miniworld.pt`) is in
+`$FOLDFORGE_HOME/checkpoints/<model>/`; if it is missing the command stops and prints the exact `foldforge weights convert <model>` to run
+(the loader never converts at run time). The command writes CIF and JSON recording the
 actual precision, sampling, compile and CUDA-graph settings. Every family
 reads the MiniWorld BioMol LMDB at `$FOLDFORGE_HOME/ccd/preprocessed_CCD.lmdb`.
 
@@ -276,6 +281,9 @@ reads 70.9. The [validation notes](docs/validation/README.md) list the rule for
 each check and the defects the comparison found.
 
 ### Checkpoints
+
+Two steps: `foldforge weights download <model>` produces the released blob (`<model>.bin.zst`, below), and `foldforge weights convert <model>` converts it
+once, offline, to the miniworld checkpoint format that `load_model` reads ([CHECKPOINT-FORMAT.md](docs/guides/CHECKPOINT-FORMAT.md)).
 
 Converted blobs are pinned by SHA-256 in
 `src/foldforge/models/checkpoints/checkpoints.lock`. Loading refuses a blob

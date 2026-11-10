@@ -4,7 +4,8 @@ For the download CLI, model-by-model setup and offline import, see
 [Weight downloads](WEIGHTS.md): `foldforge weights download boltz2 opendde`.
 
 FoldForge runs every family from one converted blob per model
-(`<model>.bin.zst`, AF3's record format). The blobs are not in git (~17 GB) and
+(`<model>.bin.zst`, AF3's record format). That blob is the released layout; at load time FoldForge reads the **miniworld checkpoint format**
+(`<model>.miniworld.pt`, [CHECKPOINT-FORMAT.md](CHECKPOINT-FORMAT.md)) converted once from it with `foldforge weights convert <model>`. The blobs are not in git (~17 GB) and
 must not be redistributed casually: several releases (AF3 in particular) restrict
 sharing their weights. This page is the path from each release's own file to the
 exact blob `checkpoints.lock` pins.

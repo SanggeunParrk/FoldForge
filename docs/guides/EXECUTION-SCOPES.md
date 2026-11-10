@@ -30,14 +30,10 @@ report counts them.
 `trunk` runs a trunk pass as three graphs (first / middle / last pass differ in their Python flags),
 so `max_graphs` should be at least 8 with it.
 
-## Known limit: trunk graphs on three families
+## Trunk graphs
 
-`DenseSpec.trunk_graph` is False for Boltz2, Chai-1 and RosettaFold3. For
-those, `scope: trunk` does not wrap the trunk pass and the heads; the denoiser and the sampler step still
-run as graphs. A trunk graph of these families is captured without error and replays correctly right after
-the capture, but replaying it on the NEXT fold raises `illegal memory access` (Boltz2, reproduced with
-the evoformer alone or the confidence head alone; recapturing per fold avoids it, so the graph reads
-state that does not survive the fold; the cause is not found). The other families are unaffected.
+Every family runs `scope: trunk` with the trunk pass and the heads as graphs (the fold-to-fold fault that once kept Boltz2, Chai-1 and
+RosettaFold3 off it was fixed in miniworld-engine 2.3.9, and the `DenseSpec.trunk_graph` switch is removed).
 
 ESMFold2 (and ESMFold2-fast) is on the trunk graph. Its pass was not capturable only because the first pass
 drew the recurrent state with `trunc_normal_` inside the pass, whose rejection loop reads the device on the

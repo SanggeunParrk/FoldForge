@@ -24,7 +24,7 @@ def test_an_out_of_memory_capture_stays_an_out_of_memory_error(monkeypatch):
     monkeypatch.setattr(ExecutedCallable, "_make_room", lambda self: None)
     graphed = _callable()
     with torch.no_grad(), pytest.raises(torch.OutOfMemoryError) as caught:
-        graphed(torch.ones(4))
+        graphed(torch.ones(4, dtype=torch.int64))  # a small integer CPU tensor is the one CPU input a graph signature accepts
     assert "test.site" in str(caught.value)
     assert isinstance(caught.value.__cause__, torch.OutOfMemoryError)
 
@@ -39,7 +39,7 @@ def test_another_capture_failure_is_still_a_runtime_error(monkeypatch):
     monkeypatch.setattr(ExecutedCallable, "_make_room", lambda self: None)
     graphed = _callable()
     with torch.no_grad(), pytest.raises(RuntimeError, match="capture failed at test.site"):
-        graphed(torch.ones(4))
+        graphed(torch.ones(4, dtype=torch.int64))
 
 
 def test_make_room_drops_the_oldest_graphs_until_enough_memory_is_free(monkeypatch):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -28,6 +29,7 @@ from foldforge.modules.dense.spec import ALPHAFOLD3, DenseSpec
 from foldforge.modules.dense.structural_tokens import StructuralTokenExpander
 from foldforge.modules.dense.template import TemplateEmbedding
 from foldforge.modules.engine import graph as engine_graph
+from foldforge.modules.engine.configure import activation_autocast
 from foldforge.utils.rigid_align import kabsch_rotation
 
 # Copyright 2024 DeepMind Technologies Limited
@@ -950,14 +952,16 @@ class AlphaFold3(nn.Module):
             single_cond: torch.Tensor | None = None,
         ) -> torch.Tensor:
             """Compute denoise."""
-            return self.diffusion_head(
-                positions_noisy=coords,
-                noise_level=sigma,
-                batch=batch,
-                embeddings=embeddings,
-                use_conditioning=True,
-                single_cond=single_cond,
-            )
+            # the sampler loop runs outside the activation autocast (below); the network inside it does
+            with activation_autocast(self):
+                return self.diffusion_head(
+                    positions_noisy=coords,
+                    noise_level=sigma,
+                    batch=batch,
+                    embeddings=embeddings,
+                    use_conditioning=True,
+                    single_cond=single_cond,
+                )
 
         def augment(coords: torch.Tensor) -> torch.Tensor:
             """Compute augment."""
@@ -975,41 +979,52 @@ class AlphaFold3(nn.Module):
             """
             return weighted_rigid_align(noisy, denoised, mask)
 
+        def conditioning(levels: torch.Tensor) -> torch.Tensor:
+            with activation_autocast(self):
+                return self.diffusion_head.conditioning_table(batch, embeddings, levels)
+
+        # The sampler state is fp32 coordinates: the random rigid motion, the Kabsch alignment and the Euler step run OUTSIDE the activation autocast
+        # (inside it their matmuls round the coordinates to bf16 at every step: ~0.1 A of local noise, CA-CA std 0.1-0.2 instead of 0.02); only the
+        # network calls (`denoise`, `conditioning`) open it.
+        fp32_sampler = (
+            torch.autocast(mask.device.type, enabled=False)
+            if getattr(self, "foldforge_precision", None) == "master"
+            else contextlib.nullcontext()
+        )
         scope = getattr(self, "foldforge_sampler_scope", None)
         try:
-            if scope is not None:
-                positions = sampler_graph.sample(
-                    sampler,
-                    denoise,
-                    (self.num_samples, *mask.shape, 3),
-                    sigmas,
-                    device=mask.device,
-                    generator=None,
-                    augment=augment,
-                    align=realign if self.spec.realign_sampler else None,
-                    coordinate_dims=2,
-                    scopes=scope,
-                    # the engine's fused rigid-motion glue is miniworld's
-                    # (`backends.SERVES["sampler_ops"]`)
-                    rigid_mask=mask
-                    if getattr(self, "foldforge_sampler_ops", True)
-                    else None,
-                    conditioning=lambda levels: self.diffusion_head.conditioning_table(
-                        batch, embeddings, levels
-                    ),
-                )
-            else:
-                positions = sampler.sample(
-                    denoise,
-                    (self.num_samples, *mask.shape, 3),
-                    sigmas,
-                    device=mask.device,
-                    coordinate_dims=2,
-                    chunk_size=None,
-                    initialize_all=True,
-                    augment=augment,
-                    align=realign if self.spec.realign_sampler else None,
-                )
+            with fp32_sampler:
+                if scope is not None:
+                    positions = sampler_graph.sample(
+                        sampler,
+                        denoise,
+                        (self.num_samples, *mask.shape, 3),
+                        sigmas,
+                        device=mask.device,
+                        generator=None,
+                        augment=augment,
+                        align=realign if self.spec.realign_sampler else None,
+                        coordinate_dims=2,
+                        scopes=scope,
+                        # the engine's fused rigid-motion glue is miniworld's
+                        # (`backends.SERVES["sampler_ops"]`)
+                        rigid_mask=mask
+                        if getattr(self, "foldforge_sampler_ops", True)
+                        else None,
+                        conditioning=conditioning,
+                    )
+                else:
+                    positions = sampler.sample(
+                        denoise,
+                        (self.num_samples, *mask.shape, 3),
+                        sigmas,
+                        device=mask.device,
+                        coordinate_dims=2,
+                        chunk_size=None,
+                        initialize_all=True,
+                        augment=augment,
+                        align=realign if self.spec.realign_sampler else None,
+                    )
         finally:
             # The fold's conditioning is not needed once its steps are done.
             self.diffusion_head._fold = None  # noqa: SLF001 - release fold-scoped conditioning

@@ -29,6 +29,8 @@ from foldforge.modules.engine import graph as engine_graph
 from foldforge.utils.device_constants import built_on_device, on_device
 
 _EPS = 1e-10
+#: RoseTTAFold3's template distogram bin edges (1-4 A by 0.1, 4-20 A by 0.5: 63 edges, 64 bins).
+_RF3_DISTOGRAM_EDGES = torch.cat([torch.arange(1.0, 4.0, 0.1), torch.arange(4.0, 20.5, 0.5)])
 
 
 def _backbone(aatype: torch.Tensor, positions: torch.Tensor, mask: torch.Tensor):
@@ -179,9 +181,7 @@ def rf3_template_features(
     ca_mask = torch.gather(mask, 1, ca_index[:, None])[:, 0].float()
     distance = ((ca[:, None] - ca[None]).square().sum(-1) + _EPS).sqrt()
     distance = torch.nan_to_num(distance, nan=1e9)
-    edges = torch.cat([torch.arange(1.0, 4.0, 0.1), torch.arange(4.0, 20.5, 0.5)]).to(
-        distance.device
-    )
+    edges = on_device(_RF3_DISTOGRAM_EDGES, distance.device)  # cached per device: no host copy inside a CUDA-graph capture
     distogram = F.one_hot((distance[..., None] > edges).sum(-1), 64).float()
     condition = (ca_mask[:, None] * ca_mask[None] * visible.float())[..., None]
     noise = torch.full_like(condition, (math.log(1e-4 / 16.0) + 1.2) / 1.5)

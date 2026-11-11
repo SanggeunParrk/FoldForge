@@ -6,7 +6,7 @@ Requests only: what FoldForge would like the engine to provide. What the engine 
 Priority: **P1** blocks a clean integration or costs most of a fold's speed on the main path (H100, bf16); **P2** removes a FoldForge workaround
 or a per-family slow path; **P3** convenience, documentation, or a wish for exactness in a corner.
 
-Numbering is stable (R1 ... R19); a request that is done is struck out here, not renumbered. Earlier lists were merged: the former items 1 / 5
+Numbering is stable (R1 ... R20); a request that is done is struck out here, not renumbered. Earlier lists were merged: the former items 1 / 5
 are R1, 4 / 8 are R2, 3 / F4 are R6, 6 is R5, 9 / D2 are R4, 7 / 11 are R10, D1 is R7, F1 is R8, F2 is R9, F3 is R11.
 
 | # | Priority | Request | Retires |
@@ -30,6 +30,7 @@ are R1, 4 / 8 are R2, 3 / F4 are R6, 6 is R5, 9 / D2 are R4, 7 / 11 are R10, D1 
 | R17 | P2 (training) | An autograd-capable `PoolAtoms` (or a backward for the `sampler_ops` module) | U-backend (training: pooling) |
 | R18 | P2 | A public multi-fold (trunk_seed x diffusion_seed) contract for the DiT blocks | U-class (grouped 5x5 sampler) |
 | R19 | P2 | Smaller temporaries for the 2.5.0 `PairformerBlock` batched over samples (the confidence head's CUDA-graph pool) | U-class (confidence-head graph memory) |
+| R20 | P1 (training) | 2.5.1: the sm90 atom-DiT backward (`AtomDiTProtenix`, `cuda`) raises `CUDA_ERROR_ILLEGAL_ADDRESS`; its output is a view made inside a custom Function | U-backend (training: atom DiT cuda backward) |
 
 ## P1
 
@@ -80,6 +81,8 @@ mostly `pytorch`.
 **R18. Multi-fold sampling contract.** FoldForge's trunk_seed x diffusion_seed sampler (`models/grouped.py`) runs the DiT blocks once over `[A, NT, ...]` inputs where each of the NT folds has its own pair, conditioning and atom pair; the engine's grouped-bias attention reads sample s's pair from fold `s % nbg`. That behaviour is not documented, and FoldForge reaches it through `stack.blocks` of the DiT stacks. Please state the contract (for example a public `pair_groups` argument) so it can be relied on. Measured end to end on FoldBench (1,522 assemblies): 1.5x for assemblies up to 256 tokens, 1.08x over the whole set, 1.0x above 1,024 tokens.
 
 **R19. Confidence-head graph memory.** With one CUDA-graph pool per captured graph, the 2.5.0 `PairformerBlock` batched over samples (`engine/graph.py::make_pairformer_block(..., batched="sample")`) needs 2.4x the pool of the 2.4.0 fused `AF3Pairformer` in the confidence head: summed over the captures of 70 ascending-size FoldBench assemblies, 26.9 GiB against 11.3 GiB (largest bucket 5.67 against 3.04 GiB). Together with the evoformer pools (about 37-41 GiB) the private pools reached 80 GiB at the ~400-token bucket and a capture failed (five assemblies; `release-graphs target` passed). FoldForge now evicts the callable's oldest graphs before a capture when memory is short (`models/execution.py`), but the size of the temporaries is the engine's: please check whether the batched block can use a fused path or state a workspace-size contract. The temporaries were estimated from pool sizes, not profiled.
+
+**R20. Atom-DiT `cuda` backward (training), engine 2.5.1.** Engine 2.5.0 refused a training call of `AtomDiTProtenix` on `cuda` ("the backward kernels know the chained K / V AdaLN and the clipped 'pad' window only") and the guard ran `pytorch`; 2.5.1 serves it, and on Protenix v1's blocks (128 tokens, 8ayg, batch of 8 noisy samples) the backward fails: `miniworld_engine/kernels/integrations/local_dit_h100.py:436 _bwd` -> `k90.finalize(...)` -> `cuLaunchKernelEx: CUDA_ERROR_ILLEGAL_ADDRESS` (grid (16, 27, 1), seen with `CUDA_LAUNCH_BLOCKING=1`; without it the same fault surfaces later as `CUBLAS_STATUS_EXECUTION_FAILED` in a bf16 GEMM). Please fix the kernel or refuse the call as 2.5.0 did. Also: the block's output is a view created inside a custom autograd Function, so an in-place write to it fails when a gradient is recorded (`Output 0 of View is a view and is being modified inplace`); FoldForge now writes out of place when grad is enabled (`modules/dense/atom_cross_attention.py::_mask_atoms`), but returning a fresh tensor would avoid the trap for other callers. FoldForge's training script runs `atom_blocks` on `pytorch` meanwhile (`scripts/train_protenix1.py`).
 
 ## P3
 

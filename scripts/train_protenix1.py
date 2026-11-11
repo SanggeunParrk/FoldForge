@@ -213,7 +213,9 @@ def main() -> None:
     # dead modules must run in training (their parameters train): do not flag them at load
     pred = ff.load_model(
         args.model,
-        config={"engine": {"skip_dead_modules": False}},
+        # `atom_blocks` on pytorch for training: engine 2.5.1's sm90 atom-DiT backward (`kernels/integrations/local_dit_h100.py::_bwd`, kernel
+        # `finalize`) raises CUDA_ERROR_ILLEGAL_ADDRESS on this model's blocks (engine 2.5.0 refused training on that backend and ran pytorch).
+        config={"engine": {"skip_dead_modules": False, "ops": {"atom_blocks": "pytorch"}}},
         checkpoint=args.ckpt,
     )
     model = pred._network

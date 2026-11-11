@@ -16,6 +16,7 @@ parameters); the losses are fp32.
 
 from __future__ import annotations
 
+import logging
 from contextlib import nullcontext
 from dataclasses import replace
 from typing import TYPE_CHECKING
@@ -302,9 +303,19 @@ def micro_step(
 
     # ONE backward through the trunk with the gradient the heads left on the leaves
     with timer.phase("trunk_bwd"):
-        if leaves:
+        # A leaf no head sent a gradient to (``grad is None``) contributes nothing to the trunk backward. ``target_feat`` is expected to be one: the
+        # diffusion head reads ``structure_target_feat`` where the family has one (diffusion_head.py: ``embeddings.get("structure_target_feat",
+        # embeddings["target_feat"])``; Protenix v1 does), so no head consumes ``target_feat``. Any other missing leaf is named in the log.
+        expected = {"target_feat"} if "structure_target_feat" in embeddings else set()
+        missing = sorted(k for k in leaves if leaves[k].grad is None and k not in expected)
+        if missing:
+            logging.getLogger("foldforge.train").warning(
+                "no gradient reached the trunk output(s): %s", ", ".join(missing)
+            )
+        used = [k for k in leaves if leaves[k].grad is not None]
+        if used:
             torch.autograd.backward(
-                [embeddings[k] for k in leaves], [leaves[k].grad for k in leaves]
+                [embeddings[k] for k in used], [leaves[k].grad for k in used]
             )
     del leaves, head_inputs, diffusion, embeddings
 

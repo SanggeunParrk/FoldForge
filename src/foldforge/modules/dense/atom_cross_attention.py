@@ -29,6 +29,18 @@ from foldforge.modules.engine.transformers import atom_dit_stack, engine_key_win
 from foldforge.utils import atom_layout
 
 
+def _mask_atoms(act: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    """``act * mask[..., None]``: in place without autograd, a new tensor with it.
+
+    The engine's atom blocks (2.5.1) may return a view made inside a custom autograd Function; torch refuses an in-place write to such a view when a
+    gradient is recorded. Inference (no grad) keeps the in-place form, so its memory and speed are unchanged.
+    """
+    if torch.is_grad_enabled():
+        return act * mask[..., None]
+    act *= mask[..., None]
+    return act
+
+
 def _pool_engine(queries_act, gather, atom_mask):
     """Pool atom features to tokens with the engine, or None where it does not serve.
 
@@ -773,7 +785,7 @@ class AtomCrossAttEncoder(nn.Module):
             ),
         )
 
-        queries_act *= queries_mask[..., None]
+        queries_act = _mask_atoms(queries_act, queries_mask)
         skip_connection = queries_act.clone()
 
         queries_act = self.project_atom_features_for_aggr(queries_act)
@@ -877,8 +889,8 @@ class AtomCrossAttDecoder(nn.Module):
             token_atom_act,
             layout_axes=(-3, -2),
         )
-        queries_act += enc.skip_connection
-        queries_act *= enc.queries_mask[..., None]
+        queries_act = queries_act + enc.skip_connection if torch.is_grad_enabled() else queries_act.add_(enc.skip_connection)
+        queries_act = _mask_atoms(queries_act, enc.queries_mask)
 
         # Run the atom cross attention transformer.
         queries_act = self.atom_transformer_decoder(
@@ -910,7 +922,7 @@ class AtomCrossAttDecoder(nn.Module):
             rope_k=enc.rope_k,
         )
 
-        queries_act *= enc.queries_mask[..., None]
+        queries_act = _mask_atoms(queries_act, enc.queries_mask)
         queries_position_update = self.atom_features_to_position_update(self.atom_features_layer_norm(queries_act))
         position_update = atom_layout.convert(
             batch.atom_cross_att.queries_to_token_atoms,

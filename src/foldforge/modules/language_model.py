@@ -611,6 +611,59 @@ def _prepare_esmc_norms(model: torch.nn.Module) -> None:
             _prepare_esmc_norms(child)
 
 
+def _esmc_from_port(state: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    """The Transformers-port layout (``esmc.layers.{i}.self_attn.q_proj`` ...: the ``biohub/ESMC-*`` repos since transformers 5.x) in the
+    vendored model's names (``transformer.blocks.{i}.attn.layernorm_qkv`` ...): q / k / v stack into the fused qkv projection and
+    gate / up into ``fc1`` (the order the model's ``chunk`` reads them back). Other entries (the masked-LM head) are dropped."""
+    out = {"embed.weight": state["esmc.embed_tokens.weight"], "transformer.norm.weight": state["esmc.norm.weight"]}
+    i = 0
+    while f"esmc.layers.{i}.self_attn.q_proj.weight" in state:
+        src, dst = f"esmc.layers.{i}.", f"transformer.blocks.{i}."
+        out[dst + "attn.layernorm_qkv.layer_norm_weight"] = state[src + "input_layernorm.weight"]
+        out[dst + "attn.layernorm_qkv.layer_norm_bias"] = state[src + "input_layernorm.bias"]
+        out[dst + "attn.layernorm_qkv.weight"] = torch.cat([state[src + f"self_attn.{x}_proj.weight"] for x in "qkv"])
+        out[dst + "attn.out_proj.weight"] = state[src + "self_attn.o_proj.weight"]
+        out[dst + "attn.q_ln.weight"] = state[src + "self_attn.q_norm.weight"]
+        out[dst + "attn.k_ln.weight"] = state[src + "self_attn.k_norm.weight"]
+        out[dst + "ffn.layer_norm_weight"] = state[src + "post_attention_layernorm.weight"]
+        out[dst + "ffn.layer_norm_bias"] = state[src + "post_attention_layernorm.bias"]
+        out[dst + "ffn.fc1_weight"] = torch.cat([state[src + "mlp.gate_proj.weight"], state[src + "mlp.up_proj.weight"]])
+        out[dst + "ffn.fc2_weight"] = state[src + "mlp.down_proj.weight"]
+        i += 1
+    return out
+
+
+def _load_esmc_weights(model_class: type, path: str) -> nn.Module:
+    """``model_class`` with the released weights of ``path`` (a local checkpoint directory), whichever layout its safetensors carry.
+
+    The vendored model reads the layout of the retired Biohub Transformers fork; the published repos now carry the Transformers port's,
+    which ``from_pretrained`` would match against nothing and leave every weight at its random initialisation (a fold full of NaN).
+    Both layouts load here with every parameter accounted for (strict)."""
+    from pathlib import Path
+
+    from safetensors.torch import load_file
+
+    shards = sorted(Path(path).glob("*.safetensors"))
+    if not shards:
+        return model_class.from_pretrained(path)
+    state: dict[str, torch.Tensor] = {}
+    for shard in shards:
+        state.update(load_file(str(shard)))
+    if "esmc.embed_tokens.weight" in state:
+        state = _esmc_from_port(state)
+    else:
+        prefix = model_class.base_model_prefix + "."
+        state = {k.removeprefix(prefix): v for k, v in state.items() if not k.startswith("lm_head.")}
+    config = model_class.config_class.from_pretrained(path)
+    model, info = model_class.from_pretrained(None, config=config, state_dict=state, output_loading_info=True)
+    missing = [k for k in info["missing_keys"] if not k.endswith("inv_freq")]
+    if missing or info["unexpected_keys"] or info["mismatched_keys"]:
+        message = (f"ESM-C weights at {path} do not match the model: missing {missing[:5]}, unexpected {info['unexpected_keys'][:5]}, "
+                   f"mismatched {info['mismatched_keys'][:5]}")
+        raise ValueError(message)
+    return model.eval()
+
+
 def load_esmc(
     path: str, device: torch.device | None = None, dtype: torch.dtype = torch.bfloat16
 ) -> LanguageModel:
@@ -635,7 +688,7 @@ def load_esmc(
     """
     from foldforge.modules.esmc import ESMCModel
 
-    model = ESMCModel.from_pretrained(path)
+    model = _load_esmc_weights(ESMCModel, path)
     _prepare_esmc_norms(model)
     inference_precision(model, device or torch.device("cpu"), dtype)
     for parameter in model.parameters():

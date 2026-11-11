@@ -20,14 +20,12 @@ if TYPE_CHECKING:
 
 
 def enable_training(model: nn.Module, cfg: TrainConfig) -> dict[str, int]:
-    """``train()``, gradients on (trunk frozen when ``cfg.freeze_trunk``), dead skip off, distogram logits kept for the loss."""
+    """``train()``, gradients on for EVERY parameter (single-stage full finetuning), dead skip off, distogram / confidence logits kept for the loss."""
     cleared = clear_dead(model)
     model.train()
     model.requires_grad_(True)
-    if cfg.freeze_trunk:
-        for name, param in model.named_parameters():
-            if not name.startswith("diffusion_head."):
-                param.requires_grad_(False)
+    model.foldforge_sampler_scope = None  # the mini-rollout samples eagerly (no sampler CUDA graph)
+    model.confidence_head.save_logits = cfg.confidence  # the head returns its logits only when asked
     model.distogram_head.save_distogram = (
         True  # the head returns its logits only when asked
     )
@@ -54,5 +52,34 @@ def disable_inference_only_ops(model: nn.Module) -> int:
     count = 0
     for module in model.modules():
         module.foldforge_sampler_ops = False
+        count += 1
+    return count
+
+
+#: Block classes whose forward is recomputed in the backward under activation checkpointing (the pair-stack blocks that dominate the activation
+#: memory: the engine ``PairformerBlock`` of the trunk / templates / confidence head and FoldForge's ``EvoformerBlock``).
+CHECKPOINTED_BLOCKS = ("PairformerBlock", "EvoformerBlock")
+
+
+def enable_activation_checkpointing(model: nn.Module) -> int:
+    """Wrap the forward of every pair-stack block in ``torch.utils.checkpoint`` (non-reentrant, RNG preserved) so its activations are recomputed in
+    the backward instead of stored. Returns the number of blocks wrapped. Training only: ``torch.is_grad_enabled()`` is the guard."""
+    from torch.utils.checkpoint import checkpoint
+
+    count = 0
+    for module in model.modules():
+        if type(module).__name__ not in CHECKPOINTED_BLOCKS or getattr(
+            module, "_ff_checkpointed", False
+        ):
+            continue
+        forward = module.forward
+
+        def wrapped(*args, _forward=forward, **kwargs):
+            if torch.is_grad_enabled():
+                return checkpoint(_forward, *args, use_reentrant=False, **kwargs)
+            return _forward(*args, **kwargs)
+
+        module.forward = wrapped
+        module._ff_checkpointed = True
         count += 1
     return count

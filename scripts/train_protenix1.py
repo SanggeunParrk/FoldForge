@@ -30,6 +30,8 @@ from foldforge.train import (
     prepare,
     step,
 )
+from foldforge.modules.engine.configure import activation_autocast
+from foldforge.train.profile import PhaseTimer, tensor_bytes
 
 SPECS = Path("/home/psk6950/foldforge-scratch/foldbench/specs_all")
 
@@ -67,8 +69,34 @@ def smoke_batches(pred, target: str):
         yield example
 
 
+def split_sizes(model, example, cfg) -> dict:
+    """Bytes a 2-GPU split of the step would move (the mini-rollout on a second GPU): the diffusion-head parameters (re-synced after every
+    optimizer step), the trunk outputs the rollout reads (single / pair / target features, per crop), the predicted coordinates back."""
+    features = {
+        k: (v.float() if v.dtype == torch.float64 else v) for k, v in example.features.items()
+    }
+    with torch.no_grad(), activation_autocast(model):
+        batch_data = model._prepare_batch(features)
+        emb = step.run_trunk_train(model, batch_data, 1)
+    head = model.diffusion_head
+    res, atoms, _ = example.atom_positions.shape
+    return {
+        "num_res": int(res),
+        "atoms_per_token": int(atoms),
+        "diffusion_head_params": sum(p.numel() for p in head.parameters()),
+        "diffusion_head_param_bytes_fp32": sum(p.numel() * p.element_size() for p in head.parameters()),
+        "single_bytes": tensor_bytes(emb["single"]),
+        "pair_bytes": tensor_bytes(emb["pair"]),
+        "target_feat_bytes": tensor_bytes(emb["target_feat"]),
+        "rollout_inputs_bytes": tensor_bytes(emb),
+        "x_mini_bytes_fp32": res * atoms * 3 * 4,
+        "pair_dtype": str(emb["pair"].dtype),
+        "single_dtype": str(emb["single"].dtype),
+    }
+
+
 def grad_coverage(model: torch.nn.Module) -> dict:
-    """Which parameters got a gradient from one step: groups by the first three name components; ``confidence_head`` has no loss (expected)."""
+    """Which parameters got a gradient from one step: groups by the first three name components; the confidence head is in the list (single-stage training; only ``--no-confidence`` leaves it without a loss)."""
     groups: dict[str, list[int]] = defaultdict(
         lambda: [0, 0, 0, 0, 0]
     )  # total, none, zero (live weight), nonfinite, zero (dead weight < 1e-30)
@@ -121,7 +149,31 @@ def main() -> None:
     ap.add_argument("--min-lr", type=float, default=None)
     ap.add_argument("--warmup-steps", type=int, default=None)
     ap.add_argument("--trunk-lr-scale", type=float, default=None)
-    ap.add_argument("--freeze-trunk", action="store_true")
+    ap.add_argument(
+        "--no-confidence",
+        action="store_true",
+        help="DEBUG ONLY: skip the confidence head (the finetuning is one stage; every parameter trains)",
+    )
+    ap.add_argument("--rollout-steps", type=int, default=None)
+    ap.add_argument(
+        "--profile-phases",
+        action="store_true",
+        help="per-phase GPU timing (CUDA events) of every step: trunk fwd per recycle, diffusion fwd / bwd, trunk bwd, mini-rollout, confidence fwd / bwd, optimizer + EMA",
+    )
+    ap.add_argument(
+        "--rollout-order",
+        choices=("after", "before", "side"),
+        default=None,
+        help="where the mini-rollout runs: after the trunk backward (default, least memory), before the diffusion forward, or on a second CUDA stream (side)",
+    )
+    ap.add_argument("--augment-chunk", type=int, default=None, help="diffusion augmentations per forward/backward chunk (0 = all)")
+    ap.add_argument("--recycles", type=int, default=None, help="fix the trunk passes (min = max)")
+    ap.add_argument("--only", choices=("trunk", "diffusion", "rollout", "confidence"), default=None, help="MEASUREMENT: run one part of the step alone")
+    ap.add_argument(
+        "--activation-checkpointing",
+        action="store_true",
+        help="recompute the pair-stack blocks in the backward instead of storing their activations",
+    )
     ap.add_argument(
         "--ckpt",
         default=None,
@@ -130,6 +182,7 @@ def main() -> None:
     ap.add_argument("--run-dir", default="runs/train_protenix1")
     ap.add_argument("--save-every", type=int, default=0)
     ap.add_argument("--no-profile", action="store_true")
+    ap.add_argument("--no-save", action="store_true", help="skip the final checkpoint (measurement runs)")
     args = ap.parse_args()
 
     cfg = TrainConfig()
@@ -141,11 +194,17 @@ def main() -> None:
         ("min_lr", args.min_lr),
         ("warmup_steps", args.warmup_steps),
         ("trunk_lr_scale", args.trunk_lr_scale),
+        ("rollout_steps", args.rollout_steps),
+        ("rollout", args.rollout_order),
+        ("augment_chunk", args.augment_chunk),
+        ("only", args.only),
+        ("recycles_min", args.recycles),
+        ("recycles_max", args.recycles),
     ):
         if value is not None:
             changes[key] = value
-    if args.freeze_trunk:
-        changes["freeze_trunk"] = True
+    if args.no_confidence:
+        changes["confidence"] = False
     cfg = replace(cfg, **changes)
     run_dir = Path(args.run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -191,19 +250,23 @@ def main() -> None:
         flush=True,
     )
     info = prepare.enable_training(model, cfg)
-    trunk, diffusion, no_loss = optim.split_parameters(model)
+    if args.activation_checkpointing:
+        print("ACT_CKPT blocks=%d" % prepare.enable_activation_checkpointing(model), flush=True)
+    trunk, heads = optim.split_parameters(model)
     print(
         "PREPARE",
         json.dumps(
             {
                 **info,
                 "params_trunk": sum(p.numel() for _, p in trunk),
-                "params_diffusion": sum(p.numel() for _, p in diffusion),
-                "params_no_loss": sum(p.numel() for _, p in no_loss),
+                "params_heads": sum(p.numel() for _, p in heads),
             }
         ),
         flush=True,
     )
+
+    if args.profile_phases:
+        print("SIZES", json.dumps(split_sizes(model, first, cfg)), flush=True)
 
     # -- phase 0: one micro step -> gradient coverage (+ kernels)
     model.zero_grad(set_to_none=True)
@@ -213,24 +276,24 @@ def main() -> None:
     bad = {
         k: v
         for k, v in cover.items()
-        if (v[1] or v[2] or v[3]) and not k.startswith("confidence_head")
+        if (v[1] or v[2] or v[3]) and (cfg.confidence or not k.startswith("confidence_head"))
     }
     print(
-        "GRAD_COVERAGE groups=%d  groups_with_missing_or_zero_or_nonfinite(excl confidence_head)=%d"
+        "GRAD_COVERAGE groups=%d  groups_with_missing_or_zero_or_nonfinite=%d"
         % (len(cover), len(bad)),
         flush=True,
     )
     sums = [0, 0, 0, 0, 0]
     for key, row in sorted(cover.items()):
         total, none, zero, nonfinite, zero_dead = row
-        if not key.startswith("confidence_head"):
+        if cfg.confidence or not key.startswith("confidence_head"):
             sums = [a + b for a, b in zip(sums, row)]
         flag = (
             ""
             if not (none or zero or nonfinite)
             else (
-                "  <-- expected (no loss)"
-                if key.startswith("confidence_head")
+                "  <-- expected (no loss: --no-confidence)"
+                if (not cfg.confidence and key.startswith("confidence_head"))
                 else "  <-- CHECK"
             )
         )
@@ -239,7 +302,7 @@ def main() -> None:
             flush=True,
         )
     print(
-        "GRAD_SUM (excl confidence_head) params=%d none=%d zero_live=%d nonfinite=%d zero_deadweight=%d"
+        "GRAD_SUM params=%d none=%d zero_live=%d nonfinite=%d zero_deadweight=%d"
         % (sums[0], sums[1], sums[2], sums[3], sums[4]),
         flush=True,
     )
@@ -257,6 +320,11 @@ def main() -> None:
         lr = optim.set_lr(optimizer, it, cfg)
         optimizer.zero_grad(set_to_none=True)
         totals = defaultdict(float)
+        timer = PhaseTimer(args.profile_phases)
+        if args.profile_phases:
+            torch.cuda.reset_peak_memory_stats()
+            torch.cuda.synchronize()
+            t_step = time.time()
         for micro in range(cfg.grad_accum_steps):
             example = first if micro == 0 and it == 0 else next(source)
             out = step.micro_step(
@@ -265,16 +333,42 @@ def main() -> None:
                 cfg,
                 passes=prepare.draw_passes(cfg, rng),
                 scale=1.0 / cfg.grad_accum_steps,
+                timer=timer,
             )
             for k, v in out.items():
                 totals[k] += v / cfg.grad_accum_steps
-        norm = float(optim.clip_grad_norm(params, cfg.grad_clip_max_norm))
-        optimizer.step()
-        if ema is not None:
-            ema.update(model)
+        with timer.phase("optimizer_ema"):
+            norm_t = optim.clip_grad_norm(params, cfg.grad_clip_max_norm)
+            optimizer.step()
+            if ema is not None:
+                ema.update(model)
+        norm = float(norm_t)
+        if args.profile_phases:
+            torch.cuda.synchronize()
+            phases = timer.result()
+            phases["step_wall"] = (time.time() - t_step) * 1000.0
+            peaks = [v for k, v in phases.items() if k.endswith(":peak_gib")]
+            phases["step_peak_gib"] = max(peaks) if peaks else 0.0
+            phases["persist_after_step_gib"] = torch.cuda.memory_allocated() / 2**30
+            phases["reserved_gib"] = torch.cuda.memory_reserved() / 2**30
+            print("PHASES %4d %s" % (it, json.dumps({k: round(v, 2) for k, v in phases.items()})), flush=True)
+            if it == 0:
+                gib = 2**30
+                print(
+                    "PERSISTENT",
+                    json.dumps(
+                        {
+                            "params_fp32_gib": round(sum(p.numel() * p.element_size() for p in model.parameters()) / gib, 2),
+                            "grads_gib": round(sum(p.grad.numel() * p.grad.element_size() for p in model.parameters() if p.grad is not None) / gib, 2),
+                            "adam_states_gib": round(tensor_bytes([list(s.values()) for s in optimizer.state.values()]) / gib, 2),
+                            "ema_gib": round(tensor_bytes(list(ema.shadow.values())) / gib, 2) if ema is not None else 0.0,
+                        }
+                    ),
+                    flush=True,
+                )
         history.append(totals["loss"])
         print(
-            "STEP %4d lr=%.2e loss=%.4f diffusion=%.4f bond=%.4f distogram=%.4f gnorm=%.3f t=%.1fs"
+            "STEP %4d lr=%.2e loss=%.4f diffusion=%.4f bond=%.4f distogram=%.4f plddt=%.4f pde=%.4f pae=%.4f gnorm=%.3f t=%.1fs"
             % (
                 it,
                 lr,
@@ -282,6 +376,9 @@ def main() -> None:
                 totals["diffusion"],
                 totals["bond"],
                 totals["distogram"],
+                totals["plddt"],
+                totals["pde"],
+                totals["pae"],
                 norm,
                 time.time() - t0,
             ),
@@ -309,6 +406,8 @@ def main() -> None:
             flush=True,
         )
 
+    if args.no_save:
+        return
     # -- checkpoint round trip
     path = checkpoint.save(
         model,
@@ -342,4 +441,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except torch.OutOfMemoryError as error:
+        print("OOM", str(error)[:240].replace("\n", " "), "max_allocated_gib=%.1f" % (torch.cuda.max_memory_allocated() / 2**30), flush=True)

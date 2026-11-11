@@ -24,6 +24,11 @@ class LossWeights:
     smooth_lddt_loss: float = 0.0
     bond_loss: float = 1.0
     distogram_loss: float = 0.03
+    #: Confidence head, trained jointly (single stage): MiniWorld `loss/confidence_only.yaml` (per-bin cross entropy, weight 1.0 each). The
+    #: experimentally-resolved head has no MiniWorld counterpart and is not trained.
+    plddt_loss: float = 1.0
+    pde_loss: float = 1.0
+    pae_loss: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -42,6 +47,17 @@ class EDMNoise:
 class TrainConfig:
     loss: LossWeights = field(default_factory=LossWeights)
     noise: EDMNoise = field(default_factory=EDMNoise)
+    #: Train the confidence head in the same step (default). `False` is a debug switch only: the finetuning is ONE stage, every parameter trains.
+    confidence: bool = True
+    #: Steps of the no-grad mini-rollout whose structure the confidence head reads (Protenix `N_step_mini_rollout`, MiniWorld `protenix_finetune`: 20).
+    rollout_steps: int = 20
+    #: Where the mini-rollout runs inside a step: "after" the trunk backward (activations freed: least memory), "before" the diffusion forward, or "side"
+    #: (a second CUDA stream overlapped with the diffusion-train forward / backward).
+    rollout: str = "after"
+    #: Diffusion augmentations per forward / backward chunk (0 = all `num_augment` at once); smaller chunks hold fewer diffusion activations.
+    augment_chunk: int = 0
+    #: Measurement only: run one part of the step alone ("trunk", "diffusion", "rollout", "confidence"); "" = the whole step.
+    only: str = ""
     #: Diffusion samples (augmentations) per micro step.
     num_augment: int = 48
     #: Total trunk passes per step, drawn uniformly from this range; only the last pass carries gradient.
@@ -54,13 +70,11 @@ class TrainConfig:
     decay_steps: int = 50_000
     decay_factor: float = 0.95
     betas: tuple[float, float] = (0.9, 0.95)
-    #: Multiplier of the LR of the trunk (input embedder, template / MSA / pairformer stack); the diffusion head keeps 1.0.
+    #: Multiplier of the LR of the trunk (input embedder, template / MSA / pairformer stack); the heads (diffusion, confidence, distogram) keep 1.0.
     trunk_lr_scale: float = 1.0
     grad_clip_max_norm: float = 1.0
     #: Micro steps per optimizer step (effective batch = grad_accum_steps x world size).
     grad_accum_steps: int = 32
     ema_decay: float = 0.999
     use_ema: bool = True
-    #: Freeze the trunk (MiniWorld: ``model.freeze_trunk: false``).
-    freeze_trunk: bool = False
     seed: int = 0

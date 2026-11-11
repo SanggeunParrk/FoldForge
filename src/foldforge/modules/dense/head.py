@@ -275,6 +275,9 @@ class ConfidenceHead(nn.Module):
         self.reembed_pair = spec.confidence_reembed_pair
         #: ``execution.confidence_sample_chunk`` of the config: samples per call, None = the rule below
         self.sample_chunk_override: int | None = None
+        #: Training only (``train.prepare``): also return the raw logits of the pLDDT / PDE / PAE (and resolved) heads, which the
+        #: confidence loss is a cross entropy on. Inference leaves it False and returns the derived values only.
+        self.save_logits = False
         self.split_heads = spec.confidence_split_heads
         self.pde_symmetrise = spec.pde_symmetrise
 
@@ -770,6 +773,7 @@ class ConfidenceHead(nn.Module):
         # Experimentally resolved. A family that trained no such head reports
         # nothing rather than a random-init number that would read like one.
         predicted_experimentally_resolved = None
+        experimentally_resolved_logits = None
         if self.resolved_head:
             experimentally_resolved_logits = self.experimentally_resolved_logits(
                 self.experimentally_resolved_ln(single_act)
@@ -794,6 +798,20 @@ class ConfidenceHead(nn.Module):
             "full_pde": pred_distance_error,
             "average_pde": average_pred_distance_error,
             **pae_outputs,
+            **(
+                {
+                    "plddt_logits": plddt_logits,
+                    "pde_logits": distance_logits,
+                    "pae_logits": pae_logits,
+                    **(
+                        {"resolved_logits": experimentally_resolved_logits}
+                        if experimentally_resolved_logits is not None
+                        else {}
+                    ),
+                }
+                if self.save_logits
+                else {}
+            ),
         }
 
     def _gather_plddt_by_atom_name(

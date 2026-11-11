@@ -43,6 +43,18 @@
       "sha256": "ab55413656f05fb376339b2c7514129b6adddd60db616ec088ed4b1f28c641ea",
       "revision": "f3a880ba62c99a8fa774024df81619658df50bcf",
       "note": "get_step_decay_scheduler_with_warmup"
+    },
+    "train/loss/confidence.py": {
+      "source": "src/miniworld/loss/confidence.py",
+      "sha256": "c63bb15c126fe2314b33a0854fb5b917aa27ced2b64852ba33b7df18ebf83de3",
+      "revision": "f3a880ba62c99a8fa774024df81619658df50bcf",
+      "note": "per_atom_lddt, token_frames, pae_target_bins, masked_ce, adapted to the dense [res, atoms_per_token] layout (real atoms only for lDDT, the head's own bins); the PAE frame transform uses R^T d (MiniWorld contracts the other axis)"
+    },
+    "train/loss/confidence.py (loss weights)": {
+      "source": "configs/miniworld/loss/confidence_only.yaml",
+      "sha256": "f88ec6b19daf9ca6efc0d9504c98b1df1eda4a5c17485dfe25be777fac0e6c3a",
+      "revision": "f3a880ba62c99a8fa774024df81619658df50bcf",
+      "note": "plddt_loss / pde_loss / pae_loss 1.0 (per-bin cross entropy)"
     }
   }
 }

@@ -16,10 +16,9 @@ if TYPE_CHECKING:
 
     from foldforge.train.config import TrainConfig
 
-#: Parameter-name prefixes that are the diffusion side (LR scale 1.0); everything else with a loss attached is the trunk.
-DIFFUSION_PREFIXES = ("diffusion_head.",)
-#: No loss in phase 1 (confidence training is a later phase): left out of the optimizer.
-NO_LOSS_PREFIXES = ("confidence_head.",)
+#: Parameter-name prefixes of the heads (LR scale 1.0): the diffusion, confidence and distogram heads. Everything else is the trunk
+#: (`trunk_lr_scale`). Single-stage finetuning: every parameter is in the optimizer.
+HEAD_PREFIXES = ("diffusion_head.", "confidence_head.", "distogram_head.")
 
 
 def split_parameters(
@@ -27,39 +26,33 @@ def split_parameters(
 ) -> tuple[
     list[tuple[str, nn.Parameter]],
     list[tuple[str, nn.Parameter]],
-    list[tuple[str, nn.Parameter]],
 ]:
-    """``(trunk, diffusion, no_loss)`` named parameters."""
-    trunk, diffusion, no_loss = [], [], []
+    """``(trunk, heads)`` named parameters."""
+    trunk, heads = [], []
     for name, param in model.named_parameters():
-        if name.startswith(NO_LOSS_PREFIXES):
-            no_loss.append((name, param))
-        elif name.startswith(DIFFUSION_PREFIXES):
-            diffusion.append((name, param))
+        if name.startswith(HEAD_PREFIXES):
+            heads.append((name, param))
         else:
             trunk.append((name, param))
-    return trunk, diffusion, no_loss
+    return trunk, heads
 
 
 def build_optimizer(model: nn.Module, cfg: TrainConfig) -> torch.optim.Optimizer:
-    trunk, diffusion, _ = split_parameters(model)
+    trunk, heads = split_parameters(model)
     groups = [
         {
-            "params": [p for _, p in diffusion],
+            "params": [p for _, p in heads],
             "lr": cfg.max_lr,
             "scale": 1.0,
-            "name": "diffusion",
-        }
+            "name": "heads",
+        },
+        {
+            "params": [p for _, p in trunk],
+            "lr": cfg.max_lr * cfg.trunk_lr_scale,
+            "scale": cfg.trunk_lr_scale,
+            "name": "trunk",
+        },
     ]
-    if not cfg.freeze_trunk:
-        groups.append(
-            {
-                "params": [p for _, p in trunk],
-                "lr": cfg.max_lr * cfg.trunk_lr_scale,
-                "scale": cfg.trunk_lr_scale,
-                "name": "trunk",
-            }
-        )
     return torch.optim.Adam(groups, betas=cfg.betas)
 
 

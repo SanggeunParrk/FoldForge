@@ -12,7 +12,7 @@ from foldforge.train.config import TrainConfig
 
 
 class Tiny(nn.Module):
-    """Parameter names follow the graph's prefixes: trunk, diffusion head, confidence head (no loss in phase 1)."""
+    """Parameter names follow the graph's prefixes: trunk, diffusion head, confidence head."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -43,27 +43,28 @@ def test_set_lr_floors_at_min_lr_after_warmup_and_scales_the_trunk_group():
     model = Tiny()
     opt = optim.build_optimizer(model, cfg)
     names = {g["name"] for g in opt.param_groups}
-    assert names == {"diffusion", "trunk"}
+    assert names == {"heads", "trunk"}
     assert optim.set_lr(opt, 2, cfg) == pytest.approx(5e-3), "warmup: no floor"
     assert optim.set_lr(opt, 4, cfg) == pytest.approx(1e-2)
     assert optim.set_lr(opt, 40, cfg) == pytest.approx(1e-3), (
         "after warmup the schedule never goes below min_lr"
     )
     lrs = {g["name"]: g["lr"] for g in opt.param_groups}
-    assert lrs["diffusion"] == pytest.approx(1e-3)
+    assert lrs["heads"] == pytest.approx(1e-3)
     assert lrs["trunk"] == pytest.approx(1e-4)
 
 
-def test_split_parameters_and_frozen_trunk_leave_the_trunk_and_confidence_out_of_the_optimizer():
+def test_every_parameter_is_in_the_optimizer_and_the_confidence_head_keeps_the_head_lr():
     model = Tiny()
-    trunk, diffusion, no_loss = optim.split_parameters(model)
+    trunk, heads = optim.split_parameters(model)
     assert {n.split(".")[0] for n, _ in trunk} == {"evoformer"}
-    assert {n.split(".")[0] for n, _ in diffusion} == {"diffusion_head"}
-    assert {n.split(".")[0] for n, _ in no_loss} == {"confidence_head"}
-    opt = optim.build_optimizer(model, TrainConfig(freeze_trunk=True))
-    assert [g["name"] for g in opt.param_groups] == ["diffusion"]
+    assert {n.split(".")[0] for n, _ in heads} == {"diffusion_head", "confidence_head"}
+    opt = optim.build_optimizer(model, TrainConfig(trunk_lr_scale=0.1))
+    assert [g["name"] for g in opt.param_groups] == ["heads", "trunk"]
     in_optimizer = {id(p) for g in opt.param_groups for p in g["params"]}
-    assert all(id(p) not in in_optimizer for _, p in no_loss)
+    assert all(id(p) in in_optimizer for p in model.parameters()), "single stage: nothing is left out"
+    scale = {g["name"]: g["scale"] for g in opt.param_groups}
+    assert scale == {"heads": 1.0, "trunk": 0.1}
 
 
 def test_clip_grad_norm_returns_the_preclip_norm_and_clips_globally():

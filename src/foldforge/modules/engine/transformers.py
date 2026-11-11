@@ -19,6 +19,7 @@ from miniworld_engine.modules import AtomDiT, TokenDiT
 from miniworld_engine.modules.atom_dit import KEY_WINDOWS
 from torch import nn
 
+from foldforge.modules.engine.configure import engine_activation
 from foldforge.modules.engine.modules import Precision, finish, model_keys
 
 if TYPE_CHECKING:
@@ -108,8 +109,9 @@ class AtomDiTStack(nn.Module):
             pair = pair_cond.reshape(1, windows, queries, -1, pair_cond.shape[-1])
         if key_mask is None:
             key_mask = (queries_mask > 0).reshape(1, atoms)
-        x = queries_act.reshape(-1, 1, atoms, channels)
-        cond = queries_single_cond.reshape(1, 1, atoms, channels).expand(x.shape[0], 1, atoms, channels)
+        x = engine_activation(queries_act.reshape(-1, 1, atoms, channels))  # the engine's master blocks take bf16 activations, not fp32
+        cond = engine_activation(queries_single_cond.reshape(1, 1, atoms, channels)).expand(x.shape[0], 1, atoms, channels)
+        pair = engine_activation(pair)
         for block in self.blocks:
             x = block(x, cond, pair, key_mask, uid) if uid is not None else block(x, cond, pair, key_mask)
         return x.reshape(*lead, windows, queries, channels)

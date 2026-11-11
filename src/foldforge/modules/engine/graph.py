@@ -26,6 +26,7 @@ from miniworld_engine.modules import PairformerBlock
 from torch import nn
 
 from foldforge.modules.engine import modules as factories
+from foldforge.modules.engine.configure import engine_activation
 from foldforge.modules.engine.pairformer import pairformer_block
 from foldforge.modules.engine.transformers import token_dit_stack
 
@@ -159,6 +160,7 @@ def run_block(
     attention). Returns ``pair`` (a block without the single track) or ``(pair, single)``, in the layout it was given."""
     if not isinstance(block, PairformerBlock):  # the converter's released-layout block carries its own call (``run_dense``)
         return block.run_dense(pair, pair_mask, single, seq_mask, extra_pair_bias)  # type: ignore[operator]
+    pair, single = engine_activation(pair), engine_activation(single)  # the engine's master blocks take bf16 activations, not fp32
     batched = pair.ndim == 4
     if not batched:
         pair = pair[None]

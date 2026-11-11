@@ -78,6 +78,15 @@ def activation_autocast(model: nn.Module) -> contextlib.AbstractContextManager[N
     return torch.autocast(device, dtype=model.foldforge_activation_dtype)
 
 
+def engine_activation(tensor: torch.Tensor | None) -> torch.Tensor | None:
+    """``tensor`` in the dtype the engine's ``master`` modules are called with: inside an enabled autocast a floating fp32 activation becomes
+    the autocast dtype (the engine's ``MasterWeights``: fp32 masters, bf16 activations); anything else is returned as it is (``fp32``
+    precision runs without autocast, so its activations stay fp32)."""
+    if tensor is None or tensor.dtype != torch.float32 or not torch.is_autocast_enabled(tensor.device.type):
+        return tensor
+    return tensor.to(torch.get_autocast_dtype(tensor.device.type))
+
+
 def set_tf32_policy(model: nn.Module, *, tf32: bool, diffusion_tf32: bool = False) -> None:
     """Record whether TF32 tensor cores may serve this model's modules (``foldforge_tf32`` on every module).
 

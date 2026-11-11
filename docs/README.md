@@ -8,6 +8,8 @@
   Rendered by `scripts/render_length_benchmark.py`; [benchmark_notes.md](benchmark_notes.md) is inserted on
   every render. Earlier reports: [4YX2, 2026-09-18](archive/benchmark-20260918-4yx2/benchmark_results.md)
   and [2026-09-16](archive/benchmark-20260916/benchmark_results.md).
+- [The 5I28 benchmark](guides/BENCHMARK-5I28.md): the model-level speed protocol (FoldForge vs the Anthropic kits, n = 1..16 chains of
+  azurin, real MSA + 4 distinct templates, warm median), why 5I28 (128 residues = one token bucket) and that FoldForge owns it.
 - [Code structure](guides/CODE-STRUCTURE.md): shared runtime and code ownership.
 - [Backends](guides/BACKENDS.md): `pytorch | cuda | triton | anthropic | cueq` (aliases `miniworld`, `cuequivariance`), `fallback | error`, precision `master | fp32`, how to compare backends. Measurements of the pre-2.5.0 engine: [archive](archive/BACKENDS-engine-2.3.md).
 - [What the engine does not support](ENGINE-UNSUPPORTED.md) (categorized: what, where, what FoldForge does meanwhile) and [requests to the engine team](ENGINE-REQUESTS.md) (numbered, prioritized).

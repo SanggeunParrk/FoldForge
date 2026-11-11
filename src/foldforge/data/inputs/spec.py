@@ -352,6 +352,10 @@ class InferenceSpec(BaseModel):
     #: residues trimmed from the front of a chain's sequence relative to the frame its templates are aligned in (chain index -> count)
     template_offset: dict[str, int] = Field(default_factory=dict)
     template_n: int = Field(default=4, ge=0, le=4)
+    #: keep one template per hit sequence (AF3's ``deduplicate_sequences``, the default): the LMDB stores every chain of an entry, so without it
+    #: the first ``template_n`` records may repeat one structure. FoldBench's own template lists (and the 2.4.0 / Anthropic-kit comparison runs)
+    #: keep those repeats: ``template_dedup: false`` reproduces them (8h3x antibody-antigen: DockQ >= 0.23 in 15/25 structures against 0/25 with it).
+    template_dedup: bool = True
     #: covalent bonds at atom level, AF3's ``bondedAtomPairs``: each pair is two ``[chain index, residue number (1-based in the chain; the
     #: component number for a glycan), atom name]`` endpoints. A branched (glycan) chain needs them: its FASTA names residues, not atoms.
     bonded_atom_pairs: list[list[list[int | str]]] = Field(default_factory=list)

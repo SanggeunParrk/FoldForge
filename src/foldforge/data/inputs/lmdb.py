@@ -402,7 +402,13 @@ def _template_start(template: str, query: str, offset: int) -> int | None:
 
 
 def load_templates(
-    path: Path, key: str, query: "str | int", count: int, offset: int = 0
+    path: Path,
+    key: str,
+    query: "str | int",
+    count: int,
+    offset: int = 0,
+    *,
+    dedup: bool = True,
 ) -> tuple[Template, ...]:
     """Load the templates of ``key`` placed on ``query``. ``query`` is the chain length (int): every template must be aligned to exactly that
     many residues, else the record is refused. ``query`` as the chain's one-letter sequence (str) also takes a template aligned in a longer
@@ -456,9 +462,11 @@ def load_templates(
         # One template per hit sequence, as AF3's and Protenix's template search
         # keep it: the LMDB stores every chain of an entry (5SYD_A, 5SYD_B, ...),
         # so the first ``count`` records would repeat the same structure.
-        if sequence.replace("-", "") in seen:
-            continue
-        seen.add(sequence.replace("-", ""))
+        # ``dedup=False`` (spec ``template_dedup: false``) keeps the repeats: FoldBench's lists.
+        if dedup:
+            if sequence.replace("-", "") in seen:
+                continue
+            seen.add(sequence.replace("-", ""))
         templates.append(
             Template(
                 str(name),

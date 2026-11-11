@@ -163,8 +163,10 @@ residue codes become gaps; finite N/CA/C/CB coordinates retain atom masks. A CA
 copied into the fourth slot by StructCooker's pseudo-beta fallback is not labeled
 as an observed CB. Native featurizers select glycine CA themselves. At least four
 residues with a complete backbone are required, as in MiniWorld; the first valid
-0..4 records in DB order are used deterministically. `template_n: 0` skips reading
-the template DB. AF3 receives single-chain mmCIF and the exact alignment mapping;
+0..4 records in DB order are used deterministically, one per distinct hit sequence
+(AF3's `deduplicate_sequences`; `template_dedup: false` keeps repeated chains of one entry,
+as FoldBench's own template lists and the engine-2.4.0 / Anthropic-kit comparison runs do).
+`template_n: 0` skips reading the template DB. AF3 receives single-chain mmCIF and the exact alignment mapping;
 P/O receive atom37 features at their existing template assembly boundary. There
 is no search, realignment, remote fetch, or additional template database.
 

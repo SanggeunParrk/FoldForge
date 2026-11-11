@@ -215,6 +215,19 @@ def test_templates_keep_one_hit_per_sequence(tmp_path):
     assert [t.sequence for t in picked] == ["ARNDCQEG", "ARNDCQEA"]
 
 
+def test_templates_keep_repeated_hits_without_dedup(tmp_path):
+    # ``dedup=False`` (spec ``template_dedup: false``, FoldBench's own lists and the 2.4.0 / kit comparison runs): the first records in DB order.
+    mols = {
+        "1ABC_A": template_record(),
+        "1ABC_B": template_record(),
+        "2DEF_A": template_record("ARNDCQEA"),
+        "3GHI_A": template_record("ARNDCQEV"),
+    }
+    write_db(tmp_path / "template", "key", {"template_mols": mols})
+    picked = load_templates(tmp_path / "template", "key", 8, 3, dedup=False)
+    assert [t.sequence for t in picked] == ["ARNDCQEG", "ARNDCQEG", "ARNDCQEA"]
+
+
 def test_structcooker_blank_gaps_and_ca_fallback(tmp_path):
     item = template_record()
     ids = item["atoms"]["nodes"]["id"]["value"].reshape(8, 4)

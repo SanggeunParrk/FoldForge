@@ -342,6 +342,7 @@ def _load_chains(
                 sequence,
                 spec.template_n,
                 spec.template_offset.get(str(i), 0),
+                dedup=spec.template_dedup,
             )
         chains.append(
             Chain(

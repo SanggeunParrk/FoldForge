@@ -23,6 +23,7 @@ import socket
 import subprocess
 import sys
 import time
+import traceback
 from pathlib import Path
 
 import torch
@@ -210,6 +211,10 @@ def main() -> int:
                      "fragmented": bool(oom and "reserved by PyTorch but unallocated" in str(oom))}
             if not oom:
                 cell["traceback"] = repr(error)[:600]
+            # The exception's traceback holds the failed forward's frames and every tensor they had: drop them, or the next
+            # size starts with the out-of-memory size's activations still allocated.
+            traceback.clear_frames(error.__traceback__)
+            error = oom = None
             result = None
         cell["wall_seconds"] = round(time.time() - started, 1)
         (cells / f"{args.model}_x{n}.json").write_text(json.dumps(cell, indent=1))

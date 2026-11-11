@@ -44,7 +44,8 @@ featurization, loading and output writing. Report the median of the warm forward
 
 - Show the ratio as **kit / FoldForge** (> 1 means FoldForge is faster), never FoldForge / kit.
 - A number taken any other way (no MSA, no templates, fewer than 4 real templates, a wider timing span) is not a 5I28 number.
-- Records are dated files (`docs/records/`, created with the first FoldForge record) and are not edited afterwards.
+- Records are dated files (`docs/records/`, created with the first FoldForge record) and are not edited afterwards. The first:
+  [2026-11-11](../records/5i28_foldforge_20261111.md).
 
 ## Preflight before any sweep
 

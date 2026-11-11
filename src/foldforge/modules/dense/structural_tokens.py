@@ -17,9 +17,13 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
+from foldforge.modules.engine.configure import engine_activation
+
 #: The vendor's structural-token roles.
 ATOM, PROTEIN_BB, PROTEIN_SC, DNA_BB, DNA_BASE, RNA_BB, RNA_BASE = range(7)
 N_ROLES = 7
+#: Bytes of one fp32 band of the structural pair built at a time (rows x S x c x 4).
+_PAIR_BAND_BYTES = 1 << 30
 _BACKBONE_ROLES = (PROTEIN_BB, DNA_BB, RNA_BB)
 _BASE_ROLES = (DNA_BASE, RNA_BASE)
 
@@ -139,35 +143,45 @@ class StructuralTokenExpander(nn.Module):
         parent: torch.Tensor,
         features: dict[str, torch.Tensor],
     ) -> torch.Tensor:
-        """Copy each parent pair, project it by role pair, add the relation terms."""
-        parent_pair = pair[parent][:, parent]
-        role_pair = features["role_pair_type"]
+        """Copy each parent pair, project it by role pair, add the relation terms.
+
+        The result is ``[S, S, c]`` for S structural tokens, in the dtype the engine's blocks take (an fp32 pair under autocast is stored
+        as the autocast dtype: the first refiner block would round it there). It is built a band of rows at a time: the gathered parent
+        pair, the per-role projections and the relation terms each used to be a whole ``[S, S, c]`` fp32 tensor alive at once (five of
+        them: 12.4 GiB each at 12 chains of 5I28), which is what made this the step that ran out of memory.
+        """
+        role = features["role"]
         # The 49 projections are indexed by the two tokens' OWN roles, as
         # `role_i * n_roles + role_j` -- NOT by the eight-class role-pair type,
         # which is a different quantity that only the embedding below reads.
         # Using the type here reaches eight of the forty-nine, and reaches them
         # for the wrong pairs.
-        role = features["role"]
         block = role[:, None] * N_ROLES + role[None, :]
-        delta = torch.zeros_like(parent_pair)
-        # Accumulate one role pair at a time. Selecting all of them at once lets
-        # the compiler keep every projection of the whole (S, S, c) pair live,
-        # which is what makes this the step that runs out of memory.
-        for index in range(N_ROLES * N_ROLES):
-            chosen = block == index
-            if not bool(chosen.any()):
-                continue
-            masked = torch.where(chosen[..., None], parent_pair, 0.0)
-            delta = delta + masked @ self.pair_block_proj[index]
-        out = parent_pair + delta
-        for name, table in (
-            ("same_parent", self.same_parent_embedding),
-            ("twin", self.same_residue_twin_embedding),
-            ("prev_bb", self.prev_bb_chain_embedding),
-            ("next_bb", self.next_bb_chain_embedding),
-        ):
-            out = out + table(features[name].to(torch.int64))
-        return out + self.role_pair_type_embedding(role_pair)
+        present = torch.unique(block).tolist()
+        size, channels = parent.shape[0], self.c_pair
+        out = pair.new_empty(
+            (size, size, channels), dtype=engine_activation(pair.new_empty(0)).dtype
+        )
+        rows_per_band = max(1, min(size, _PAIR_BAND_BYTES // (size * channels * 4)))
+        for start in range(0, size, rows_per_band):
+            rows = slice(start, start + rows_per_band)
+            parent_pair = pair[parent[rows]][:, parent]
+            delta = torch.zeros_like(parent_pair)
+            # One role pair at a time: all of them at once keeps every projection of the band live.
+            for index in present:
+                masked = torch.where((block[rows] == index)[..., None], parent_pair, 0.0)
+                delta = delta + masked @ self.pair_block_proj[index]
+            band = parent_pair + delta
+            for name, table in (
+                ("same_parent", self.same_parent_embedding),
+                ("twin", self.same_residue_twin_embedding),
+                ("prev_bb", self.prev_bb_chain_embedding),
+                ("next_bb", self.next_bb_chain_embedding),
+            ):
+                band = band + table(features[name][rows].to(torch.int64))
+            band = band + self.role_pair_type_embedding(features["role_pair_type"][rows])
+            out[rows] = band.to(out.dtype)
+        return out
 
     def attention_bias(self, features: dict[str, torch.Tensor]) -> torch.Tensor:
         """One learned scalar per relationship, plus a per-role-pair table."""

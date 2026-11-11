@@ -6,7 +6,7 @@ Requests only: what FoldForge would like the engine to provide. What the engine 
 Priority: **P1** blocks a clean integration or costs most of a fold's speed on the main path (H100, bf16); **P2** removes a FoldForge workaround
 or a per-family slow path; **P3** convenience, documentation, or a wish for exactness in a corner.
 
-Numbering is stable (R1 ... R18); a request that is done is struck out here, not renumbered. Earlier lists were merged: the former items 1 / 5
+Numbering is stable (R1 ... R19); a request that is done is struck out here, not renumbered. Earlier lists were merged: the former items 1 / 5
 are R1, 4 / 8 are R2, 3 / F4 are R6, 6 is R5, 9 / D2 are R4, 7 / 11 are R10, D1 is R7, F1 is R8, F2 is R9, F3 is R11.
 
 | # | Priority | Request | Retires |
@@ -29,6 +29,7 @@ are R1, 4 / 8 are R2, 3 / F4 are R6, 6 is R5, 9 / D2 are R4, 7 / 11 are R10, D1 
 | R16 | P1 (training) | `AtomDiT` blocks send a gradient to the atom-pair (pair-bias) input | U-backend (training: atom-pair conditioning) |
 | R17 | P2 (training) | An autograd-capable `PoolAtoms` (or a backward for the `sampler_ops` module) | U-backend (training: pooling) |
 | R18 | P2 | A public multi-fold (trunk_seed x diffusion_seed) contract for the DiT blocks | U-class (grouped 5x5 sampler) |
+| R19 | P2 | Smaller temporaries for the 2.5.0 `PairformerBlock` batched over samples (the confidence head's CUDA-graph pool) | U-class (confidence-head graph memory) |
 
 ## P1
 
@@ -77,6 +78,8 @@ mostly `pytorch`.
 **R17. `PoolAtoms` backward (training).** The `sampler_ops` modules (`AugmentNoise`, `AlignEuler`, `PoolAtoms`) are inference-only by design (no autograd), so a training step cannot use `PoolAtoms` and FoldForge switches every module to the torch pooling (`foldforge_sampler_ops=False`, `train/prepare.py`). The same op (gather + relu + masked mean over the atoms of a token) with a backward would remove the switch and the slower torch gather in the training graph (`indexing_backward_kernel` is the largest PyTorch backward kernel of a step).
 
 **R18. Multi-fold sampling contract.** FoldForge's trunk_seed x diffusion_seed sampler (`models/grouped.py`) runs the DiT blocks once over `[A, NT, ...]` inputs where each of the NT folds has its own pair, conditioning and atom pair; the engine's grouped-bias attention reads sample s's pair from fold `s % nbg`. That behaviour is not documented, and FoldForge reaches it through `stack.blocks` of the DiT stacks. Please state the contract (for example a public `pair_groups` argument) so it can be relied on. Measured end to end on FoldBench (1,522 assemblies): 1.5x for assemblies up to 256 tokens, 1.08x over the whole set, 1.0x above 1,024 tokens.
+
+**R19. Confidence-head graph memory.** With one CUDA-graph pool per captured graph, the 2.5.0 `PairformerBlock` batched over samples (`engine/graph.py::make_pairformer_block(..., batched="sample")`) needs 2.4x the pool of the 2.4.0 fused `AF3Pairformer` in the confidence head: summed over the captures of 70 ascending-size FoldBench assemblies, 26.9 GiB against 11.3 GiB (largest bucket 5.67 against 3.04 GiB). Together with the evoformer pools (about 37-41 GiB) the private pools reached 80 GiB at the ~400-token bucket and a capture failed (five assemblies; `release-graphs target` passed). FoldForge now evicts the callable's oldest graphs before a capture when memory is short (`models/execution.py`), but the size of the temporaries is the engine's: please check whether the batched block can use a fused path or state a workspace-size contract. The temporaries were estimated from pool sizes, not profiled.
 
 ## P3
 

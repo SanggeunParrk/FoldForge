@@ -91,6 +91,15 @@ its diffusion-head TF32 reference mode (`reference_precision`). The load report 
 roundings under autocast; the fp32 residual / norm parameters are exact). The pair stream dtype is the activation dtype: the residual adds of the
 FoldForge-owned glue run in whatever dtype autocast gives them.
 
+Two consequences measured on FoldBench (115 assemblies, 2026-11-10/11):
+
+- **The diffusion sampler loop runs OUTSIDE the activation autocast** (`models/architectures/af3.py::_sample_diffusion`; only the network calls `denoise` and
+  the conditioning table open it). Inside it, the random rigid motion and the Kabsch alignment matmuls rounded the fp32 coordinates to bf16 at every one of
+  the 200 steps: consecutive CA-CA distance std 0.10-0.21 A instead of 0.02-0.05 A and FoldBench lDDT 0.88 -> 0.17 with TM-score and DockQ unchanged.
+- **`af3_default` is `bf16` plus a TF32 flag that has no effect** in the port: the diffusion head runs under the same bf16 autocast as the trunk
+  (measured: bit-identical structures to `bf16`), where AF3's own policy runs the diffusion module in fp32. The flag `diffusion_tf32` only reaches the
+  engine fp32 backends, which the head does not use under `master`. Running the head in fp32 is the `fp32` precision (whole model).
+
 ## The legacy converter graph (not a gap, a boundary)
 
 The released Haiku layout is dealt with in one place, `src/foldforge/models/checkpoints/legacy/` (the dense released-layout modules and the Haiku

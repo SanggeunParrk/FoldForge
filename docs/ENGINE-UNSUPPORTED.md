@@ -1,4 +1,4 @@
-# What miniworld-engine 2.5.0 does not support
+# What miniworld-engine 2.5.1 does not support
 
 For every gap: **what**, **where FoldForge needs it**, **what FoldForge does meanwhile**. Requests to the engine team that follow from a row are
 in [ENGINE-REQUESTS.md](ENGINE-REQUESTS.md) (`R<n>`). The sections are the categories:
@@ -44,8 +44,8 @@ engine `pytorch` backend for the call and logs the reason once; `error` raises. 
 
 | What | Where | Meanwhile |
 | --- | --- | --- |
-| `OuterProductMean`: `count_offset` (AF3's `n + 1e-3` divisor) only on `pytorch`; no `anthropic` / `cueq` backend | every AF3-family MSA stack | Default `count_offset=None` (the clamp divisor the kernels serve): differs from the release by 1e-3 / n relative at every pair and at pairs with no valid row. Measured (af3, 20 tokens + a ligand, 6 MSA rows: the worst case): trunk 5e-7, sampled coordinates 6.6e-5 relative to the `n + 1e-3` graph. `modules.OPM_COUNT_OFFSET = 1e-3` builds the exact form (that module then runs `pytorch`). Grouped OPM (Chai-1) has no division: no offset (R2). |
-| `MSAPairWeightedAveraging`: no `anthropic` / `cueq` | MSA stack | `engine.ops: {msa_pwa: anthropic}` is refused by name; fallback `pytorch`. |
+| `OuterProductMean`: `count_offset` (AF3's `n + 1e-3` divisor) only on `pytorch`; no `cueq` backend (an `anthropic` backend exists since 2.5.1) | every AF3-family MSA stack | Default `count_offset=None` (the clamp divisor the kernels serve): differs from the release by 1e-3 / n relative at every pair and at pairs with no valid row. Measured (af3, 20 tokens + a ligand, 6 MSA rows: the worst case): trunk 5e-7, sampled coordinates 6.6e-5 relative to the `n + 1e-3` graph. `modules.OPM_COUNT_OFFSET = 1e-3` builds the exact form (that module then runs `pytorch`). Grouped OPM (Chai-1) has no division: no offset (R2). |
+| `MSAPairWeightedAveraging`: no `cueq` (an `anthropic` backend exists since 2.5.1; 2.5.0 had none) | MSA stack | `engine.ops: {msa_pwa: cueq}` is refused by name; fallback `pytorch`. |
 | `TriangleMultiplicationRF3` (divide by length), `BidirectionalTriangleMultiplication`, `ConditionedTransition`, the `AdaptiveLayerNorm` family: `pytorch` only; `cuda` is H100 (sm_90) only | RoseTTAFold3 exact mode, diffusion head | `choose_backend` gives `pytorch` with the reason; `miniworld` on another card means `triton` where the class has it. |
 | `TriangleAttention*` / `TriangleMultiplication` `anthropic` / `cueq` ranges (shapes, masks, grad) | trunk | The class's own `_supports_<backend>`; the guard sends the refused call to `pytorch`. |
 | `AttentionPairBias` `cuda` refuses `extra_pair_bias` | OpenDDE's refiner (4 calls per fold) | `pytorch` for those calls (measured on H100: 96 trunk single attentions on `cuda`, the 4 refiner calls refused) (R3). |

@@ -49,7 +49,9 @@ def test_serves_is_derived_from_the_engine_classes():
         assert ("miniworld" in names) == bool(have & {"cuda", "triton"})
         assert ("cuequivariance" in names) == ("cueq" in have)
     assert "anthropic" not in table["conditioning"]
-    assert "anthropic" not in table["msa_pwa"]
+    # engine 2.5.1: `opm` and `msa_pwa` have an `anthropic` backend (2.5.0 had none), so the table must list it
+    assert "anthropic" in table["opm"]
+    assert "anthropic" in table["msa_pwa"]
 
 
 def test_choose_backend(monkeypatch):
@@ -66,7 +68,8 @@ def test_choose_backend(monkeypatch):
     assert backends.choose_backend("miniworld", AdaptiveLayerNorm) == ("pytorch", None)
     assert backends.choose_backend("cueq", TriangleMultiplication) == ("cueq", None)
     assert backends.choose_backend("cuequivariance", TriangleAttention) == ("cueq", None)
-    name, why = backends.choose_backend("anthropic", OuterProductMean)
+    assert backends.choose_backend("anthropic", OuterProductMean) == ("anthropic", None)  # engine 2.5.1 (2.5.0: no such backend)
+    name, why = backends.choose_backend("anthropic", AdaptiveLayerNorm)
     assert name == "pytorch"
     assert "no 'anthropic' backend" in why
     # another card: triton, and cuda is refused by name
@@ -77,14 +80,15 @@ def test_choose_backend(monkeypatch):
 
 def test_plan_resolve_reports_refused_ops(monkeypatch, caplog):
     monkeypatch.setattr(backends, "capability", lambda _d: (9, 0))
-    plan = backends.BackendPlan.make("pytorch", {"transition": "cuda", "msa_pwa": "anthropic"})
+    # `conditioning` (ConditionedTransition, AdaptiveLayerNorm ...) has no `anthropic` backend in the engine
+    plan = backends.BackendPlan.make("pytorch", {"transition": "cuda", "conditioning": "anthropic"})
     with caplog.at_level(logging.WARNING, logger="foldforge.backend"):
         plan.resolve()
     assert plan.of("transition") == "cuda"
-    assert plan.resolved["msa_pwa"].reason is not None
-    assert plan.report()["fallbacks"].keys() == {"msa_pwa"}
-    assert sum("msa_pwa" in record.message for record in caplog.records) == 1
-    strict = backends.BackendPlan.make("pytorch", {"msa_pwa": "anthropic"}, "error")
+    assert plan.resolved["conditioning"].reason is not None
+    assert plan.report()["fallbacks"].keys() == {"conditioning"}
+    assert sum("conditioning" in record.message for record in caplog.records) == 1
+    strict = backends.BackendPlan.make("pytorch", {"conditioning": "anthropic"}, "error")
     with pytest.raises(backends.BackendUnsupportedError):
         strict.resolve()
 

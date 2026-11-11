@@ -1,6 +1,6 @@
 # miniworld-engine 2.4.2: what moved here
 
-> Historical migration record for that engine release. The current engine integration (2.5.0) is described in [BACKENDS.md](BACKENDS.md), [../ENGINE-UNSUPPORTED.md](../ENGINE-UNSUPPORTED.md) and [CHECKPOINT-FORMAT.md](CHECKPOINT-FORMAT.md).
+> Historical migration record for that engine release. The current engine integration (2.5.1) is described in [BACKENDS.md](BACKENDS.md), [../ENGINE-UNSUPPORTED.md](../ENGINE-UNSUPPORTED.md) and [CHECKPOINT-FORMAT.md](CHECKPOINT-FORMAT.md).
 
 miniworld-engine 2.4.2 removed `miniworld_engine.architecture` and `miniworld_engine.ops`
 (engine `docs/CHANGELOG.md`, 2.4.2 "Removed"). FoldForge pins `miniworld-engine==2.4.2`.

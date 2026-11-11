@@ -93,6 +93,14 @@ FoldForge-owned glue run in whatever dtype autocast gives them.
 
 Two consequences measured on FoldBench (115 assemblies, 2026-11-10/11):
 
+- **Engine modules take the autocast dtype, never fp32** (`modules/engine/configure.py::engine_activation`, used by `graph.run_block` and the
+  atom DiT stack): the engine's `MasterWeights` contract is fp32 masters with bf16 activations, and its `cuda` backends refuse an fp32 activation
+  ("bf16 only") so the call ran the unchunked pytorch backend, whose fp32 triangle-attention logits are N^3 x 4 heads x 4 B (16 / 54 / 128 GiB at
+  1024 / 1536 / 2048 tokens). Before 2026-11-11 the confidence head (it took its activation dtype from its fp32 weights), the template embedder and
+  the atom transformer's conditioning handed fp32 over, in every family; the confidence head, the first refiner block and the template pairformer now
+  run in bf16 under `master`, as the trunk always did. `fp32` precision (no autocast) is unchanged. NOT yet checked against the released
+  structures (`tools/references/validate.sh`; the 2026-09-27 reports in `docs/validation/` predate it): a confidence head that rounds its residual
+  stream to bf16 may move pLDDT.
 - **The diffusion sampler loop runs OUTSIDE the activation autocast** (`models/architectures/af3.py::_sample_diffusion`; only the network calls `denoise` and
   the conditioning table open it). Inside it, the random rigid motion and the Kabsch alignment matmuls rounded the fp32 coordinates to bf16 at every one of
   the 200 steps: consecutive CA-CA distance std 0.10-0.21 A instead of 0.02-0.05 A and FoldBench lDDT 0.88 -> 0.17 with TM-score and DockQ unchanged.

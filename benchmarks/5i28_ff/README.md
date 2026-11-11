@@ -7,8 +7,9 @@ identical 5I28 chains (128 n tokens), the real MSA and templates of key `P011335
 - `run_5i28_ff.py`: one process per model, all n ascending, one `Predictor` call per n with `execution.benchmark_repeats` warm repeats
   (default 3: the 2026-10-29 run's value). The number is `model_seconds_warm_median`, the median of the warm complete model forwards
   (CUDA-synchronized, without featurization / loading / output decoding); the first forward of each size is cold and is recorded, not
-  used. A cell is written when it finishes (`cells/<model>_x<n>.json`, `cells.jsonl`); an out-of-memory cell is recorded as `oom` and the
-  run goes on. `--retry-fragmented` reruns only the 'reserved but unallocated' out-of-memory cells (the last fallback, expandable
+  used. After every size the captured CUDA graphs and the allocator cache are released (`release_size_memory`: each size starts from
+  the weights alone, so the pools of the smaller sizes cannot push the largest into an out-of-memory error). A cell is written when it
+  finishes (`cells/<model>_x<n>.json`, `cells.jsonl`); an out-of-memory cell is recorded as `oom` and the run goes on. `--retry-fragmented` reruns only the 'reserved but unallocated' out-of-memory cells (the last fallback, expandable
   segments, which the sbatch script does by itself and the cell records as `retry`).
 - `run_model.sbatch`: one model on one GPU (`-c 16 --hint=nomultithread`, the process pinned to the first 16 logical CPUs of the
   allocation = 16 distinct physical cores), a host-speed probe (`probe.py`) before and after, `nvidia-smi` clocks every 5 s,

@@ -41,7 +41,7 @@ MODELS: dict[str, tuple[int, int, dict]] = {
     "protenix1": (4, 4, {}),
     "protenix2": (4, 4, {}),
     "opendde": (4, 4, {}),
-    "esmfold2": (4, 4, {}),
+    "esmfold2": (4, 0, {}),  # the checkpoint takes no templates
     "af3": (3, 4, {}),
     "boltz2": (4, 4, {}),
     "chai1": (4, 4, {}),
@@ -58,7 +58,7 @@ def make_spec(n: int, template_n: int) -> dict:
     """n identical 5I28 chains, the real MSA and the real templates of key P0113359 (``template_dedup`` stays at its default: 4 distinct)."""
     fasta, msa_db, template_db = (os.environ[k] for k in ("FOLDFORGE_5I28_FASTA", "FOLDFORGE_5I28_MSA_DB", "FOLDFORGE_5I28_TEMPLATE_DB"))
     ids = letters(n)
-    return {
+    spec = {
         "name": "5i28",
         "chain_letters": {str(i): c for i, c in enumerate(ids)},
         "fasta": dict.fromkeys(ids, fasta),
@@ -72,6 +72,10 @@ def make_spec(n: int, template_n: int) -> dict:
         "template_db": template_db,
         "template_n": template_n,
     }
+    if template_n == 0:
+        for key in ("template", "template_db", "template_n"):
+            del spec[key]
+    return spec
 
 
 def make_config(recycles: int, extra: dict, repeats: int) -> dict:
@@ -96,6 +100,23 @@ def oom_of(error: BaseException) -> BaseException | None:
             return error
         error = error.__cause__ or error.__context__
     return None
+
+
+def release_size_memory() -> tuple[int, int]:
+    """Drop what one size leaves on the GPU before the next: every captured CUDA graph (each keeps a private memory pool; the sizes run
+    once each, ascending, so none is replayed again) and the allocator's cached blocks. The compiled code and the weights stay.
+    Returns the reserved bytes before and after."""
+    from foldforge.models.execution import ExecutedCallable
+
+    torch.cuda.synchronize()
+    before = torch.cuda.memory_reserved()
+    for item in gc.get_objects():
+        if type(item) is ExecutedCallable and item.graphs:  # type(), not isinstance: a dead weakref proxy raises on isinstance
+            item.graphs.clear()
+            item.last_capture_bytes = 0
+    gc.collect()
+    torch.cuda.empty_cache()
+    return before, torch.cuda.memory_reserved()
 
 
 def git(*args: str) -> str:
@@ -190,8 +211,6 @@ def main() -> int:
             if not oom:
                 cell["traceback"] = repr(error)[:600]
             result = None
-            gc.collect()
-            torch.cuda.empty_cache()
         cell["wall_seconds"] = round(time.time() - started, 1)
         (cells / f"{args.model}_x{n}.json").write_text(json.dumps(cell, indent=1))
         with (args.out / "cells.jsonl").open("a") as handle:
@@ -200,6 +219,8 @@ def main() -> int:
         print(f"CELL {args.model} n={n} status={cell['status']} warm_median={warm} warm={cell.get('model_seconds_warm')} "
               f"cold={cell.get('model_seconds_cold')} compile={cell.get('compile')} wall={cell['wall_seconds']}s", flush=True)
         del result
+        before, after = release_size_memory()  # each size starts from the weights alone: no pools of the smaller sizes (OOM at n=16)
+        print(f"FREE after n={n}: reserved {before / 2**30:.1f} -> {after / 2**30:.1f} GiB", flush=True)
     return 0
 
 

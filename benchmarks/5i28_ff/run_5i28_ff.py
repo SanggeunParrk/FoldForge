@@ -129,6 +129,7 @@ def git(*args: str) -> str:
 
 def meta(model: str, config: dict) -> dict:
     from importlib import metadata
+    import miniworld_engine.modules as engine_modules
 
     def version(name: str) -> str | None:
         try:
@@ -143,6 +144,7 @@ def meta(model: str, config: dict) -> dict:
         "gpu": torch.cuda.get_device_name(0),
         "torch": torch.__version__,
         "miniworld_engine": version("miniworld-engine"),
+        "miniworld_engine_loaded_from": engine_modules.__file__,  # the installed version above can differ (PYTHONPATH)
         "miniworld_engine_kernels": version("miniworld-engine-kernels-sm90-cu129"),
         "foldforge_commit": git("rev-parse", "HEAD"),
         "foldforge_dirty": bool(git("status", "--porcelain", "--untracked-files=no")),

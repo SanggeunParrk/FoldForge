@@ -98,9 +98,11 @@ Two consequences measured on FoldBench (115 assemblies, 2026-11-10/11):
   ("bf16 only") so the call ran the unchunked pytorch backend, whose fp32 triangle-attention logits are N^3 x 4 heads x 4 B (16 / 54 / 128 GiB at
   1024 / 1536 / 2048 tokens). Before 2026-11-11 the confidence head (it took its activation dtype from its fp32 weights), the template embedder and
   the atom transformer's conditioning handed fp32 over, in every family; the confidence head, the first refiner block and the template pairformer now
-  run in bf16 under `master`, as the trunk always did. `fp32` precision (no autocast) is unchanged. NOT yet checked against the released
-  structures (`tools/references/validate.sh`; the 2026-09-27 reports in `docs/validation/` predate it): a confidence head that rounds its residual
-  stream to bf16 may move pLDDT.
+  run in bf16 under `master`, as the trunk always did. `fp32` precision (no autocast) is unchanged. Checked 2026-11-12 on an H100
+  against the released structures (`tools/references/validate.sh fast`, 5I28 and 3PTB, three seeds, backend pytorch): 17 of 19 families x targets PASS.
+  The two FAILs (5I28 IntelliFold2 pLDDT 69.0 against the release's 60.2; 5I28 OpenDDE structure 2.33 A against a bound of 2.21) are the same on the
+  commit before these changes (`6bbca72`: 69.02 and 2.34 A), so they are not from this change, which moved those pLDDTs by 0.01; they are
+  regressions since the 2026-09-27 reports (IntelliFold2 60.0 then), not yet traced. 1A1K and the MSA condition (5I28-msa) were not rerun.
 - **The diffusion sampler loop runs OUTSIDE the activation autocast** (`models/architectures/af3.py::_sample_diffusion`; only the network calls `denoise` and
   the conditioning table open it). Inside it, the random rigid motion and the Kabsch alignment matmuls rounded the fp32 coordinates to bf16 at every one of
   the 200 steps: consecutive CA-CA distance std 0.10-0.21 A instead of 0.02-0.05 A and FoldBench lDDT 0.88 -> 0.17 with TM-score and DockQ unchanged.

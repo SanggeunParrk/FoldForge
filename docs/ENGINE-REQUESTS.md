@@ -66,6 +66,8 @@ inside the block, no `to_bias`). FoldForge's ESMFold2 atom stack is the AF3 bloc
 family's rotary and RMS / SiLU AdaLN, so it stays FoldForge-own. Either an option that takes the pair bias and the rotary keyed by `uid`, or a
 statement that the two are different functions, tells FoldForge whether the stack could ever move.
 
+Measured 2026-11-12 (5I28 n=1, H100, torch profiler, one warm sampler call): ESMFold2's sampler takes 0.514 s against Protenix v1's 0.429 s although its token DiT has half the blocks (12 against 24). The engine's fused atom kernels (`pre90_split`, `post90_fwd`, `h_attn_fwd`) are absent from its profile, replaced by generic GEMMs, inductor-fused casts and fp32 FFMA GEMMs: the FoldForge-own atom stack. ESMFold2 is the one model slower than its kit on 5I28 (kit / FoldForge 0.57 at n = 1, 1.0 at n = 12; `docs/records/5i28_foldforge_20261111.md`).
+
 **R7. Chai-1 DiT on `cuda`.** FoldForge hands the token block bf16 `single` and fp32 `cond` / `pair` (the conditioning is built in fp32).
 `TokenDiTProtenix` serves that on `cuda`; the Chai-1 classes refuse ("all bfloat16 or all float32"), so Chai-1's 64 token-DiT and 27 atom-DiT
 calls per fold run `pytorch` (observed on H100). The atom block also refuses under the fp32 sampler glue ("bfloat16 activations under bfloat16

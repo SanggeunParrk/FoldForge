@@ -1,0 +1,185 @@
+{
+ "date": "2026-11-12",
+ "what": "FoldForge protenix1 5I28, H100, engine 2.5.1: atom blocks on the engine cuda backend (default) vs engine.ops atom_blocks=pytorch, same inputs and seeds, 2 warm repeats",
+ "per_chain_check": [
+  {
+   "model": "protenix1",
+   "n": 8,
+   "atoms": 7784,
+   "whole_complex_rmsd": [
+    6.3,
+    4.4,
+    21.8,
+    0.5,
+    1.6
+   ],
+   "chain_vs_chain0_cuda": [
+    0.359,
+    0.723
+   ],
+   "chain_vs_chain0_pytorch": [
+    0.215,
+    0.664
+   ],
+   "chain_cuda_vs_pytorch": [
+    0.315,
+    0.787
+   ],
+   "plddt_cuda": 0.8084905743598938,
+   "plddt_pytorch": 0.8083240389823914,
+   "warm_cuda": 3.861853984417394,
+   "warm_pytorch": 4.482060765847564,
+   "finite": [
+    true,
+    true
+   ]
+  },
+  {
+   "model": "protenix1",
+   "n": 12,
+   "atoms": 11676,
+   "whole_complex_rmsd": [
+    26.6,
+    6.2,
+    19.6,
+    11.3,
+    12.7
+   ],
+   "chain_vs_chain0_cuda": [
+    0.085,
+    0.602
+   ],
+   "chain_vs_chain0_pytorch": [
+    0.079,
+    0.138
+   ],
+   "chain_cuda_vs_pytorch": [
+    0.445,
+    0.851
+   ],
+   "plddt_cuda": 0.8049176335334778,
+   "plddt_pytorch": 0.8074554204940796,
+   "warm_cuda": 9.060835772193968,
+   "warm_pytorch": 10.285885595483705,
+   "finite": [
+    true,
+    true
+   ]
+  },
+  {
+   "model": "protenix1",
+   "n": 16,
+   "atoms": 15568,
+   "whole_complex_rmsd": [
+    9.3,
+    25.1,
+    23.3,
+    19.7,
+    25.3
+   ],
+   "chain_vs_chain0_cuda": [
+    0.084,
+    0.164
+   ],
+   "chain_vs_chain0_pytorch": [
+    0.094,
+    0.538
+   ],
+   "chain_cuda_vs_pytorch": [
+    0.415,
+    0.667
+   ],
+   "plddt_cuda": 0.8159182667732239,
+   "plddt_pytorch": 0.8160198330879211,
+   "warm_cuda": 17.23769929772243,
+   "warm_pytorch": 18.471073107095435,
+   "finite": [
+    true,
+    true
+   ]
+  }
+ ],
+ "whole_complex_rmsd_first_attempt_NOT_a_valid_metric": [
+  {
+   "model": "protenix1",
+   "n": 8,
+   "atoms": 7784,
+   "rmsd_cuda_vs_pytorch": [
+    6.314,
+    4.416,
+    21.789,
+    0.531,
+    1.586
+   ],
+   "plddt_cuda": 0.8084905743598938,
+   "plddt_pytorch": 0.8083240389823914,
+   "warm_cuda": 3.84190430957824,
+   "warm_pytorch": 4.467341462848708,
+   "finite": [
+    true,
+    true
+   ]
+  },
+  {
+   "model": "protenix1",
+   "n": 12,
+   "atoms": 11676,
+   "rmsd_cuda_vs_pytorch": [
+    26.645,
+    6.236,
+    19.625,
+    11.32,
+    12.719
+   ],
+   "plddt_cuda": 0.8049176335334778,
+   "plddt_pytorch": 0.8074554204940796,
+   "warm_cuda": 9.007332266541198,
+   "warm_pytorch": 10.233393496600911,
+   "finite": [
+    true,
+    true
+   ]
+  },
+  {
+   "model": "openfold3",
+   "n": 8,
+   "atoms": 7776,
+   "rmsd_cuda_vs_pytorch": [
+    20.176,
+    18.735,
+    0.29,
+    26.034,
+    9.282
+   ],
+   "plddt_cuda": 0.8013283610343933,
+   "plddt_pytorch": 0.8031533360481262,
+   "warm_cuda": 4.055032611591741,
+   "warm_pytorch": 4.749463756335899,
+   "finite": [
+    true,
+    true
+   ]
+  },
+  {
+   "model": "openfold3",
+   "n": 12,
+   "atoms": 11664,
+   "rmsd_cuda_vs_pytorch": [
+    29.572,
+    21.708,
+    20.702,
+    22.41,
+    17.778
+   ],
+   "plddt_cuda": 0.7866061329841614,
+   "plddt_pytorch": 0.7885202169418335,
+   "warm_cuda": 9.493319811997935,
+   "warm_pytorch": 10.85767965996638,
+   "finite": [
+    true,
+    true
+   ]
+  }
+ ],
+ "note": "The whole-complex RMSD of the first attempt is 6-26 A even at n=8 (7.8k atoms): the assembly layout of n identical chains is not determined, so it cannot separate a sound fold from a broken one. chain_vs_chain0 = every chain superposed on chain 0 of the same sample (mean, max over chains and samples); chain_cuda_vs_pytorch = chain k of one variant against chain k of the other (each superposed alone)."
+}

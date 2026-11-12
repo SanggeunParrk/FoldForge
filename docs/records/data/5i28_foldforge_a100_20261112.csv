@@ -1,0 +1,55 @@
+model,n,a100_warm_s,a100_status,a100_engine,a100_2_5_1_status,a100_2_5_1_warm_s,h100_warm_s,a100_over_h100
+af3,1,1.697,ok,engine 46857dec3 (unreleased),ok,1.699,0.46,3.69
+af3,2,2.788,ok,engine 2.5.1,ok,2.788,0.619,4.5
+af3,4,6.082,ok,engine 2.5.1,ok,6.082,1.234,4.93
+af3,8,18.936,ok,engine 2.5.1,ok,18.936,3.474,5.45
+af3,12,41.508,ok,engine 46857dec3 (unreleased),ok,41.605,7.965,5.21
+af3,16,77.002,ok,engine 2.5.1,ok,77.002,14.788,5.21
+openfold3,1,1.762,ok,engine 2.5.1,ok,1.762,0.464,3.8
+openfold3,2,2.944,ok,engine 2.5.1,ok,2.944,0.653,4.51
+openfold3,4,6.805,ok,engine 2.5.1,ok,6.805,1.351,5.04
+openfold3,8,21.545,ok,engine 2.5.1,ok,21.545,4.027,5.35
+openfold3,12,49.646,ok,engine 2.5.1,ok,49.646,9.424,5.27
+openfold3,16,91.601,ok,engine 2.5.1,ok,91.601,17.8,5.15
+protenix1,1,1.733,ok,engine 2.5.1,ok,1.733,0.443,3.91
+protenix1,2,2.886,ok,engine 2.5.1,ok,2.886,0.62,4.65
+protenix1,4,6.447,ok,engine 2.5.1,ok,6.447,1.293,4.98
+protenix1,8,20.735,ok,engine 2.5.1,ok,20.735,3.877,5.35
+protenix1,12,47.063,ok,engine 2.5.1,ok,47.063,9.116,5.16
+protenix1,16,88.88,ok,engine 2.5.1,ok,88.88,17.202,5.17
+protenix2,1,1.929,ok,engine 2.5.1,ok,1.929,0.47,4.1
+protenix2,2,3.572,ok,engine 2.5.1,ok,3.572,0.754,4.74
+protenix2,4,9.182,ok,engine 2.5.1,ok,9.182,1.871,4.91
+protenix2,8,33.357,ok,engine 2.5.1,ok,33.357,6.543,5.1
+protenix2,12,80.737,ok,engine 2.5.1,ok,80.737,15.943,5.06
+protenix2,16,159.316,ok,engine 2.5.1,ok,159.316,31.101,5.12
+boltz2,1,2.028,ok,engine 2.5.1,ok,2.028,0.493,4.11
+boltz2,2,3.496,ok,engine 2.5.1,ok,3.496,0.774,4.52
+boltz2,4,8.244,ok,engine 2.5.1,ok,8.244,1.643,5.02
+boltz2,8,27.439,ok,engine 2.5.1,ok,27.439,5.105,5.37
+boltz2,12,62.884,ok,engine 2.5.1,ok,62.884,11.919,5.28
+boltz2,16,119.759,ok,engine 2.5.1,ok,119.759,22.732,5.27
+rosettafold3,1,1.816,ok,engine 2.5.1,ok,1.816,0.498,3.65
+rosettafold3,2,2.996,ok,engine 2.5.1,ok,2.996,0.742,4.04
+rosettafold3,4,6.709,ok,engine 2.5.1,ok,6.709,1.411,4.75
+rosettafold3,8,21.45,ok,engine 2.5.1,ok,21.45,4.064,5.28
+rosettafold3,12,48.239,ok,engine 2.5.1,ok,48.239,9.309,5.18
+rosettafold3,16,90.803,ok,engine 2.5.1,ok,90.803,17.514,5.18
+esmfold2,1,1.453,ok,engine 2.5.1,ok,1.453,0.542,2.68
+esmfold2,2,2.57,ok,engine 2.5.1,ok,2.57,0.81,3.17
+esmfold2,4,5.839,ok,engine 2.5.1,ok,5.839,1.663,3.51
+esmfold2,8,17.211,ok,engine 2.5.1,ok,17.211,4.378,3.93
+esmfold2,12,36.214,ok,engine 2.5.1,ok,36.214,9.331,3.88
+esmfold2,16,61.603,ok,engine 2.5.1,ok,61.603,15.285,4.03
+opendde,1,2.78,ok,engine 2.5.1,ok,2.78,0.672,4.14
+opendde,2,5.859,ok,engine 2.5.1,ok,5.859,1.307,4.48
+opendde,4,17.32,ok,engine 2.5.1,ok,17.32,3.558,4.87
+opendde,8,64.466,ok,engine 2.5.1,ok,64.466,13.127,4.91
+opendde,12,153.534,ok,engine 46857dec3 (unreleased),failed,,31.275,4.91
+opendde,16,,oom,engine 46857dec3 (unreleased),failed,,,
+chai1,1,1.413,ok,engine 46857dec3 (unreleased),failed,,0.551,2.57
+chai1,2,2.932,ok,engine 46857dec3 (unreleased),failed,,1.183,2.48
+chai1,4,8.464,ok,engine 46857dec3 (unreleased),failed,,3.706,2.28
+chai1,8,32.738,ok,engine 46857dec3 (unreleased),failed,,14.685,2.23
+chai1,12,79.522,ok,engine 46857dec3 (unreleased),failed,,36.191,2.2
+chai1,16,154.324,ok,engine 46857dec3 (unreleased),failed,,71.229,2.17

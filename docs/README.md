@@ -12,6 +12,7 @@
   azurin, real MSA + 4 distinct templates, warm median), why 5I28 (128 residues = one token bucket) and that FoldForge owns it.
   Records: [2026-11-11](records/5i28_foldforge_20261111.md) (eight models on engine 2.5.1, kit / FoldForge 1.1-6.1x, ESMFold2 0.57-1.0x).
   Addendum: [the atom DiT conditioning bug (n >= 12) and a rerun on the fixed engine](records/5i28_atom_blocks_check_20261112.md) (2026-11-12).
+  A100: [nine models on an A100 80GB PCIe](records/5i28_foldforge_a100_20261112.md) (2026-11-12, Triton path, 4-5.5x slower than the H100).
 - [Code structure](guides/CODE-STRUCTURE.md): shared runtime and code ownership.
 - [Backends](guides/BACKENDS.md): `pytorch | cuda | triton | anthropic | cueq` (aliases `miniworld`, `cuequivariance`), `fallback | error`, precision `master | fp32`, how to compare backends. Measurements of the pre-2.5.0 engine: [archive](archive/BACKENDS-engine-2.3.md).
 - [What the engine does not support](ENGINE-UNSUPPORTED.md) (categorized: what, where, what FoldForge does meanwhile) and [requests to the engine team](ENGINE-REQUESTS.md) (numbered, prioritized).
